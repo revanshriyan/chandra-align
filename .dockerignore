@@ -1,0 +1,61 @@
+# Git
+.git/
+.gitignore
+
+# Bytecode & cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+.env.local
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Web build
+web/node_modules/
+web/dist/
+web/.vite/
+web/.turbo/
+
+# Scratch / temporary scripts
+check_*.py
+diag_*.py
+run_*.py
+scratch_*
+*.html
+*.pdf
+
+# Output artifacts (mounted at runtime)
+outputs/*/
+
+# IDE/OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker/
+.dockerignore
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
