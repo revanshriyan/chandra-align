@@ -4,10 +4,9 @@ emoji: 🌖
 colorFrom: blue
 colorTo: indigo
 sdk: gradio
-sdk_version: 4.44.0
+sdk_version: 4.36.0
 app_file: app.py
 pinned: false
-hardware: cpu-basic
 ---
 
 # chandra_align
