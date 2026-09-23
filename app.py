@@ -4,10 +4,12 @@ import tempfile
 import numpy as np
 import cv2
 import gradio as gr
+import spaces
 
 from chandra_align.matching.deep_matchers import ClassicalSIFTMatcher, DeepMatcherChain
 from chandra_align.matching.sar_optical import SAROpticalGradientMatcher
 
+@spaces.GPU
 def align_images_ui(ref_img_path: str, sec_img_path: str, mode: str):
     """Gradio handler for browser-based 2D alignment execution."""
     if not ref_img_path or not sec_img_path:
