@@ -1,6 +1,5 @@
 import os
 import json
-import tempfile
 import numpy as np
 import cv2
 import gradio as gr
@@ -8,6 +7,10 @@ import spaces
 
 from chandra_align.matching.deep_matchers import ClassicalSIFTMatcher, DeepMatcherChain
 from chandra_align.matching.sar_optical import SAROpticalGradientMatcher
+
+# Persistent output directory for file downloads
+OUTPUT_DIR = "/tmp/chandra_align_outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 @spaces.GPU
 def align_images_ui(ref_img_path: str, sec_img_path: str, mode: str):
@@ -67,9 +70,10 @@ def align_images_ui(ref_img_path: str, sec_img_path: str, mode: str):
         "execution_time_sec": round(res.execution_time_sec, 3)
     }
 
-    # Save metrics JSON to temp file
-    temp_dir = tempfile.mkdtemp()
-    metrics_path = os.path.join(temp_dir, "metrics.json")
+    # Save metrics JSON to persistent output directory
+    import uuid
+    metrics_filename = f"metrics_{uuid.uuid4().hex[:8]}.json"
+    metrics_path = os.path.join(OUTPUT_DIR, metrics_filename)
     with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=2)
 
