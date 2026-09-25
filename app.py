@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 import gradio as gr
 import spaces
+from PIL import Image
 
 
 def generate_synthetic_lunar_pair(ref_path: str, sec_path: str) -> None:
@@ -108,29 +109,20 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
     return src_pts, dst_pts, "ClassicalSIFT"
 
 
-@spaces.GPU
-def process_alignment(ref_file, sec_file):
+@spaces.GPU(duration=60)
+def _align_on_gpu(ref_img: np.ndarray, sec_img: np.ndarray) -> tuple[np.ndarray, dict]:
     """
-    Main alignment pipeline for Gradio interface.
-    Returns (visualization_image, report_text).
+    Inner GPU compute function - performs feature extraction & alignment on CUDA.
+    Returns (side_by_side_np, metrics_dict).
     """
-    if ref_file is None or sec_file is None:
-        return None, "Error: Please provide both Reference and Secondary surface frames."
-
-    ref_img = cv2.imread(ref_file.name if hasattr(ref_file, 'name') else ref_file, cv2.IMREAD_GRAYSCALE)
-    sec_img = cv2.imread(sec_file.name if hasattr(sec_file, 'name') else sec_file, cv2.IMREAD_GRAYSCALE)
-
-    if ref_img is None or sec_img is None:
-        return None, "Error: Unable to decode input image files."
-
     pts_ref, pts_sec, engine_name = match_pair_hf(ref_img, sec_img)
 
     if len(pts_ref) < 4:
-        return None, "Registration Failed: Insufficient keypoint correspondences detected."
+        raise ValueError("Insufficient keypoint correspondences detected.")
 
     H, mask = cv2.findHomography(pts_sec, pts_ref, cv2.RANSAC, 3.0)
     if H is None:
-        return None, "Registration Failed: Homography calculation failed."
+        raise ValueError("Homography calculation failed.")
 
     inliers = mask.squeeze().astype(bool) if mask is not None else np.zeros(len(pts_ref), dtype=bool)
     inlier_cnt = int(inliers.sum())
@@ -147,15 +139,54 @@ def process_alignment(ref_file, sec_file):
     side_by_side = np.hstack((ref_img, warped_sec, diff_map))
     side_by_side_rgb = cv2.cvtColor(side_by_side, cv2.COLOR_GRAY2RGB)
 
-    report = (
-        f"✅ REGISTRATION COMPLETE\n"
-        f"Matcher Engine: {engine_name}\n"
-        f"Verified Inliers: {inlier_cnt} / {len(pts_ref)} ({inlier_cnt/max(len(pts_ref),1)*100:.1f}%)\n"
-        f"RMSE Accuracy: {rmse:.4f} px\n"
-        f"MAE Error: {mae:.4f} px"
-    )
+    metrics = {
+        "engine": engine_name,
+        "inliers": inlier_cnt,
+        "total_matches": len(pts_ref),
+        "inlier_ratio": inlier_cnt / max(len(pts_ref), 1),
+        "rmse": rmse,
+        "mae": mae
+    }
 
-    return side_by_side_rgb, report
+    return side_by_side_rgb, metrics
+
+
+def process_alignment(ref_file, sec_file):
+    """
+    Outer Gradio handler - calls GPU worker and converts output to PIL Image
+    for clean IPC serialization across ZeroGPU subprocess boundary.
+    Returns (PIL.Image, report_text).
+    """
+    if ref_file is None or sec_file is None:
+        return None, "Error: Please provide both Reference and Secondary surface frames."
+
+    ref_img = cv2.imread(ref_file.name if hasattr(ref_file, 'name') else ref_file, cv2.IMREAD_GRAYSCALE)
+    sec_img = cv2.imread(sec_file.name if hasattr(sec_file, 'name') else sec_file, cv2.IMREAD_GRAYSCALE)
+
+    if ref_img is None or sec_img is None:
+        return None, "Error: Unable to decode input image files."
+
+    try:
+        # Call GPU worker
+        aligned_np, metrics = _align_on_gpu(ref_img, sec_img)
+
+        # Convert NumPy array to PIL Image for clean IPC serialization
+        aligned_pil = Image.fromarray(aligned_np.astype(np.uint8))
+
+        report = (
+            f"✅ REGISTRATION COMPLETE\n"
+            f"Matcher Engine: {metrics['engine']}\n"
+            f"Verified Inliers: {metrics['inliers']} / {metrics['total_matches']} ({metrics['inlier_ratio']*100:.1f}%)\n"
+            f"RMSE Accuracy: {metrics['rmse']:.4f} px\n"
+            f"MAE Error: {metrics['mae']:.4f} px"
+        )
+
+        return aligned_pil, report
+
+    except ValueError as e:
+        return None, f"Registration Failed: {str(e)}"
+    except Exception as e:
+        return None, f"Registration Failed: {str(e)}"
 
 
 # Build interface with lazy sample loading
