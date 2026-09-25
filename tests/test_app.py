@@ -52,7 +52,7 @@ def test_process_alignment_synthetic():
     assert "RMSE Accuracy" in status
     assert "MAE Error" in status
     assert isinstance(result_img, str)
-    assert os.path.exists(result_img)
+    assert result_img.startswith("data:image/png;base64,")
 
     # Cleanup
     import shutil
