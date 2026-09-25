@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 import gradio as gr
 import spaces
-from PIL import Image
 import tempfile
 import shutil
 
@@ -120,7 +119,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 def process_alignment(ref_file, sec_file):
     """
     Main alignment pipeline - decorated with @spaces.GPU for ZeroGPU execution.
-    Returns (file_path, report_text) - file path is accessible from main process.
+    Returns (file_path, report_text) - file path accessible from main process.
     """
     if ref_file is None or sec_file is None:
         return None, "Error: Please provide both Reference and Secondary surface frames."
@@ -185,7 +184,7 @@ interface = gr.Interface(
         gr.File(label="Secondary Frame (LRO NAC / Target)", file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"])
     ],
     outputs=[
-        gr.Image(label="Registration View [Reference | Aligned Secondary | Radiometric Delta]"),
+        gr.Image(label="Registration View [Reference | Aligned Secondary | Radiometric Delta]", type="numpy"),
         gr.Textbox(label="Photogrammetric Summary Report", lines=10)
     ],
     title="CHANDRA-ALIGN: Lunar Cross-Sensor Registration Engine",
