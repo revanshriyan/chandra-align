@@ -168,7 +168,7 @@ def process_alignment(ref_file, sec_file):
         f"MAE Error: {mae:.4f} px"
     )
 
-    return output_path, report
+    return {"path": output_path}, report
 
 
 # Build interface with lazy sample loading
