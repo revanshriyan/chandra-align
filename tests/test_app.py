@@ -3,13 +3,12 @@ import numpy as np
 import cv2
 import tempfile
 import os
-from app import process_alignment, build_interface, ensure_sample_files
+from app import process_alignment, ensure_sample_files, interface
 
 
 def test_app_initialization():
     """Verify Gradio app structure builds cleanly."""
-    demo = build_interface()
-    assert demo is not None
+    assert interface is not None
 
 
 def test_ensure_sample_files():

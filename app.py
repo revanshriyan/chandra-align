@@ -8,6 +8,7 @@ import sys
 import cv2
 import numpy as np
 import gradio as gr
+import spaces
 
 
 def generate_synthetic_lunar_pair(ref_path: str, sec_path: str) -> None:
@@ -107,109 +108,86 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
     return src_pts, dst_pts, "ClassicalSIFT"
 
 
+@spaces.GPU
 def process_alignment(ref_file, sec_file):
     """
     Main alignment pipeline for Gradio interface.
     Returns (visualization_image, report_text).
     """
     if ref_file is None or sec_file is None:
-        return None, "Error: Please upload both Reference Frame and Secondary Frame."
+        return None, "Error: Please provide both Reference and Secondary surface frames."
 
-    ref_img = cv2.imread(ref_file.name, cv2.IMREAD_GRAYSCALE)
-    sec_img = cv2.imread(sec_file.name, cv2.IMREAD_GRAYSCALE)
+    ref_img = cv2.imread(ref_file.name if hasattr(ref_file, 'name') else ref_file, cv2.IMREAD_GRAYSCALE)
+    sec_img = cv2.imread(sec_file.name if hasattr(sec_file, 'name') else sec_file, cv2.IMREAD_GRAYSCALE)
 
     if ref_img is None or sec_img is None:
-        return None, "Error: Failed to decode input images. Ensure valid image format."
+        return None, "Error: Unable to decode input image files."
 
-    # Feature matching with fallback
-    src_pts, dst_pts, matcher_name = match_pair_hf(ref_img, sec_img)
+    pts_ref, pts_sec, engine_name = match_pair_hf(ref_img, sec_img)
 
-    if len(src_pts) < 4:
-        return None, "Registration Failed: Less than 4 feature correspondences detected."
+    if len(pts_ref) < 4:
+        return None, "Registration Failed: Insufficient keypoint correspondences detected."
 
-    # Robust homography estimation via RANSAC
-    H, mask = cv2.findHomography(dst_pts, src_pts, cv2.RANSAC, 3.0)
-
+    H, mask = cv2.findHomography(pts_sec, pts_ref, cv2.RANSAC, 3.0)
     if H is None:
-        return None, "Registration Failed: Homography estimation failed."
+        return None, "Registration Failed: Homography calculation failed."
 
-    # Inlier statistics
-    inliers = mask.squeeze().astype(bool) if mask is not None else np.zeros(len(src_pts), dtype=bool)
-    inlier_count = int(inliers.sum())
-    total_matches = len(src_pts)
-    inlier_ratio = inlier_count / total_matches if total_matches > 0 else 0.0
+    inliers = mask.squeeze().astype(bool) if mask is not None else np.zeros(len(pts_ref), dtype=bool)
+    inlier_cnt = int(inliers.sum())
 
-    # Warp secondary onto reference frame
     warped_sec = cv2.warpPerspective(sec_img, H, (ref_img.shape[1], ref_img.shape[0]))
-
-    # Radiometric difference map
     diff_map = cv2.absdiff(ref_img, warped_sec)
-    diff_heatmap = cv2.applyColorMap(diff_map, cv2.COLORMAP_JET)
 
-    # Residual metrics on inliers
-    if inlier_count > 0:
-        src_inliers = src_pts[inliers]  # Shape: (N, 2)
-        dst_inliers = dst_pts[inliers].reshape(-1, 1, 2)
+    pts_sec_h = cv2.perspectiveTransform(pts_sec[inliers].reshape(-1, 1, 2), H).squeeze()
+    residuals = np.linalg.norm(pts_ref[inliers] - pts_sec_h, axis=1) if inlier_cnt > 0 else np.array([0])
 
-        # Project source inliers through homography
-        projected = cv2.perspectiveTransform(dst_inliers, H).squeeze()  # Shape: (N, 2)
-        residuals = np.linalg.norm(src_inliers - projected, axis=1)
+    rmse = float(np.sqrt(np.mean(residuals ** 2))) if len(residuals) > 0 else 0.0
+    mae = float(np.mean(residuals)) if len(residuals) > 0 else 0.0
 
-        rmse = float(np.sqrt(np.mean(residuals ** 2)))
-        mae = float(np.mean(residuals))
-    else:
-        rmse = 0.0
-        mae = 0.0
+    side_by_side = np.hstack((ref_img, warped_sec, diff_map))
+    side_by_side_rgb = cv2.cvtColor(side_by_side, cv2.COLOR_GRAY2RGB)
 
-    # Compose side-by-side visualization: Reference | Aligned Secondary | Delta Heatmap
-    ref_rgb = cv2.cvtColor(ref_img, cv2.COLOR_GRAY2RGB)
-    warped_rgb = cv2.cvtColor(warped_sec, cv2.COLOR_GRAY2RGB)
-    side_by_side = np.hstack((ref_rgb, warped_rgb, diff_heatmap))
-
-    # Executive report
     report = (
-        f"CHANDRA-ALIGN Registration Report\n"
-        f"{'=' * 45}\n"
-        f"Matcher Engine: {matcher_name}\n"
-        f"Inlier Count: {inlier_count} / {total_matches} ({inlier_ratio * 100:.1f}%)\n"
-        f"Registration Precision (RMSE): {rmse:.4f} px\n"
-        f"Mean Absolute Error (MAE): {mae:.4f} px\n"
+        f"✅ REGISTRATION COMPLETE\n"
+        f"Matcher Engine: {engine_name}\n"
+        f"Verified Inliers: {inlier_cnt} / {len(pts_ref)} ({inlier_cnt/max(len(pts_ref),1)*100:.1f}%)\n"
+        f"RMSE Accuracy: {rmse:.4f} px\n"
+        f"MAE Error: {mae:.4f} px"
     )
 
-    return side_by_side, report
+    return side_by_side_rgb, report
 
 
-def build_interface() -> gr.Interface:
-    """Construct and return the Gradio Interface."""
-    # Ensure sample files exist on startup
-    sample_ref, sample_sec = ensure_sample_files()
+# Build interface with lazy sample loading
+def get_examples():
+    """Lazy loading of sample files for Gradio examples."""
+    return ensure_sample_files()
 
-    title = "CHANDRA-ALIGN: Lunar Cross-Sensor Registration Engine"
-    description = (
+
+interface = gr.Interface(
+    fn=process_alignment,
+    inputs=[
+        gr.File(label="Reference Frame (OHRC / Baseline)", file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"]),
+        gr.File(label="Secondary Frame (LRO NAC / Target)", file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"])
+    ],
+    outputs=[
+        gr.Image(label="Registration View [Reference | Aligned Secondary | Radiometric Delta]"),
+        gr.Textbox(label="Photogrammetric Summary Report", lines=10)
+    ],
+    title="CHANDRA-ALIGN: Lunar Cross-Sensor Registration Engine",
+    description=(
         "Sub-pixel photogrammetric registration for Chandrayaan-2 OHRC and LRO NAC "
         "lunar surface imagery. Upload reference and secondary frames to compute "
         "cross-sensor alignment with robust outlier rejection and residual analysis."
-    )
-
-    interface = gr.Interface(
-        fn=process_alignment,
-        inputs=[
-            gr.File(label="Reference Frame (OHRC / Baseline)", file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"]),
-            gr.File(label="Secondary Frame (LRO NAC / Target)", file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"])
-        ],
-        outputs=[
-            gr.Image(label="Registration View [Reference | Aligned Secondary | Radiometric Delta]"),
-            gr.Textbox(label="Photogrammetric Summary Report", lines=10)
-        ],
-        title=title,
-        description=description,
-        examples=[[sample_ref, sample_sec]],
-        cache_examples=False
-    )
-
-    return interface
+    ),
+    examples=[],  # Empty initially, samples generated on first request
+    cache_examples=False
+)
 
 
 if __name__ == "__main__":
-    app = build_interface()
-    app.launch()
+    # Generate samples on startup
+    sample_ref, sample_sec = ensure_sample_files()
+    # Update examples with generated samples
+    interface.examples = [[sample_ref, sample_sec]]
+    interface.launch()

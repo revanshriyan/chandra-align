@@ -4,5 +4,6 @@ opencv-python-headless
 numpy
 scipy
 gradio
+spaces
 tifffile
 huggingface_hub<0.25.0
