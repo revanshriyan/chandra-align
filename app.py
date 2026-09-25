@@ -210,7 +210,7 @@ interface = gr.Interface(
         gr.File(label="Secondary Frame (LRO NAC / Target)", file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"])
     ],
     outputs=[
-        gr.Image(label="Registration View [Reference | Aligned Secondary | Radiometric Delta]"),
+        gr.Image(label="Registration View [Reference | Aligned Secondary | Radiometric Delta]", type="pil"),
         gr.Textbox(label="Photogrammetric Summary Report", lines=10)
     ],
     title="CHANDRA-ALIGN: Lunar Cross-Sensor Registration Engine",
