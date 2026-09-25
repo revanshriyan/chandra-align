@@ -9,8 +9,8 @@ import cv2
 import numpy as np
 import gradio as gr
 import spaces
-import uuid
 import tempfile
+from PIL import Image
 
 
 def generate_synthetic_lunar_pair(ref_path: str, sec_path: str) -> None:
@@ -110,34 +110,20 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
     return src_pts, dst_pts, "ClassicalSIFT"
 
 
-# Persistent output directory shared between GPU subprocess and main process
-OUTPUT_DIR = "/tmp/chandra_align_outputs"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-
 @spaces.GPU(duration=60)
-def process_alignment(ref_file, sec_file):
+def _align_gpu_core(ref_img: np.ndarray, sec_img: np.ndarray) -> dict:
     """
-    Main alignment pipeline - decorated with @spaces.GPU for ZeroGPU execution.
-    Returns (file_path, report_text) - file path in shared OUTPUT_DIR.
+    Inner GPU compute function - runs on CUDA.
+    Returns dict with numpy arrays and metrics for reliable pickle serialization.
     """
-    if ref_file is None or sec_file is None:
-        return None, "Error: Please provide both Reference and Secondary surface frames."
-
-    ref_img = cv2.imread(ref_file.name if hasattr(ref_file, 'name') else ref_file, cv2.IMREAD_GRAYSCALE)
-    sec_img = cv2.imread(sec_file.name if hasattr(sec_file, 'name') else sec_file, cv2.IMREAD_GRAYSCALE)
-
-    if ref_img is None or sec_img is None:
-        return None, "Error: Unable to decode input image files."
-
     pts_ref, pts_sec, engine_name = match_pair_hf(ref_img, sec_img)
 
     if len(pts_ref) < 4:
-        return None, "Registration Failed: Insufficient keypoint correspondences detected."
+        raise ValueError("Insufficient keypoint correspondences detected.")
 
     H, mask = cv2.findHomography(pts_sec, pts_ref, cv2.RANSAC, 3.0)
     if H is None:
-        return None, "Registration Failed: Homography calculation failed."
+        raise ValueError("Homography calculation failed.")
 
     inliers = mask.squeeze().astype(bool) if mask is not None else np.zeros(len(pts_ref), dtype=bool)
     inlier_cnt = int(inliers.sum())
@@ -154,20 +140,61 @@ def process_alignment(ref_file, sec_file):
     side_by_side = np.hstack((ref_img, warped_sec, diff_map))
     side_by_side_rgb = cv2.cvtColor(side_by_side, cv2.COLOR_GRAY2RGB)
 
-    # Save to shared output directory accessible from both subprocess and main process
-    filename = f"result_{uuid.uuid4().hex[:8]}.png"
-    output_path = os.path.join(OUTPUT_DIR, filename)
-    cv2.imwrite(output_path, cv2.cvtColor(side_by_side_rgb, cv2.COLOR_RGB2BGR))
+    # Return dict with numpy arrays and metrics - pickle serializes correctly
+    return {
+        "image": side_by_side_rgb,
+        "engine": engine_name,
+        "inliers": inlier_cnt,
+        "total_matches": len(pts_ref),
+        "rmse": rmse,
+        "mae": mae
+    }
 
-    report = (
-        f"✅ REGISTRATION COMPLETE\n"
-        f"Matcher Engine: {engine_name}\n"
-        f"Verified Inliers: {inlier_cnt} / {len(pts_ref)} ({inlier_cnt/max(len(pts_ref),1)*100:.1f}%)\n"
-        f"RMSE Accuracy: {rmse:.4f} px\n"
-        f"MAE Error: {mae:.4f} px"
-    )
 
-    return output_path, report
+def process_alignment(ref_file, sec_file):
+    """
+    Outer Gradio handler - calls GPU worker, saves result to temp file,
+    returns file path for Gradio Image component.
+    """
+    if ref_file is None or sec_file is None:
+        return None, "Error: Please provide both Reference and Secondary surface frames."
+
+    ref_img = cv2.imread(ref_file.name if hasattr(ref_file, 'name') else ref_file, cv2.IMREAD_GRAYSCALE)
+    sec_img = cv2.imread(sec_file.name if hasattr(sec_file, 'name') else sec_file, cv2.IMREAD_GRAYSCALE)
+
+    if ref_img is None or sec_img is None:
+        return None, "Error: Unable to decode input image files."
+
+    try:
+        # Call GPU worker - returns dict with numpy array and metrics
+        result = _align_gpu_core(ref_img, sec_img)
+
+        side_by_side_rgb = result["image"]
+        engine_name = result["engine"]
+        inlier_cnt = result["inliers"]
+        total_matches = result["total_matches"]
+        rmse = result["rmse"]
+        mae = result["mae"]
+
+        # Save to temp file in main process (accessible to Gradio)
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            cv2.imwrite(tmp.name, cv2.cvtColor(side_by_side_rgb, cv2.COLOR_RGB2BGR))
+            temp_path = tmp.name
+
+        report = (
+            f"✅ REGISTRATION COMPLETE\n"
+            f"Matcher Engine: {engine_name}\n"
+            f"Verified Inliers: {inlier_cnt} / {total_matches} ({inlier_cnt/max(total_matches,1)*100:.1f}%)\n"
+            f"RMSE Accuracy: {rmse:.4f} px\n"
+            f"MAE Error: {mae:.4f} px"
+        )
+
+        return temp_path, report
+
+    except ValueError as e:
+        return None, f"Registration Failed: {str(e)}"
+    except Exception as e:
+        return None, f"Registration Failed: {str(e)}"
 
 
 # Build interface with lazy sample loading
