@@ -49,9 +49,9 @@ def test_process_alignment_synthetic():
     result_img, status = process_alignment(MockFile(img1_path), MockFile(img2_path))
 
     assert result_img is not None
-    assert "Registration Report" in status or "Alignment Complete" in status
-    assert "Registration Precision" in status
-    assert "Mean Absolute Error" in status
+    assert "REGISTRATION COMPLETE" in status
+    assert "RMSE Accuracy" in status
+    assert "MAE Error" in status
     assert len(result_img.shape) == 3
     assert result_img.shape[2] == 3  # RGB
 
