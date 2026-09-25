@@ -161,8 +161,8 @@ def _align_gpu_core(ref_img: np.ndarray, sec_img: np.ndarray) -> dict:
 
 def process_alignment(ref_file, sec_file):
     """
-    Outer Gradio handler - calls GPU worker, decodes base64, saves to temp file,
-    returns FileData dict for Gradio Image component.
+    Outer Gradio handler - calls GPU worker, decodes base64, returns PIL Image
+    for Gradio Image component.
     """
     if ref_file is None or sec_file is None:
         return None, "Error: Please provide both Reference and Secondary surface frames."
@@ -177,14 +177,9 @@ def process_alignment(ref_file, sec_file):
         # Call GPU worker
         result = _align_gpu_core(ref_img, sec_img)
 
-        # Decode base64 image
+        # Decode base64 image directly to PIL
         img_data = base64.b64decode(result["image_b64"])
         pil_img = Image.open(BytesIO(img_data))
-
-        # Save to temp file for Gradio
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-            pil_img.save(tmp, format="PNG")
-            temp_path = tmp.name
 
         report = (
             f"✅ REGISTRATION COMPLETE\n"
@@ -194,7 +189,7 @@ def process_alignment(ref_file, sec_file):
             f"MAE Error: {result['mae']:.4f} px"
         )
 
-        return {"path": temp_path}, report
+        return pil_img, report
 
     except ValueError as e:
         return None, f"Registration Failed: {str(e)}"

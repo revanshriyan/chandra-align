@@ -51,9 +51,9 @@ def test_process_alignment_synthetic():
     assert "REGISTRATION COMPLETE" in status
     assert "RMSE Accuracy" in status
     assert "MAE Error" in status
-    assert isinstance(result_img, dict)
-    assert "path" in result_img
-    assert os.path.exists(result_img["path"])
+    from PIL import Image
+    assert isinstance(result_img, Image.Image)
+    assert result_img.size[0] > 0 and result_img.size[1] > 0
 
     # Cleanup
     import shutil
