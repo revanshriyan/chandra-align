@@ -10,6 +10,8 @@ import numpy as np
 import gradio as gr
 import spaces
 from PIL import Image
+import base64
+from io import BytesIO
 
 
 def generate_synthetic_lunar_pair(ref_path: str, sec_path: str) -> None:
@@ -110,10 +112,10 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
 
 
 @spaces.GPU(duration=60)
-def _align_on_gpu(ref_img: np.ndarray, sec_img: np.ndarray) -> tuple[np.ndarray, dict]:
+def _align_on_gpu(ref_img: np.ndarray, sec_img: np.ndarray) -> dict:
     """
     Inner GPU compute function - performs feature extraction & alignment on CUDA.
-    Returns (side_by_side_np, metrics_dict).
+    Returns metrics dict with base64-encoded image for reliable IPC serialization.
     """
     pts_ref, pts_sec, engine_name = match_pair_hf(ref_img, sec_img)
 
@@ -139,7 +141,14 @@ def _align_on_gpu(ref_img: np.ndarray, sec_img: np.ndarray) -> tuple[np.ndarray,
     side_by_side = np.hstack((ref_img, warped_sec, diff_map))
     side_by_side_rgb = cv2.cvtColor(side_by_side, cv2.COLOR_GRAY2RGB)
 
-    metrics = {
+    # Convert to PIL Image, then to base64 for robust serialization
+    pil_img = Image.fromarray(side_by_side_rgb.astype(np.uint8))
+    buffered = BytesIO()
+    pil_img.save(buffered, format="PNG")
+    img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+    return {
+        "image_b64": img_base64,
         "engine": engine_name,
         "inliers": inlier_cnt,
         "total_matches": len(pts_ref),
@@ -148,14 +157,10 @@ def _align_on_gpu(ref_img: np.ndarray, sec_img: np.ndarray) -> tuple[np.ndarray,
         "mae": mae
     }
 
-    return side_by_side_rgb, metrics
-
 
 def process_alignment(ref_file, sec_file):
     """
-    Outer Gradio handler - calls GPU worker and converts output to PIL Image
-    for clean IPC serialization across ZeroGPU subprocess boundary.
-    Returns (PIL.Image, report_text).
+    Outer Gradio handler - calls GPU worker, decodes base64 image, returns PIL Image.
     """
     if ref_file is None or sec_file is None:
         return None, "Error: Please provide both Reference and Secondary surface frames."
@@ -168,17 +173,18 @@ def process_alignment(ref_file, sec_file):
 
     try:
         # Call GPU worker
-        aligned_np, metrics = _align_on_gpu(ref_img, sec_img)
+        result = _align_on_gpu(ref_img, sec_img)
 
-        # Convert NumPy array to PIL Image for clean IPC serialization
-        aligned_pil = Image.fromarray(aligned_np.astype(np.uint8))
+        # Decode base64 image
+        img_data = base64.b64decode(result["image_b64"])
+        aligned_pil = Image.open(BytesIO(img_data))
 
         report = (
             f"✅ REGISTRATION COMPLETE\n"
-            f"Matcher Engine: {metrics['engine']}\n"
-            f"Verified Inliers: {metrics['inliers']} / {metrics['total_matches']} ({metrics['inlier_ratio']*100:.1f}%)\n"
-            f"RMSE Accuracy: {metrics['rmse']:.4f} px\n"
-            f"MAE Error: {metrics['mae']:.4f} px"
+            f"Matcher Engine: {result['engine']}\n"
+            f"Verified Inliers: {result['inliers']} / {result['total_matches']} ({result['inlier_ratio']*100:.1f}%)\n"
+            f"RMSE Accuracy: {result['rmse']:.4f} px\n"
+            f"MAE Error: {result['mae']:.4f} px"
         )
 
         return aligned_pil, report
