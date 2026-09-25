@@ -10,8 +10,7 @@ import numpy as np
 import gradio as gr
 import spaces
 from PIL import Image
-import base64
-from io import BytesIO
+import tempfile
 
 
 def generate_synthetic_lunar_pair(ref_path: str, sec_path: str) -> None:
@@ -115,7 +114,7 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
 def process_alignment(ref_file, sec_file):
     """
     Main alignment pipeline - decorated with @spaces.GPU for ZeroGPU execution.
-    Returns (PIL.Image, report_text) directly for clean IPC serialization.
+    Returns (temp_file_path, report_text) for reliable serialization.
     """
     if ref_file is None or sec_file is None:
         return None, "Error: Please provide both Reference and Secondary surface frames."
@@ -150,8 +149,10 @@ def process_alignment(ref_file, sec_file):
     side_by_side = np.hstack((ref_img, warped_sec, diff_map))
     side_by_side_rgb = cv2.cvtColor(side_by_side, cv2.COLOR_GRAY2RGB)
 
-    # Convert to PIL Image for reliable IPC serialization
-    aligned_pil = Image.fromarray(side_by_side_rgb.astype(np.uint8))
+    # Save to temp file for reliable serialization across ZeroGPU boundary
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+        cv2.imwrite(tmp.name, cv2.cvtColor(side_by_side_rgb, cv2.COLOR_RGB2BGR))
+        temp_path = tmp.name
 
     report = (
         f"✅ REGISTRATION COMPLETE\n"
@@ -161,7 +162,7 @@ def process_alignment(ref_file, sec_file):
         f"MAE Error: {mae:.4f} px"
     )
 
-    return aligned_pil, report
+    return temp_path, report
 
 
 # Build interface with lazy sample loading
