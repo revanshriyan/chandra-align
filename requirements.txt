@@ -1,7 +1,7 @@
-gradio==4.36.0
-huggingface_hub>=0.20.0,<0.25.0
-spaces
-opencv-python-headless
-numpy
 torch
 torchvision
+opencv-python-headless
+numpy
+scipy
+gradio
+tifffile

@@ -3,31 +3,82 @@ import numpy as np
 import cv2
 import tempfile
 import os
-from app import align_images_ui, build_app
+from app import process_alignment, build_interface, ensure_sample_files
+
 
 def test_app_initialization():
     """Verify Gradio app structure builds cleanly."""
-    demo = build_app()
+    demo = build_interface()
     assert demo is not None
 
-def test_align_images_ui_synthetic():
-    """Verify align_images_ui executes on CPU synthetic image pair."""
-    # Create temp dummy images
+
+def test_ensure_sample_files():
+    """Verify sample files are generated on startup."""
+    sample_ref, sample_sec = ensure_sample_files()
+    assert os.path.exists(sample_ref)
+    assert os.path.exists(sample_sec)
+    # Should be valid images
+    ref = cv2.imread(sample_ref, cv2.IMREAD_GRAYSCALE)
+    sec = cv2.imread(sample_sec, cv2.IMREAD_GRAYSCALE)
+    assert ref is not None and sec is not None
+    assert ref.shape == (512, 512)
+    assert sec.shape == (512, 512)
+
+
+def test_process_alignment_synthetic():
+    """Verify process_alignment executes on CPU synthetic image pair."""
     temp_dir = tempfile.mkdtemp()
     img1_path = os.path.join(temp_dir, "ref.png")
     img2_path = os.path.join(temp_dir, "sec.png")
 
-    ref = np.zeros((200, 200), dtype=np.uint8)
-    sec = np.zeros((200, 200), dtype=np.uint8)
-    
-    cv2.rectangle(ref, (50, 50), (150, 150), 255, -1)
-    cv2.rectangle(sec, (55, 55), (155, 155), 255, -1)
+    # Create synthetic images with sufficient distinctive features for SIFT
+    ref = np.zeros((300, 300), dtype=np.uint8)
+    sec = np.zeros((300, 300), dtype=np.uint8)
+    for i in range(5):
+        for j in range(5):
+            cv2.circle(ref, (50 + i * 50, 50 + j * 50), 15, 255, -1)
+            cv2.circle(sec, (55 + i * 50, 55 + j * 50), 15, 255, -1)
 
     cv2.imwrite(img1_path, ref)
     cv2.imwrite(img2_path, sec)
 
-    overlay, status, metrics_file, _ = align_images_ui(img1_path, img2_path, "Auto-Detect")
+    class MockFile:
+        def __init__(self, path):
+            self.name = path
 
-    assert status.startswith("✅ Status:") or status.startswith("❌ Alignment Failed:")
-    assert os.path.exists(img1_path)
-    assert os.path.exists(img2_path)
+    result_img, status = process_alignment(MockFile(img1_path), MockFile(img2_path))
+
+    assert result_img is not None
+    assert "Registration Report" in status or "Alignment Complete" in status
+    assert "Registration Precision" in status
+    assert "Mean Absolute Error" in status
+    assert len(result_img.shape) == 3
+    assert result_img.shape[2] == 3  # RGB
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_process_alignment_errors():
+    """Verify error handling for missing files and insufficient features."""
+    temp_dir = tempfile.mkdtemp()
+    blank_path = os.path.join(temp_dir, "blank.png")
+    cv2.imwrite(blank_path, np.zeros((100, 100), dtype=np.uint8))
+
+    class MockFile:
+        def __init__(self, path):
+            self.name = path
+
+    # Missing file
+    result_img, status = process_alignment(None, MockFile(blank_path))
+    assert result_img is None
+    assert "Error" in status
+
+    # Insufficient features
+    result_img, status = process_alignment(MockFile(blank_path), MockFile(blank_path))
+    assert result_img is None
+    assert "Registration Failed" in status
+
+    import shutil
+    shutil.rmtree(temp_dir, ignore_errors=True)
