@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 import gradio as gr
 import spaces
-import tempfile
 import base64
 from io import BytesIO
 from PIL import Image
@@ -113,19 +112,28 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
 
 
 @spaces.GPU(duration=60)
-def _align_gpu_core(ref_img: np.ndarray, sec_img: np.ndarray) -> dict:
+def process_alignment(ref_file, sec_file):
     """
-    Inner GPU compute function - runs on CUDA.
-    Returns metrics dict with base64-encoded image for reliable IPC serialization.
+    Main alignment pipeline - decorated with @spaces.GPU for ZeroGPU execution.
+    Returns (PIL.Image, report_text) for Gradio Image component with type="pil".
     """
+    if ref_file is None or sec_file is None:
+        return None, "Error: Please provide both Reference and Secondary surface frames."
+
+    ref_img = cv2.imread(ref_file.name if hasattr(ref_file, 'name') else ref_file, cv2.IMREAD_GRAYSCALE)
+    sec_img = cv2.imread(sec_file.name if hasattr(sec_file, 'name') else sec_file, cv2.IMREAD_GRAYSCALE)
+
+    if ref_img is None or sec_img is None:
+        return None, "Error: Unable to decode input image files."
+
     pts_ref, pts_sec, engine_name = match_pair_hf(ref_img, sec_img)
 
     if len(pts_ref) < 4:
-        raise ValueError("Insufficient keypoint correspondences detected.")
+        return None, "Registration Failed: Insufficient keypoint correspondences detected."
 
     H, mask = cv2.findHomography(pts_sec, pts_ref, cv2.RANSAC, 3.0)
     if H is None:
-        raise ValueError("Homography calculation failed.")
+        return None, "Registration Failed: Homography calculation failed."
 
     inliers = mask.squeeze().astype(bool) if mask is not None else np.zeros(len(pts_ref), dtype=bool)
     inlier_cnt = int(inliers.sum())
@@ -142,59 +150,18 @@ def _align_gpu_core(ref_img: np.ndarray, sec_img: np.ndarray) -> dict:
     side_by_side = np.hstack((ref_img, warped_sec, diff_map))
     side_by_side_rgb = cv2.cvtColor(side_by_side, cv2.COLOR_GRAY2RGB)
 
-    # Convert to PIL Image, then to base64 for robust serialization
+    # Convert to PIL Image for Gradio type="pil"
     pil_img = Image.fromarray(side_by_side_rgb.astype(np.uint8))
-    buffered = BytesIO()
-    pil_img.save(buffered, format="PNG")
-    img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-    return {
-        "image_b64": img_base64,
-        "engine": engine_name,
-        "inliers": inlier_cnt,
-        "total_matches": len(pts_ref),
-        "inlier_ratio": inlier_cnt / max(len(pts_ref), 1),
-        "rmse": rmse,
-        "mae": mae
-    }
+    report = (
+        f"✅ REGISTRATION COMPLETE\n"
+        f"Matcher Engine: {engine_name}\n"
+        f"Verified Inliers: {inlier_cnt} / {len(pts_ref)} ({inlier_cnt/max(len(pts_ref),1)*100:.1f}%)\n"
+        f"RMSE Accuracy: {rmse:.4f} px\n"
+        f"MAE Error: {mae:.4f} px"
+    )
 
-
-def process_alignment(ref_file, sec_file):
-    """
-    Outer Gradio handler - calls GPU worker, decodes base64, returns PIL Image
-    for Gradio Image component.
-    """
-    if ref_file is None or sec_file is None:
-        return None, "Error: Please provide both Reference and Secondary surface frames."
-
-    ref_img = cv2.imread(ref_file.name if hasattr(ref_file, 'name') else ref_file, cv2.IMREAD_GRAYSCALE)
-    sec_img = cv2.imread(sec_file.name if hasattr(sec_file, 'name') else sec_file, cv2.IMREAD_GRAYSCALE)
-
-    if ref_img is None or sec_img is None:
-        return None, "Error: Unable to decode input image files."
-
-    try:
-        # Call GPU worker
-        result = _align_gpu_core(ref_img, sec_img)
-
-        # Decode base64 image directly to PIL
-        img_data = base64.b64decode(result["image_b64"])
-        pil_img = Image.open(BytesIO(img_data))
-
-        report = (
-            f"✅ REGISTRATION COMPLETE\n"
-            f"Matcher Engine: {result['engine']}\n"
-            f"Verified Inliers: {result['inliers']} / {result['total_matches']} ({result['inlier_ratio']*100:.1f}%)\n"
-            f"RMSE Accuracy: {result['rmse']:.4f} px\n"
-            f"MAE Error: {result['mae']:.4f} px"
-        )
-
-        return pil_img, report
-
-    except ValueError as e:
-        return None, f"Registration Failed: {str(e)}"
-    except Exception as e:
-        return None, f"Registration Failed: {str(e)}"
+    return pil_img, report
 
 
 # Build interface with lazy sample loading
