@@ -51,8 +51,9 @@ def test_process_alignment_synthetic():
     assert "REGISTRATION COMPLETE" in status
     assert "RMSE Accuracy" in status
     assert "MAE Error" in status
-    assert isinstance(result_img, str)
-    assert result_img.startswith("data:image/png;base64,")
+    from PIL import Image
+    assert isinstance(result_img, Image.Image)
+    assert result_img.size[0] > 0 and result_img.size[1] > 0
 
     # Cleanup
     import shutil
