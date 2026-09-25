@@ -9,9 +9,8 @@ import cv2
 import numpy as np
 import gradio as gr
 import spaces
-import base64
-from io import BytesIO
-from PIL import Image
+import uuid
+import tempfile
 
 
 def generate_synthetic_lunar_pair(ref_path: str, sec_path: str) -> None:
@@ -111,11 +110,16 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
     return src_pts, dst_pts, "ClassicalSIFT"
 
 
+# Persistent output directory shared between GPU subprocess and main process
+OUTPUT_DIR = "/tmp/chandra_align_outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+
 @spaces.GPU(duration=60)
 def process_alignment(ref_file, sec_file):
     """
     Main alignment pipeline - decorated with @spaces.GPU for ZeroGPU execution.
-    Returns (file_path, report_text) for Gradio Image component.
+    Returns (file_path, report_text) - file path in shared OUTPUT_DIR.
     """
     if ref_file is None or sec_file is None:
         return None, "Error: Please provide both Reference and Secondary surface frames."
@@ -150,11 +154,10 @@ def process_alignment(ref_file, sec_file):
     side_by_side = np.hstack((ref_img, warped_sec, diff_map))
     side_by_side_rgb = cv2.cvtColor(side_by_side, cv2.COLOR_GRAY2RGB)
 
-    # Save to temp file for Gradio
-    import tempfile
-    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-        cv2.imwrite(tmp.name, cv2.cvtColor(side_by_side_rgb, cv2.COLOR_RGB2BGR))
-        temp_path = tmp.name
+    # Save to shared output directory accessible from both subprocess and main process
+    filename = f"result_{uuid.uuid4().hex[:8]}.png"
+    output_path = os.path.join(OUTPUT_DIR, filename)
+    cv2.imwrite(output_path, cv2.cvtColor(side_by_side_rgb, cv2.COLOR_RGB2BGR))
 
     report = (
         f"✅ REGISTRATION COMPLETE\n"
@@ -164,7 +167,7 @@ def process_alignment(ref_file, sec_file):
         f"MAE Error: {mae:.4f} px"
     )
 
-    return temp_path, report
+    return output_path, report
 
 
 # Build interface with lazy sample loading
