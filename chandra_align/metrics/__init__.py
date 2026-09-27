@@ -1,4 +1,5 @@
-"""Metrics — RMSE (x, y, total; px and m), inlier stats, uniformity, residual map.
+"""
+Metrics — RMSE (x, y, total; px and m), inlier stats, uniformity, residual map.
 
 RMSE on held-out check points is the primary metric (ISRO-named). Inlier ratio and
 uniformity are reported alongside. RCM / success-rate are NEVER reported without
@@ -87,3 +88,32 @@ def metrics_bundle(rmse_dict, inliers_dict, uniformity: float, runtime_s,
     if extra:
         bundle.update(extra)
     return bundle
+
+
+# Import enhanced metrics from the separate module
+from chandra_align.metrics.enhanced import (
+    metrics_bundle_with_ground,
+    compute_ground_metrics,
+    compute_deformation_field,
+    grid_deformation_analysis,
+    get_sensor_pixel_scale,
+    ResidualVector,
+    GroundMetrics,
+    SENSOR_PIXEL_SCALES,
+)
+
+__all__ = [
+    "apply_transform",
+    "rmse_heldout",
+    "inlier_stats",
+    "residual_map",
+    "metrics_bundle",
+    "metrics_bundle_with_ground",
+    "compute_ground_metrics",
+    "compute_deformation_field",
+    "grid_deformation_analysis",
+    "get_sensor_pixel_scale",
+    "ResidualVector",
+    "GroundMetrics",
+    "SENSOR_PIXEL_SCALES",
+]

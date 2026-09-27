@@ -1,0 +1,56 @@
+# OHRC (Orbiter High Resolution Camera) modality profile
+# Chandrayaan-2 OHRC: GSD 0.25 m at nadir (0.32 m oblique 25-deg pitch) — quote 0.25 m nadir
+# Strips up to ~12000 x 90000 px, pushbroom line-scan
+gsd_m: 0.25
+crs_strategy: "hard_assert"   # hard-assert identical CRS on both images before matching; no silent reprojection
+tile_size: [4096, 4096]
+tile_overlap: 0.20
+
+photometry:
+  model: "lommel_seeliger"    # lunar-Lambert optional variant
+  incidence_angle_key: "SOLAR_INCIDENCE"
+  emission_angle_key: "EMISSION_ANGLE"
+  phase_angle_key: "PHASE_ANGLE"
+  shadow_threshold_deg: 80.0    # mask pixels with incidence > 80 deg (near-terminator)
+  saturation_threshold: 0.98    # mask top 2% DN values
+  geometry_mode: "from_metadata"  # "from_metadata" | "spice"; from_metadata sets approximation_flag=true on every output
+  enable_clahe: false            # apply CLAHE before photometric correction
+  clahe_clip_limit: 2.0         # CLAHE contrast limit
+  clahe_tile_grid: [8, 8]       # CLAHE tile grid size
+  ref_incidence_deg: 60.0       # reference incidence angle for normalization
+  ref_emission_deg: 0.0         # reference emission angle for normalization
+
+matcher:
+  tier1: "rift2"              # always run RIFT2 first (phase congruency, CPU, 0 GB VRAM)
+  tier1_inlier_ratio_floor: 0.15
+  tier1_uniformity_floor: 0.125   # occupied-cell fraction floor in a 4x4 grid = 2/16
+  grid: [4, 4]
+  tier2_escalation:
+    trigger: "or"             # escalate if inlier_ratio < floor OR uniformity < floor
+    matcher: "lightglue_aliked"   # LightGlue + ALIKED (PyTorch CPU/GPU, Apache-2.0 / BSD-3)
+    max_keypoints: 4096
+    min_inlier_ratio: 0.10
+    min_inlier_pairs: 4
+    min_raw_matches: 10         # escalate if Tier-1 raw matches < 10
+
+refinement:
+  ncc_window: 15
+  parabolic_fit: "2d"
+  search_range_px: 20
+
+verification:
+  method: "USAC_MAGSAC"       # cv2.USAC_MAGSAC == MAGSAC++
+  ransac_reproj_threshold: 3.0
+  max_iters: 2000
+  confidence: 0.99
+
+warp:
+  method: "piecewise_affine"  # never a single global homography across a strip
+  blend_width_px: 64
+  output_format: "COG"
+
+trust:
+  inlier_ratio_threshold: 0.15
+  uniformity_threshold: 0.125
+  rmse_px_threshold: 1.0
+  calibration_status: "UNCALIBRATED"   # recalibrate on real data before claiming calibrated

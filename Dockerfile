@@ -1,52 +1,61 @@
-# Chandra-Align production image — OSGeo GDAL base (GDAL + Python preinstalled)
-FROM osgeo/gdal:ubuntu-small-3.6.3
+# ==========================================
+# Stage 1: Build Dependencies & Wheels
+# ==========================================
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04 AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
+ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PYTHONDONTWRITEBYTECODE=1
 
-# System deps for the pipeline (rasterio wheels need GDAL headers present in base;
-# opencv needs libgl; node needed for the React viewer build)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3-pip \
-        python3-dev \
-        build-essential \
-        libgl1 \
-        libglib2.0-0 \
-        libgdal-dev \
-        curl \
-        ca-certificates \
-        git \
+    python3.10 \
+    python3.10-dev \
+    python3-pip \
+    build-essential \
+    libgdal-dev \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js 20 (NodeSource) for building the React viewer
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
+WORKDIR /build
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# ==========================================
+# Stage 2: Minimal Production Runtime Environment
+# ==========================================
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/install/bin:${PATH}" \
+    PYTHONPATH="/install/lib/python3.10/site-packages:${PYTHONPATH}:/app" \
+    GDAL_DATA=/usr/share/gdal \
+    PROJ_LIB=/usr/share/proj
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 \
+    libgdal30 \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
+# Non-root user setup
+RUN useradd -m -u 10001 -s /bin/bash appuser
 WORKDIR /app
 
-# Python deps first (layer cache)
-COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+COPY --from=builder /install /install
+COPY . /app
 
-# Build the React viewer
-COPY web/ ./web/
-RUN cd web && npm install --no-audit --no-fund && npm run build
+# Copy entrypoint script
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-# Engine + API + scripts + configs
-COPY chandra_align/ ./chandra_align/
-COPY api/ ./api/
-COPY scripts/ ./scripts/
-COPY config/ ./config/
-COPY vendored/ ./vendored/
-COPY tests/ ./tests/
+RUN chown -R appuser:appuser /app
+USER appuser
 
-# data/, outputs/, reports/ are mounted at runtime (never baked in)
-RUN mkdir -p data outputs reports
+EXPOSE 7860
 
-EXPOSE 8000
-
-ENV CHANDRA_ALIGN_WEB_DIST=/app/web/dist
-
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["python3", "app.py"]

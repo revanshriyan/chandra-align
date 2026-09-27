@@ -1,0 +1,16 @@
+services:
+  chandra-align:
+    build: .
+    container_name: chandra-align
+    ports:
+      - "8000:8000"
+    volumes:
+      # dynamic data: download_log.csv, products, NAC frames (read-write for logging)
+      - ./data:/app/data
+      # pipeline outputs: metrics.json, match_points.geojson, registered COGs
+      - ./outputs:/app/outputs
+      # run reports
+      - ./reports:/app/reports
+    environment:
+      - CHANDRA_ALIGN_WEB_DIST=/app/web/dist
+    restart: unless-stopped

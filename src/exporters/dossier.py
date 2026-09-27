@@ -127,7 +127,7 @@ def create_dossier(
         uniformity_score=metrics.get('uniformity_score', 0.0),
         spatial_coverage_pct=metrics.get('spatial_coverage_pct', 0.0),
         quadtree_entropy=metrics.get('quadtree_entropy', {}).get('normalized_entropy', 0.0),
-        matrix_condition_number=transform_info.get('condition_number', UNMEASURED),
+        matrix_condition_number=transform_info.get('condition_number', UNMEASURED) if transform_info.get('condition_number') is not None else UNMEASURED,
         matrix_stable=transform_info.get('matrix_stable', False),
         rmse_pixels=rmse_pixels,
         rmse_meters=rmse_meters,

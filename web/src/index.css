@@ -1,0 +1,300 @@
+/* Chandra-Align Viewer Styles */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #111;
+  color: #eee;
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.header {
+  padding: 12px 24px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.panel {
+  padding: 16px;
+  width: 320px;
+  background: #1a1a1a;
+  border-right: 1px solid #333;
+  overflow-y: auto;
+}
+
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888;
+}
+
+.viewer-area {
+  flex: 1;
+  position: relative;
+  background: #000;
+}
+
+.map-container {
+  width: 100%;
+  height: 100%;
+}
+
+.control-group {
+  margin-bottom: 16px;
+}
+
+.control-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+  color: #aaa;
+}
+
+.control-group select,
+.control-group input {
+  width: 100%;
+  padding: 8px 10px;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #eee;
+  font-size: 0.85rem;
+}
+
+.control-group select:focus,
+.control-group input:focus {
+  outline: none;
+  border-color: #4a9eff;
+}
+
+.run-info {
+  font-size: 0.75rem;
+  color: #888;
+  line-height: 1.6;
+}
+
+.run-info strong {
+  color: #ccc;
+}
+
+.trust-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 8px;
+}
+
+.trust-badge.trusted {
+  background: #1e4d2b;
+  color: #4ade80;
+}
+
+.trust-badge.not-trusted {
+  background: #5a1e1e;
+  color: #f87171;
+}
+
+.trust-badge.uncalibrated {
+  background: #4a3c1e;
+  color: #fbbf24;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 0.75rem;
+}
+
+.metrics-grid dt {
+  color: #888;
+}
+
+.metrics-grid dd {
+  margin: 0;
+  color: #ddd;
+}
+
+.split-view {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.split-pane {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 50%;
+  overflow: hidden;
+  border-right: 2px solid #4a9eff;
+}
+
+.split-pane.right {
+  left: 50%;
+  border-left: 2px solid #4a9eff;
+  border-right: none;
+}
+
+.leaflet-container {
+  background: #000 !important;
+}
+
+.leaflet-tile-pane img {
+  filter: grayscale(0.9) contrast(1.1);
+}
+
+.match-points-layer circle {
+  stroke-width: 1.5;
+  r: 3;
+}
+
+.match-points-layer circle.refined {
+  fill: #4ade80;
+  stroke: #22c55e;
+}
+
+.match-points-layer circle.unrefined {
+  fill: #f87171;
+  stroke: #ef4444;
+}
+
+.residual-heatmap {
+  opacity: 0.7;
+}
+
+.overlay-swipe {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 4px;
+  height: 100%;
+  background: #4a9eff;
+  cursor: ew-resize;
+  z-index: 100;
+}
+
+.overlay-swipe::before,
+.overlay-swipe::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  border: 2px solid #4a9eff;
+  border-radius: 50%;
+}
+
+.overlay-swipe::before {
+  border-left-color: transparent;
+  border-bottom-color: transparent;
+}
+
+.overlay-swipe::after {
+  border-right-color: transparent;
+  border-top-color: transparent;
+}
+
+.toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 50;
+}
+
+.toolbar button {
+  padding: 8px 14px;
+  background: rgba(26, 26, 26, 0.9);
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #eee;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.toolbar button:hover {
+  background: rgba(42, 42, 42, 0.95);
+  border-color: #4a9eff;
+}
+
+.toolbar button.active {
+  background: #4a9eff;
+  color: #111;
+  border-color: #4a9eff;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: #888;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #333;
+  border-top-color: #4a9eff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error-banner {
+  padding: 12px 16px;
+  background: #5a1e1e;
+  border-bottom: 1px solid #ef4444;
+  color: #fca5a5;
+  font-size: 0.85rem;
+}

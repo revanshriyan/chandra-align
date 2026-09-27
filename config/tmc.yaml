@@ -1,0 +1,48 @@
+# TMC (Terrain Mapping Camera-2) modality profile — ISRO writes "TMC", not "TMC-2"
+# Chandrayaan-2 TMC: GSD 5 m/px, stereo triplet (fore +25 deg, nadir 0, aft -25 deg)
+gsd_m: 5.0
+crs_strategy: "hard_assert"
+tile_size: [4096, 4096]
+tile_overlap: 0.20
+
+photometry:
+  model: "lommel_seeliger"
+  incidence_angle_key: "SOLAR_INCIDENCE"
+  emission_angle_key: "EMISSION_ANGLE"
+  phase_angle_key: "PHASE_ANGLE"
+  shadow_threshold_deg: 80.0
+  saturation_threshold: 0.98
+  geometry_mode: "from_metadata"
+
+matcher:
+  tier1: "rift2"
+  tier1_inlier_ratio_floor: 0.15
+  tier1_uniformity_floor: 0.125
+  grid: [4, 4]
+  tier2_escalation:
+    trigger: "or"
+    matcher: "lightglue_aliked"
+    max_keypoints: 4096
+    min_inlier_ratio: 0.10
+
+refinement:
+  ncc_window: 11
+  parabolic_fit: "2d"
+  search_range_px: 1
+
+verification:
+  method: "USAC_MAGSAC"
+  ransac_reproj_threshold: 3.0
+  max_iters: 2000
+  confidence: 0.99
+
+warp:
+  method: "piecewise_affine"
+  blend_width_px: 64
+  output_format: "COG"
+
+trust:
+  inlier_ratio_threshold: 0.15
+  uniformity_threshold: 0.125
+  rmse_px_threshold: 0.5
+  calibration_status: "UNCALIBRATED"

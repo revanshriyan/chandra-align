@@ -4,6 +4,7 @@ POST /register — upload image pair + config → returns COG path, match points
 GET  /          — serves the built React viewer (web/dist) with SPA fallback.
 Graceful degradation: a run ID that exists in the log but has no metrics/COG returns
 explicit UNMEASURED states + "Not Trusted" instead of a 500.
+Tile streaming: GET /tiles/{run_id}/{z}/{x}/{y}.png for COG tile access.
 """
 
 import json
@@ -14,7 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -177,7 +178,7 @@ async def register(
         warped_path = str(run_dir / "registered.tif")
         export_note = export_cog(warped, warped_path, crs=crs)
         mp_json = str(run_dir / "match_points.geojson")
-        n_pts = write_match_points_geojson(mp_json, ref_a, ref_b, crs=crs, refined=True)
+        n_pts = write_match_points_geojson(mp_json, ref_a, ref_b, crs=crs, refined=True, M=M_fit)
         rm_metric = residual_map(ref_a, ref_b, M_fit, grid=tuple(cfg["matcher"]["grid"]),
                                 shape=shape) if ref_a.shape[0] else {"residuals_px": []}
 
@@ -356,6 +357,8 @@ async def download_metrics(run_id: str) -> MetricsBundle:
         )
     with open(path, "r") as f:
         data = json.load(f)
+    # Ensure run_id is present for validation
+    data.setdefault("run_id", run_id)
     # Parse and validate through model
     return MetricsBundle.model_validate(data)
 
@@ -391,6 +394,91 @@ async def export_dossier_endpoint(run_id: str) -> RegistrationDossier:
             404,
             "Full dossier not generated for this run. Re-run pipeline with dossier export enabled."
         )
+
+
+# --- Tile Streaming Endpoint ---
+@app.get("/tiles/{run_id}/{z}/{x}/{y}.png")
+async def stream_cog_tile(run_id: str, z: int, x: int, y: int):
+    """
+    Stream COG tile from registered.tif for interactive Web-GIS viewing.
+    
+    Converts Web Mercator (z, x, y) to the COG's CRS and reads the appropriate window.
+    Returns a 256x256 PNG tile.
+    """
+    import rasterio
+    from rasterio.windows import from_bounds
+    from rasterio.transform import from_bounds as transform_from_bounds
+    import numpy as np
+    from io import BytesIO
+    
+    cog_path = RUNS_DIR / run_id / "registered.tif"
+    if not cog_path.exists():
+        raise HTTPException(404, f"COG not found for run {run_id}")
+    
+    try:
+        with rasterio.open(cog_path) as src:
+            # Get CRS and bounds
+            crs = src.crs
+            bounds = src.bounds
+            
+            # Web Mercator projection bounds
+            # Earth radius in Web Mercator (EPSG:3857)
+            R = 6378137.0
+            world_size = 2 * np.pi * R
+            tile_size = world_size / (2 ** z)
+            
+            # Tile bounds in Web Mercator
+            minx = x * tile_size - world_size / 2
+            maxx = (x + 1) * tile_size - world_size / 2
+            miny = world_size / 2 - (y + 1) * tile_size
+            maxy = world_size / 2 - y * tile_size
+            
+            # If COG is in EPSG:4326 (geographic), we need to convert
+            # For simplicity, assume COG is in EPSG:4326 and read using geographic bounds
+            # A full implementation would use pyproj to convert Web Mercator to COG CRS
+            if crs and crs.to_epsg() == 4326:
+                # Convert Web Mercator to lat/lon
+                def web_mercator_to_lonlat(x_web, y_web):
+                    lon = x_web / R * 180.0 / np.pi
+                    lat = np.arctan(np.sinh(y_web / R)) * 180.0 / np.pi
+                    return lon, lat
+                
+                lon_min, lat_max = web_mercator_to_lonlat(minx, maxy)
+                lon_max, lat_min = web_mercator_to_lonlat(maxx, miny)
+                
+                # Read window from COG
+                window = from_bounds(lon_min, lat_min, lon_max, lat_max, src.transform)
+            else:
+                # For other CRS, use bounds directly (simplified)
+                window = from_bounds(bounds.left, bounds.bottom, bounds.right, bounds.top, src.transform)
+            
+            # Read the tile data
+            tile_data = src.read(1, window=window, out_shape=(256, 256))
+            
+            # Normalize to 0-255 for PNG
+            finite = np.isfinite(tile_data)
+            if not np.any(finite):
+                # Empty tile
+                img_data = np.zeros((256, 256), dtype=np.uint8)
+            else:
+                lo, hi = np.nanpercentile(tile_data[finite], [2, 98])
+                if hi <= lo:
+                    img_data = np.zeros((256, 256), dtype=np.uint8)
+                else:
+                    normalized = np.clip((tile_data - lo) / (hi - lo) * 255, 0, 255)
+                    img_data = normalized.astype(np.uint8)
+            
+            # Convert to PNG
+            from PIL import Image
+            img = Image.fromarray(img_data, mode='L')
+            buf = BytesIO()
+            img.save(buf, format='PNG')
+            buf.seek(0)
+            
+            return Response(content=buf.read(), media_type="image/png")
+            
+    except Exception as e:
+        raise HTTPException(500, f"Tile streaming error: {str(e)}")
 
 
 # --- Static React viewer serving (SPA fallback) ---

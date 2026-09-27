@@ -1,0 +1,57 @@
+# IIRS (Imaging Infrared Spectrometer) modality profile
+# Chandrayaan-2 IIRS: GSD 80 m/px, 0.8-5.0 um ~256 bands, PDS4 QUB format.
+# QUB carries NO inherent map projection — selenoreferencing is a task, not a file-open.
+gsd_m: 80.0
+crs_strategy: "hard_assert"
+tile_size: [4096, 4096]
+tile_overlap: 0.20
+
+photometry:
+  model: "lommel_seeliger"
+  incidence_angle_key: "SOLAR_INCIDENCE"
+  emission_angle_key: "EMISSION_ANGLE"
+  phase_angle_key: "PHASE_ANGLE"
+  shadow_threshold_deg: 80.0
+  saturation_threshold: 0.98
+  geometry_mode: "from_metadata"
+
+  # Band selection: solve the transform on ONE band, apply it to all bands.
+  # Avoid water/ice absorption bands (1.4, 1.9, 2.8 um); prefer continuum near 2.0 um.
+  band_selection:
+    strategy: "continuum"
+    target_wavelength_um: 2.0
+    bandwidth_um: 0.1
+    fallback_band_index: 80
+
+matcher:
+  tier1: "rift2"
+  tier1_inlier_ratio_floor: 0.10   # lower for spectral data
+  tier1_uniformity_floor: 0.125
+  grid: [4, 4]
+  tier2_escalation:
+    trigger: "or"
+    matcher: "lightglue_aliked"
+    max_keypoints: 2048
+    min_inlier_ratio: 0.08
+
+refinement:
+  ncc_window: 15   # larger window for coarser GSD
+  parabolic_fit: "2d"
+  search_range_px: 1
+
+verification:
+  method: "USAC_MAGSAC"
+  ransac_reproj_threshold: 4.0   # slightly larger for lower resolution
+  max_iters: 2000
+  confidence: 0.99
+
+warp:
+  method: "piecewise_affine"
+  blend_width_px: 64
+  output_format: "COG"
+
+trust:
+  inlier_ratio_threshold: 0.10
+  uniformity_threshold: 0.125
+  rmse_px_threshold: 0.5
+  calibration_status: "UNCALIBRATED"

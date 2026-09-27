@@ -130,6 +130,7 @@ export interface MatchPointFeature {
     y_mov: number;
     refined: boolean;
     residual_px: number;
+    residual_color: 'green' | 'yellow' | 'red'; // Based on residual magnitude
   };
 }
 
@@ -153,6 +154,11 @@ export interface PhotometryConfig {
   shadow_threshold_deg: number;
   saturation_threshold: number;
   normalization_method: 'lommel_seeliger' | 'lunar_lambert' | 'none';
+  enable_clahe: boolean;
+  clahe_clip_limit: number;
+  clahe_tile_grid: [number, number];
+  ref_incidence_deg: number;
+  ref_emission_deg: number;
 }
 
 export interface MatcherConfig {

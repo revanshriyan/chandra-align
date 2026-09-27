@@ -163,6 +163,9 @@ class MetricsBundle(BaseModel):
     @field_validator("inliers", mode="before")
     @classmethod
     def normalize_inliers(cls, v: Any) -> dict:
+        if isinstance(v, int):
+            # Legacy format: inliers was an int count
+            return {"raw_matches": 0, "verified_inliers": v, "inliers": v, "inlier_ratio": 0.0}
         if isinstance(v, dict):
             # Map old field names to new
             if "inliers" in v and "verified_inliers" not in v:
@@ -213,6 +216,15 @@ class MatchPointFeature(BaseModel):
 
     @classmethod
     def from_match_point(cls, mp: MatchPoint, feature_id: int) -> "MatchPointFeature":
+        # Determine color based on residual magnitude
+        residual = mp.residual_px
+        if residual < 0.5:
+            color = "green"
+        elif residual < 1.5:
+            color = "yellow"
+        else:
+            color = "red"
+        
         return cls(
             id=feature_id,
             geometry={"type": "Point", "coordinates": [mp.x_ref, mp.y_ref]},
@@ -223,6 +235,7 @@ class MatchPointFeature(BaseModel):
                 "y_mov": mp.y_mov,
                 "refined": mp.refined,
                 "residual_px": mp.residual_px,
+                "residual_color": color,
             }
         )
 
@@ -366,6 +379,13 @@ class RegistrationDossier(BaseModel):
     mesh_info: dict = Field(default_factory=dict)
     validation: dict = Field(default_factory=dict)
     quality_flags: list[NotTrustedReason] = Field(default_factory=list)
+
+    @field_validator("matrix_condition_number", "rmse_pixels", "rmse_meters", "rmse_x_pixels", "rmse_y_pixels", mode="before")
+    @classmethod
+    def normalize_unmeasured(cls, v: Any) -> UnmeasuredFloat:
+        if v is None or v == "UNMEASURED":
+            return UNMEASURED
+        return float(v)
 
 
 class BenchmarkRow(BaseModel):
