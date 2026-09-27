@@ -560,6 +560,84 @@ def process_alignment(
         return None, f"Registration Failed: {str(e)}", None, None, None, None, None
 
 
+GPU_EXECUTION_STATUS = "⚡ Execution Mode: ZeroGPU (A10G Accelerated)"
+CPU_FALLBACK_STATUS = "💻 Execution Mode: CPU (Fallback Active - Quota/Worker Limit Handled Gracefully)"
+
+
+def _append_execution_status(outputs, status: str):
+    """Append execution mode to the UI report without changing output arity."""
+    values = list(outputs) if isinstance(outputs, (tuple, list)) else [None] * 7
+    if len(values) != 7:
+        values = (values + [None] * 7)[:7]
+    report = values[1] if isinstance(values[1], str) else ""
+    values[1] = f"{report.rstrip()}\n\n{status}".strip()
+    return tuple(values)
+
+
+def _run_alignment_core(
+    ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
+    px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s
+):
+    return process_alignment(
+        ref, sec,
+        pixel_scale_m=px_scale,
+        enable_clahe=clahe,
+        clahe_clip_limit=clip,
+        enable_shadow_suppression=shadow,
+        enable_wallis=wallis,
+        wallis_target_mean=wallis_m,
+        wallis_target_std=wallis_s,
+        sensor_name=sensor,
+        secondary_sensor_name=secondary_sensor,
+        sensor_pair_mode=pair_mode,
+        enforce_uniform_distribution=enforce_uniform
+    )
+
+
+@spaces.GPU(duration=25)
+def run_alignment_on_gpu(
+    ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
+    px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s
+):
+    """Run the alignment on ZeroGPU; the dispatcher catches allocation failures."""
+    return _run_alignment_core(
+        ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
+        px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s
+    )
+
+
+def _zerogpu_runtime_enabled() -> bool:
+    """The ZeroGPU decorator marks its wrapped function in ZeroGPU Spaces."""
+    return hasattr(run_alignment_on_gpu, "zerogpu")
+
+
+def process_wrapper(
+    ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
+    px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s
+):
+    """Catch ZeroGPU scheduling/quota errors and rerun on CPU without UI errors."""
+    try:
+        outputs = run_alignment_on_gpu(
+            ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
+            px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s
+        )
+    except Exception:
+        print("ZeroGPU allocation/execution failed; retrying alignment on CPU.", file=sys.stderr, flush=True)
+        print(traceback.format_exc(), file=sys.stderr, flush=True)
+        try:
+            outputs = _run_alignment_core(
+                ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
+                px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s
+            )
+        except Exception as cpu_error:
+            print("CPU fallback failed.", file=sys.stderr, flush=True)
+            print(traceback.format_exc(), file=sys.stderr, flush=True)
+            outputs = (None, f"Registration Failed: {cpu_error}", None, None, None, None, None)
+        return _append_execution_status(outputs, CPU_FALLBACK_STATUS)
+    status = GPU_EXECUTION_STATUS if _zerogpu_runtime_enabled() else "💻 Execution Mode: CPU (Local Runtime)"
+    return _append_execution_status(outputs, status)
+
+
 # Build Gradio interface with advanced controls
 def build_interface():
     """Build the Gradio interface with scientific controls."""
@@ -684,28 +762,6 @@ def build_interface():
                     )
         
         # Event handlers
-        @spaces.GPU(duration=120)
-        def process_wrapper(ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
-                            px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s):
-            try:
-                return process_alignment(
-                    ref, sec,
-                    pixel_scale_m=px_scale,
-                    enable_clahe=clahe,
-                    clahe_clip_limit=clip,
-                    enable_shadow_suppression=shadow,
-                    enable_wallis=wallis,
-                    wallis_target_mean=wallis_m,
-                    wallis_target_std=wallis_s,
-                    sensor_name=sensor,
-                    secondary_sensor_name=secondary_sensor,
-                    sensor_pair_mode=pair_mode,
-                    enforce_uniform_distribution=enforce_uniform
-                )
-            except Exception as e:
-                print(traceback.format_exc(), file=sys.stderr, flush=True)
-                return None, f"Registration Failed: {e}", None, None, None, None, None
-        
         process_btn.click(
             fn=process_wrapper,
             api_name="predict",
@@ -735,9 +791,24 @@ def build_interface():
         gr.Markdown("### 📝 Example Pairs")
         sample_ref, sample_sec = ensure_sample_files()
         gr.Examples(
-            examples=[[sample_ref, sample_sec]],
-            inputs=[ref_file, sec_file],
-            label="Click to load synthetic lunar pair"
+            examples=[[
+                sample_ref, sample_sec, "OHRC", "TMC-2", "Optical <-> Optical",
+                True, 0.25, True, 3.0, True, False, 128.0, 50.0
+            ]],
+            inputs=[
+                ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
+                sensor_pair_mode, enforce_uniformity, pixel_scale,
+                enable_clahe, clahe_clip, enable_shadow, enable_wallis,
+                wallis_mean, wallis_std
+            ],
+            outputs=[
+                output_image, report_text,
+                csv_btn, json_btn, geotiff_btn, png_btn, dossier_image
+            ],
+            fn=process_wrapper,
+            run_on_click=True,
+            example_labels=["Run synthetic OHRC / TMC-2 demo"],
+            label="One-click synthetic lunar alignment"
         )
     
     return interface

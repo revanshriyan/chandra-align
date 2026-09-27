@@ -179,6 +179,50 @@ def test_process_alignment_errors():
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def test_process_wrapper_uses_cpu_fallback_on_zero_gpu_exception(monkeypatch):
+    import app
+    from PIL import Image
+
+    expected = (Image.new("RGB", (2, 2)), "REGISTRATION COMPLETE", "a.csv", "b.json", "c.tif", "d.png", "e.png")
+    calls = []
+
+    def fail_gpu(*args, **kwargs):
+        raise RuntimeError("ZeroGPU quota exceeded")
+
+    def cpu_core(*args, **kwargs):
+        calls.append((args, kwargs))
+        return expected
+
+    monkeypatch.setattr(app, "run_alignment_on_gpu", fail_gpu)
+    monkeypatch.setattr(app, "_run_alignment_core", cpu_core)
+
+    result = app.process_wrapper("ref", "sec", "OHRC", "TMC-2", "Optical <-> Optical",
+                                 True, 0.25, True, 3.0, True, False, 128.0, 50.0)
+
+    assert len(calls) == 1
+    assert result[0] is expected[0]
+    assert result[2:] == expected[2:]
+    assert "REGISTRATION COMPLETE" in result[1]
+    assert app.CPU_FALLBACK_STATUS in result[1]
+    assert app.GPU_EXECUTION_STATUS not in result[1]
+
+
+def test_process_wrapper_marks_zero_gpu_success(monkeypatch):
+    import app
+    from PIL import Image
+
+    expected = (Image.new("RGB", (2, 2)), "REGISTRATION COMPLETE", "a.csv", "b.json", "c.tif", "d.png", "e.png")
+    monkeypatch.setattr(app, "run_alignment_on_gpu", lambda *args, **kwargs: expected)
+    monkeypatch.setattr(app, "_zerogpu_runtime_enabled", lambda: True)
+
+    result = app.process_wrapper("ref", "sec", "OHRC", "TMC-2", "Optical <-> Optical",
+                                 True, 0.25, True, 3.0, True, False, 128.0, 50.0)
+
+    assert result[0] is expected[0]
+    assert result[2:] == expected[2:]
+    assert app.GPU_EXECUTION_STATUS in result[1]
+
+
 def test_preprocessing_functions():
     """Test the new preprocessing module functions."""
     from chandra_align.preprocessing import (
