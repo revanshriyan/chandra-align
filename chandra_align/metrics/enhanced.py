@@ -17,8 +17,8 @@ from dataclasses import dataclass, asdict
 # Sensor resolution defaults (meters per pixel)
 SENSOR_PIXEL_SCALES = {
     "OHRC": 0.25,
-    "TMC-2": 0.5,
-    "TMC": 0.5,
+    "TMC-2": 5.0,
+    "TMC": 5.0,
     "IIRS": 80.0,  # IIRS is much coarser
     "DF-SAR": 5.0,  # SAR typical resolution
     "LROC_NAC": 0.5,

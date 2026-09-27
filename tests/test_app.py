@@ -271,7 +271,7 @@ def test_metrics_functions():
     
     # Test sensor pixel scales
     assert get_sensor_pixel_scale("OHRC") == 0.25
-    assert get_sensor_pixel_scale("TMC-2") == 0.5
+    assert get_sensor_pixel_scale("TMC-2") == 5.0
     assert get_sensor_pixel_scale("Unknown") == 0.25  # default
     
     # Test ground metrics

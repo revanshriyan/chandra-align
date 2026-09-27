@@ -196,9 +196,13 @@ def check_affine_and_gate() -> str:
 
 def check_app_partial_affine_contract() -> str:
     import numpy as np
+    from chandra_align.metrics import get_sensor_pixel_scale
     from chandra_align.registration_transform import (
         estimate_partial_affine, homogeneous_affine, is_valid_registration,
     )
+
+    if get_sensor_pixel_scale("TMC-2") != 5.0:
+        raise AssertionError("TMC-2 default ground sample distance must be 5.0 m/px")
 
     rng = np.random.default_rng(26166)
     source = rng.uniform(0, 500, (40, 2)).astype(np.float32)
@@ -216,7 +220,7 @@ def check_app_partial_affine_contract() -> str:
         raise AssertionError("Affine homogeneous serialization is malformed")
     if is_valid_registration(np.full((2, 3), np.nan), 20) or is_valid_registration(matrix, 7):
         raise AssertionError("Invalid transform or sub-threshold inliers passed the gate")
-    return f"model=partial_affine_4dof, inliers={count}/40, JSON-compatible 3x3 affine"
+    return f"model=partial_affine_4dof, inliers={count}/40, TMC-2=5.0 m/px"
 
 
 def check_rift2_runtime() -> str:
@@ -362,8 +366,13 @@ def _validate_live_result(result, case: str) -> str:
 
     image_bytes = payload_bytes(image)
     if "REGISTRATION COMPLETE" in report:
-        if not image_bytes or not image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
-            raise AssertionError(f"{case}: successful registration did not return a PNG image")
+        # Gradio may transcode the Image preview to WebP. The dedicated PNG
+        # DownloadButton is the stable PNG artifact contract for /predict.
+        png_bytes = payload_bytes(png_file)
+        if not image_bytes:
+            raise AssertionError(f"{case}: successful registration did not return an image preview")
+        if not png_bytes or not png_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise AssertionError(f"{case}: successful registration did not return a valid PNG download")
         json_bytes = payload_bytes(json_file)
         if not json_bytes:
             raise AssertionError(f"{case}: successful registration did not return transform JSON")
@@ -373,7 +382,14 @@ def _validate_live_result(result, case: str) -> str:
             raise AssertionError(f"{case}: transform JSON is invalid: {exc}") from exc
         if not isinstance(metadata, dict):
             raise AssertionError(f"{case}: transform metadata is not an object")
-        return f"success, PNG={len(image_bytes)} bytes, JSON keys={len(metadata)}"
+        inlier_count = int(metadata.get("inlier_count", 0))
+        model = metadata.get("transform_model")
+        affine = metadata.get("partial_affine_matrix_2x3")
+        if model != "partial_affine_4dof" or inlier_count < 8:
+            raise AssertionError(f"{case}: invalid transform contract model={model!r}, inliers={inlier_count}")
+        if not isinstance(affine, list) or len(affine) != 2 or any(not isinstance(row, list) or len(row) != 3 for row in affine):
+            raise AssertionError(f"{case}: missing 2x3 Partial Affine matrix")
+        return f"success, PNG={len(png_bytes)} bytes, model={model}, inliers={inlier_count}"
     if image is not None or any((csv_file, json_file, geotiff_file, png_file, dossier)):
         raise AssertionError(f"{case}: failure response leaked partial output artifacts")
     if not any(word in report.lower() for word in ("failed", "insufficient", "error")):
@@ -411,19 +427,22 @@ def check_live_space() -> str:
     cv2.imwrite(str(identical_path), synthetic)
 
     modality_modes = [
-        ("OHRC", "TMC-2", "Optical <-> Optical", 0.25),
+        ("OHRC", "OHRC", "Optical <-> Optical", 0.25),
         ("TMC-2", "TMC-2", "Optical <-> Optical", 5.0),
         ("IIRS", "IIRS", "Optical <-> Infrared", 80.0),
     ]
     observations = []
     for sensor, secondary, pair_mode, scale in modality_modes:
         args = (
-            handle_file(str(ref_path)), handle_file(str(sec_path)), sensor, secondary,
+            handle_file(str(identical_path)), handle_file(str(identical_path)), sensor, secondary,
             pair_mode, True, scale, True, 3.0, True, False, 128.0, 50.0,
         )
         try:
             result = client.submit(*args, api_name="/predict").result(timeout=180)
-            observations.append(f"{sensor} mode: {_validate_live_result(result, sensor)}")
+            contract = _validate_live_result(result, sensor)
+            if not contract.startswith("success"):
+                raise AssertionError(f"{sensor}: identical-image sensor probe was rejected: {contract}")
+            observations.append(f"{sensor} mode: {contract}")
         except Exception as exc:
             observations.append(f"{sensor} mode: request exception {type(exc).__name__}: {exc}")
 

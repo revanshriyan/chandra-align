@@ -871,7 +871,7 @@ def build_interface():
         # Include sensor-specific examples only when their supplied files exist.
         for filename, sensor, scale, label in (
             ("ch2_ohrc.png", "OHRC", 0.25, "Chandrayaan-2 OHRC · Tycho preset"),
-            ("ch2_tmc2.png", "TMC-2", 0.5, "Chandrayaan-2 TMC-2 · Tycho preset"),
+            ("ch2_tmc2.png", "TMC-2", 5.0, "Chandrayaan-2 TMC-2 · Tycho preset"),
             ("ch2_iirs.png", "IIRS", 80.0, "Chandrayaan-2 IIRS · Tycho preset"),
         ):
             sample_path = Path("samples") / filename
