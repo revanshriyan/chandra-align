@@ -266,7 +266,7 @@ def process_alignment(
     sensor_name: str = "OHRC"
 ):
     """
-    Main alignment pipeline - decorated with @spaces.GPU for ZeroGPU execution.
+    Main alignment pipeline - runs on GPU when called from process_wrapper.
     Returns (PIL Image, report_text, csv_path, json_path, geotiff_path, png_path, viz_path)
     """
     if ref_file is None or sec_file is None:
@@ -511,6 +511,7 @@ def build_interface():
                     )
         
         # Event handlers
+        @spaces.GPU(duration=120)
         def process_wrapper(ref, sec, sensor, px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s):
             return process_alignment(
                 ref, sec,
