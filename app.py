@@ -186,7 +186,7 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
         fallback_reason = "Execution Exception"
 
     # If the primary cannot produce a geometric candidate at all, make one
-    # bounded LightGlue/ALIKED attempt. Do not silently substitute SIFT here.
+    # bounded LightGlue/ALIKED attempt before trying the classical fallback.
     diagnostics.update(fallback_triggered=True, fallback_reason=fallback_reason)
     try:
         from chandra_align.matching.deep_matchers import DeepMatcherChain, LightGlueALIKEDMatcher
@@ -199,6 +199,72 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
         diagnostics["fallback_error"] = result.error_msg or "LightGlue/ALIKED returned fewer than four correspondences"
     except Exception as exc:
         diagnostics["fallback_error"] = str(exc)
+
+    # Keep live Spaces useful when optional deep-matcher weights/dependencies
+    # are unavailable. SIFT is a bounded fallback, and only RANSAC-verified
+    # inliers are returned to the registration pipeline.
+    diagnostics["deep_fallback_error"] = diagnostics.get("fallback_error")
+    try:
+        sift = cv2.SIFT_create(nfeatures=10000, contrastThreshold=0.005, edgeThreshold=15)
+
+        def edge_emphasis(image):
+            value = image.astype(np.float32)
+            gx = cv2.Sobel(value, cv2.CV_32F, 1, 0, ksize=3)
+            gy = cv2.Sobel(value, cv2.CV_32F, 0, 1, ksize=3)
+            magnitude = cv2.magnitude(gx, gy)
+            high = float(np.percentile(magnitude, 98.0)) if magnitude.size else 0.0
+            if high > 0.0:
+                magnitude = np.clip(magnitude * (255.0 / high), 0.0, 255.0)
+            else:
+                magnitude.fill(0.0)
+            edges = np.rint(magnitude).astype(np.uint8)
+            return cv2.addWeighted(image, 0.6, edges, 0.4, 0.0)
+
+        variants = (
+            (img1, img2, "reflectance"),
+            (edge_emphasis(img1), img2, "reference edge emphasis"),
+            (img1, edge_emphasis(img2), "secondary edge emphasis"),
+            (edge_emphasis(img1), edge_emphasis(img2), "paired edge emphasis"),
+        )
+        best = None
+        for reference_image, secondary_image, variant_name in variants:
+            key_ref, desc_ref = sift.detectAndCompute(reference_image, None)
+            key_sec, desc_sec = sift.detectAndCompute(secondary_image, None)
+            if desc_ref is None or desc_sec is None or len(desc_ref) < 2 or len(desc_sec) < 2:
+                continue
+            candidates = cv2.FlannBasedMatcher(
+                dict(algorithm=1, trees=5), dict(checks=64)
+            ).knnMatch(desc_sec, desc_ref, k=2)
+            for ratio in (0.75, 0.80, 0.85):
+                good = [first for pair in candidates if len(pair) == 2
+                        for first, second in [pair]
+                        if first.distance < ratio * second.distance]
+                if len(good) < MIN_REGISTRATION_INLIERS:
+                    continue
+                points_sec = np.float32([key_sec[item.queryIdx].pt for item in good])
+                points_ref = np.float32([key_ref[item.trainIdx].pt for item in good])
+                matrix, inlier_mask = cv2.estimateAffinePartial2D(
+                    points_sec, points_ref, method=cv2.RANSAC,
+                    ransacReprojThreshold=3.0, maxIters=10000,
+                    confidence=0.999, refineIters=10,
+                )
+                inliers = (inlier_mask.reshape(-1).astype(bool)
+                           if matrix is not None and inlier_mask is not None
+                           else np.zeros(len(good), dtype=bool))
+                count = int(inliers.sum())
+                if count >= MIN_REGISTRATION_INLIERS and (best is None or count > best[0]):
+                    best = (count, points_ref[inliers], points_sec[inliers], variant_name, ratio)
+
+        if best is not None:
+            _, verified_ref, verified_sec, variant_name, ratio = best
+            diagnostics["registration_engine"] = "SIFT + FLANN (RANSAC fallback)"
+            diagnostics["sift_variant"] = variant_name
+            diagnostics["sift_ratio"] = ratio
+            return (verified_ref.astype(np.float32), verified_sec.astype(np.float32),
+                    diagnostics["registration_engine"], diagnostics)
+        diagnostics["sift_error"] = "No SIFT candidate reached eight partial-affine RANSAC inliers"
+    except Exception as exc:
+        diagnostics["sift_error"] = str(exc)
     diagnostics["primary_error"] = primary_error
     return np.empty((0, 2), np.float32), np.empty((0, 2), np.float32), "Failed", diagnostics
 
@@ -726,11 +792,11 @@ def build_interface():
                 # Input panel
                 gr.Markdown("### 📥 Input Frames")
                 ref_file = gr.File(
-                    label="Reference Frame (OHRC / Baseline)",
+                    label="Reference Frame (NASA LROC NAC)",
                     file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"]
                 )
                 sec_file = gr.File(
-                    label="Secondary Frame (LRO NAC / TMC-2 / Target)",
+                    label="Secondary Frame (ISRO Payload)",
                     file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"]
                 )
                 
@@ -861,25 +927,26 @@ def build_interface():
         
         # Examples
         gr.Markdown("### 📝 Example Pairs")
-        examples_dir = Path(__file__).resolve().parent / "examples" / "benchmarks"
+        examples_dir = Path(__file__).resolve().parent / "docs" / "assets" / "examples"
         example_specs = (
-            ("ohrc.png", "OHRC", "Optical <-> Optical", 0.25,
-             "OHRC sample · registration self-check"),
-            ("tmc2.png", "TMC-2", "Optical <-> Optical", 5.0,
-             "TMC-2 sample · registration self-check"),
-            ("iirs_band125_demo.png", "IIRS", "Optical <-> Infrared", 80.0,
-             "IIRS Band 125 workflow · synthetic matcher demo"),
+            ("nac_reference_ohrc.png", "ohrc_secondary.png", "OHRC",
+             "Optical <-> Optical", "OHRC vs NASA LROC NAC · 2× GSD gap"),
+            ("nac_reference_tmc2.png", "tmc2_secondary.png", "TMC-2",
+             "Optical <-> Optical", "TMC-2 vs NASA LROC NAC · 10× GSD gap"),
+            ("nac_reference_iirs.png", "iirs_band125_secondary.png", "IIRS",
+             "Optical <-> Infrared", "IIRS Band 125 (2.802 µm) vs NASA LROC NAC · 160× GSD gap"),
         )
         example_rows = []
         example_labels = []
-        for filename, sensor, pair_mode, scale, label in example_specs:
-            sample_path = examples_dir / filename
-            if not sample_path.is_file():
-                raise FileNotFoundError(f"Tracked Gradio example asset is missing: {sample_path}")
-            sample = str(sample_path)
+        for reference_filename, secondary_filename, secondary_sensor, pair_mode, label in example_specs:
+            reference_path = examples_dir / reference_filename
+            secondary_path = examples_dir / secondary_filename
+            for sample_path in (reference_path, secondary_path):
+                if not sample_path.is_file():
+                    raise FileNotFoundError(f"Tracked Gradio example asset is missing: {sample_path}")
             example_rows.append([
-                sample, sample, sensor, sensor, pair_mode,
-                True, scale, True, 3.0, True, False, 128.0, 50.0
+                str(reference_path), str(secondary_path), "LROC_NAC", secondary_sensor,
+                pair_mode, False, 0.5, True, 3.0, False, False, 128.0, 50.0
             ])
             example_labels.append(label)
         gr.Examples(

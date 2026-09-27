@@ -19,6 +19,23 @@ from datetime import datetime
 from chandra_align.features import bucket_ids
 
 
+def _to_uint16_image(image: np.ndarray) -> np.ndarray:
+    """Convert normalized floats or 8-bit pixels to 16-bit without overflow."""
+    image = np.asarray(image)
+    if image.dtype == np.uint16:
+        return image
+    if image.dtype == np.uint8:
+        return image.astype(np.uint16) * 257
+
+    values = np.nan_to_num(image.astype(np.float64, copy=False), nan=0.0,
+                           posinf=65535.0, neginf=0.0)
+    if values.size and values.max() <= 1.0:
+        values = values * 65535.0
+    elif values.size and values.max() <= 255.0:
+        values = values * 257.0
+    return np.clip(values, 0.0, 65535.0).astype(np.uint16)
+
+
 @dataclass
 class GCPRecord:
     """Ground Control Point record for CSV export."""
@@ -179,14 +196,7 @@ def export_alignment_geotiff(
     
     # Preserve bit depth if requested
     if preserve_bit_depth and warped_secondary.dtype != np.uint16:
-        # Scale to 16-bit range
-        if warped_secondary.max() <= 1.0:
-            warped_secondary = (warped_secondary * 65535).astype(np.uint16)
-        elif warped_secondary.max() <= 255:
-            # Cast to float first to avoid overflow, then to uint16
-            warped_secondary = (warped_secondary.astype(np.float64) * 257).astype(np.uint16)
-        else:
-            warped_secondary = warped_secondary.astype(np.uint16)
+        warped_secondary = _to_uint16_image(warped_secondary)
     elif warped_secondary.dtype != np.uint8:
         # Normalize to 8-bit
         warped_secondary = cv2.normalize(warped_secondary, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
@@ -265,13 +275,7 @@ def export_alignment_png(
     
     if bit_depth == 16:
         if warped_secondary.dtype != np.uint16:
-            if warped_secondary.max() <= 1.0:
-                warped_secondary = (warped_secondary * 65535).astype(np.uint16)
-            elif warped_secondary.max() <= 255:
-                # Cast to float first to avoid overflow, then to uint16
-                warped_secondary = (warped_secondary.astype(np.float64) * 257).astype(np.uint16)
-            else:
-                warped_secondary = warped_secondary.astype(np.uint16)
+            warped_secondary = _to_uint16_image(warped_secondary)
     else:
         warped_secondary = cv2.normalize(warped_secondary, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     
