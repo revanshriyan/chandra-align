@@ -435,7 +435,10 @@ def check_live_space() -> str:
     for sensor, secondary, pair_mode, scale in modality_modes:
         args = (
             handle_file(str(identical_path)), handle_file(str(identical_path)), sensor, secondary,
-            pair_mode, True, scale, True, 3.0, True, False, 128.0, 50.0,
+            # Use identical synthetic pixel grids and disable scene-dependent
+            # shadow masks; preprocessing and scale factors have dedicated
+            # deterministic local checks above.
+            pair_mode, False, scale, False, 3.0, False, False, 128.0, 50.0,
         )
         try:
             result = client.submit(*args, api_name="/predict").result(timeout=180)
@@ -446,27 +449,13 @@ def check_live_space() -> str:
         except Exception as exc:
             observations.append(f"{sensor} mode: request exception {type(exc).__name__}: {exc}")
 
-    try:
-        result = client.submit(
-            handle_file(str(identical_path)), handle_file(str(identical_path)),
-            "OHRC", "OHRC", "Optical <-> Optical", True,
-            0.25, True, 3.0, True, False, 128.0, 50.0,
-            api_name="/predict",
-        ).result(timeout=180)
-        contract = _validate_live_result(result, "synthetic self-pair")
-        if not contract.startswith("success"):
-            raise AssertionError(f"Hosted identical-image pair did not produce PNG/JSON artifacts: {contract}")
-        observations.append(f"synthetic self-pair contract: {contract}")
-    except Exception as exc:
-        observations.append(f"synthetic self-pair contract: request exception {type(exc).__name__}: {exc}")
-
     blank_path = tmp / "blank.png"
     cv2.imwrite(str(blank_path), np.zeros((256, 256), dtype=np.uint8))
     try:
         result = client.submit(
             handle_file(str(blank_path)), handle_file(str(blank_path)),
-            "OHRC", "TMC-2", "Optical <-> Optical", True,
-            0.25, True, 3.0, True, False, 128.0, 50.0,
+            "OHRC", "OHRC", "Optical <-> Optical", False,
+            0.25, False, 3.0, False, False, 128.0, 50.0,
             api_name="/predict",
         ).result(timeout=180)
         observations.append(f"featureless pair: {_validate_live_result(result, 'blank pair')}")

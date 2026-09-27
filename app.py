@@ -49,7 +49,11 @@ from chandra_align.registration_transform import (
 
 
 MAX_IMAGE_DIMENSION = 4096
-def _read_grayscale_image(image_file) -> np.ndarray:
+IIRS_MAX_IMAGE_DIMENSION = 12000
+IIRS_MIN_MATCH_LONG_SIDE = 320
+
+
+def _read_grayscale_image(image_file, max_dimension: int = MAX_IMAGE_DIMENSION) -> np.ndarray:
     """Decode an image input, normalize its channels/depth, and cap its dimensions."""
     if isinstance(image_file, np.ndarray):
         image = np.asarray(image_file)
@@ -78,7 +82,7 @@ def _read_grayscale_image(image_file) -> np.ndarray:
     # Resize before float conversion so very large uint16 images do not balloon
     # to several hundred megabytes during percentile normalization.
     height, width = image.shape[:2]
-    scale = min(1.0, MAX_IMAGE_DIMENSION / max(height, width))
+    scale = min(1.0, max_dimension / max(height, width))
     if scale < 1.0:
         image = cv2.resize(image, (max(1, round(width * scale)), max(1, round(height * scale))), interpolation=cv2.INTER_AREA)
 
@@ -152,7 +156,9 @@ def ensure_sample_files() -> tuple[str, str]:
     return ref_path, sec_path
 
 
-def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.ndarray, str, dict]:
+def match_pair_hf(
+    img1: np.ndarray, img2: np.ndarray, ransac_threshold_px: float = 3.0
+) -> tuple[np.ndarray, np.ndarray, str, dict]:
     """Run phase-congruency RIFT2 first and disclose any LightGlue/ALIKED handoff."""
     # SIFT and most deep matcher frontends require finite uint8 image arrays.
     def as_uint8(image):
@@ -262,7 +268,7 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
                 cv2.setRNGSeed(0)
                 matrix, inlier_mask = cv2.estimateAffinePartial2D(
                     points_sec, points_ref, method=cv2.RANSAC,
-                    ransacReprojThreshold=3.0, maxIters=10000,
+                    ransacReprojThreshold=ransac_threshold_px, maxIters=10000,
                     confidence=0.999, refineIters=10,
                 )
                 inliers = (inlier_mask.reshape(-1).astype(bool)
@@ -299,15 +305,16 @@ def _align_core(
     enforce_uniform_distribution: bool = True,
     sensor_pair_mode: str = "Optical <-> Optical",
     secondary_sensor_name: str = "TMC-2",
-    reference_sensor_name: str = "OHRC"
+    reference_sensor_name: str = "OHRC",
+    max_image_dimension: int = MAX_IMAGE_DIMENSION,
 ) -> dict:
     """
     Core alignment logic - runs on GPU when called from process_alignment.
     Returns comprehensive results dictionary.
     """
     # Store original images for visualization
-    ref_original = _read_grayscale_image(ref_img)
-    sec_original = _read_grayscale_image(sec_img)
+    ref_original = _read_grayscale_image(ref_img, max_image_dimension)
+    sec_original = _read_grayscale_image(sec_img, max_image_dimension)
     try:
         pixel_scale_m = float(pixel_scale_m)
     except (TypeError, ValueError, OverflowError) as exc:
@@ -324,11 +331,20 @@ def _align_core(
     ref_processed = ref_img.copy()
     sec_processed = sec_img.copy()
 
-    if sensor_pair_mode == "Optical <-> Infrared":
+    is_iirs_pair = sensor_pair_mode == "Optical <-> Infrared"
+    ransac_threshold_px = 4.0 if is_iirs_pair else 3.0
+    minimum_match_long_side = IIRS_MIN_MATCH_LONG_SIDE if is_iirs_pair else 128
+    if is_iirs_pair:
         if str(reference_sensor_name).upper() == "IIRS":
-            ref_processed = preprocess_iirs_raster(ref_processed).processed_2d_raster
+            ref_processed = preprocess_iirs_raster(
+                ref_processed, contrast_percentiles=(1.0, 99.0), clahe_clip_limit=4.5
+            ).processed_2d_raster
         if str(secondary_sensor_name).upper() == "IIRS":
-            sec_processed = preprocess_iirs_raster(sec_processed).processed_2d_raster
+            sec_processed = preprocess_iirs_raster(
+                sec_processed, contrast_percentiles=(1.0, 99.0), clahe_clip_limit=4.5
+            ).processed_2d_raster
+        if enable_clahe and str(reference_sensor_name).upper() != "IIRS":
+            ref_processed = apply_clahe(ref_processed, clip_limit=4.5, normalize_range=(0.0, 255.0))
 
     if enable_clahe and sensor_pair_mode != "Optical <-> Infrared":
         ref_processed = apply_clahe(ref_processed, clip_limit=clahe_clip_limit, normalize_range=(0.0, 255.0))
@@ -354,12 +370,18 @@ def _align_core(
         ref_gsd_m = pixel_scale_m
         sec_gsd_m = get_sensor_pixel_scale(secondary_sensor_name)
         target_gsd_m = max(ref_gsd_m, sec_gsd_m)
-        match_ref, ref_match_scale = resize_to_common_ground_sample(ref_processed, ref_gsd_m, target_gsd_m)
-        match_sec, sec_match_scale = resize_to_common_ground_sample(sec_processed, sec_gsd_m, target_gsd_m)
+        match_ref, ref_match_scale = resize_to_common_ground_sample(
+            ref_processed, ref_gsd_m, target_gsd_m, minimum_match_long_side
+        )
+        match_sec, sec_match_scale = resize_to_common_ground_sample(
+            sec_processed, sec_gsd_m, target_gsd_m, minimum_match_long_side
+        )
     except ValueError:
         match_ref, match_sec = ref_processed, sec_processed
         ref_match_scale = sec_match_scale = 1.0
-    pts_ref, pts_sec, engine_name, execution_diagnostics = match_pair_hf(match_ref, match_sec)
+    pts_ref, pts_sec, engine_name, execution_diagnostics = match_pair_hf(
+        match_ref, match_sec, ransac_threshold_px
+    )
     if ref_match_scale != 1.0:
         pts_ref = pts_ref / ref_match_scale
     if sec_match_scale != 1.0:
@@ -394,7 +416,7 @@ def _align_core(
 
     geometry_exception = False
     try:
-        affine_matrix, inliers = _estimate_partial_affine(pts_sec, pts_ref)
+        affine_matrix, inliers = _estimate_partial_affine(pts_sec, pts_ref, ransac_threshold_px)
     except cv2.error:
         affine_matrix, inliers = None, np.zeros(len(pts_ref), dtype=bool)
         geometry_exception = True
@@ -438,7 +460,7 @@ def _align_core(
                     )
                 if len(fallback_ref) >= 3:
                     fallback_affine, fallback_inliers = _estimate_partial_affine(
-                        fallback_sec, fallback_ref
+                        fallback_sec, fallback_ref, ransac_threshold_px
                     )
                     if fallback_affine is not None:
                         if int(fallback_inliers.sum()) >= MIN_REGISTRATION_INLIERS:
@@ -468,7 +490,9 @@ def _align_core(
         )
         refinement_stats["status"] = "subpixel_pairs_refined" if len(refined_ref) else "no_subpixel_pairs"
         if len(refined_ref) >= 3:
-            refined_affine, refined_inliers = _estimate_partial_affine(refined_sec, refined_ref)
+            refined_affine, refined_inliers = _estimate_partial_affine(
+                refined_sec, refined_ref, ransac_threshold_px
+            )
             if refined_affine is not None:
                 if int(refined_inliers.sum()) >= MIN_REGISTRATION_INLIERS:
                     affine_matrix = refined_affine
@@ -538,7 +562,8 @@ def _align_core(
         "refinement_stats": refinement_stats,
         "sensor_pair_mode": sensor_pair_mode,
         "shadow_mask": shadow_mask,
-        "pixel_scale_m": pixel_scale_m
+        "pixel_scale_m": pixel_scale_m,
+        "ransac_threshold_px": ransac_threshold_px,
     }
 
 
@@ -565,8 +590,10 @@ def process_alignment(
         return None, "Error: Please provide both Reference and Secondary surface frames.", None, None, None, None, None
 
     try:
-        ref_img = _read_grayscale_image(ref_file)
-        sec_img = _read_grayscale_image(sec_file)
+        is_iirs_pair = sensor_pair_mode == "Optical <-> Infrared"
+        max_image_dimension = IIRS_MAX_IMAGE_DIMENSION if is_iirs_pair else MAX_IMAGE_DIMENSION
+        ref_img = _read_grayscale_image(ref_file, max_image_dimension)
+        sec_img = _read_grayscale_image(sec_file, max_image_dimension)
         result = _align_core(
             ref_img, sec_img,
             pixel_scale_m=pixel_scale_m,
@@ -579,7 +606,8 @@ def process_alignment(
             enforce_uniform_distribution=enforce_uniform_distribution,
             sensor_pair_mode=sensor_pair_mode,
             secondary_sensor_name=secondary_sensor_name,
-            reference_sensor_name=sensor_name
+            reference_sensor_name=sensor_name,
+            max_image_dimension=max_image_dimension
         )
 
         side_by_side_rgb = result["side_by_side_rgb"]
@@ -609,7 +637,7 @@ def process_alignment(
             f"✅ REGISTRATION COMPLETE\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"Matcher Engine: {engine_name}\n"
-            f"Registration Transform: 4-DOF Partial Affine (2x3), RANSAC threshold 3.0 px\n"
+            f"Registration Transform: 4-DOF Partial Affine (2x3), RANSAC threshold {result['ransac_threshold_px']:.1f} px\n"
             f"Registration Matrix Engine: {result['execution_diagnostics'].get('registration_engine', engine_name)}\n"
             f"Primary Engine: {result['execution_diagnostics'].get('primary_engine', 'Phase Congruency + Quad-Tree')}\n"
             f"Fallback Triggered: {result['execution_diagnostics'].get('fallback_triggered', False)}\n"
@@ -881,7 +909,8 @@ def build_interface():
                     with gr.TabItem("Side-by-Side View"):
                         output_image = gr.Image(
                             label="Registration View [Reference | Aligned Secondary | Radiometric Delta]",
-                            type="pil"
+                            type="pil",
+                            format="png"
                         )
                     
                     with gr.TabItem("Scientific Dossier (4-Panel)"):
