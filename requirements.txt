@@ -2,11 +2,11 @@ torch
 opencv-python-headless
 numpy
 scipy
-gradio==4.44.1
+gradio==6.28.0
 spaces
 tifffile
 pillow
 matplotlib
 PyYAML
 rasterio
-huggingface_hub>=0.30,<1
+huggingface_hub>=1.16,<2
