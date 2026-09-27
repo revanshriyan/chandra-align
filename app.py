@@ -302,12 +302,12 @@ def _align_core(
     if len(pts_ref) < 4:
         raise ValueError("Insufficient keypoint correspondences detected.")
 
+    geometry_exception = False
     try:
         H, mask = cv2.findHomography(pts_sec, pts_ref, cv2.RANSAC, 3.0)
-    except cv2.error as exc:
-        raise ValueError(f"Homography estimation failed for the detected correspondences: {exc}") from exc
-    if H is None:
-        raise ValueError("Homography calculation failed; matches may be degenerate or collinear.")
+    except cv2.error:
+        H, mask = None, None
+        geometry_exception = True
 
     inliers = mask.reshape(-1).astype(bool) if mask is not None else np.zeros(len(pts_ref), dtype=bool)
     inlier_cnt = int(inliers.sum())
@@ -320,7 +320,9 @@ def _align_core(
             pts_ref[inliers], ref_original.shape[:2], (8, 8)
         )["uniformity"] if inlier_cnt else 0.0
         fallback_reason = None
-        if inlier_ratio < 0.15:
+        if geometry_exception:
+            fallback_reason = "Execution Exception"
+        elif inlier_ratio < 0.15:
             fallback_reason = "Low Inlier Ratio (< 0.15)"
         elif primary_uniformity < 0.125:
             fallback_reason = "High Spatial Entropy Deficit"
@@ -363,6 +365,8 @@ def _align_core(
                 execution_diagnostics["fallback_error"] = str(exc)
 
     if inlier_cnt < 4:
+        if H is None:
+            raise ValueError("Registration failed: homography estimation was degenerate and fallback produced no valid matrix.")
         raise ValueError("Registration failed: fewer than four geometrically consistent inliers were found.")
 
     # Refine only geometrically verified matches, then re-estimate the model.
