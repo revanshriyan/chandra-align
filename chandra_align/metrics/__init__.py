@@ -135,6 +135,8 @@ def compute_quadrant_metrics(inliers_src, residuals, img_shape):
     if total:
         probabilities = [item["inlier_count"] / total for item in quadrant_dict.values()]
         entropy = float(-sum(p * np.log2(p) for p in probabilities if p > 0.0))
+        if entropy == 0.0:
+            entropy = 0.0  # Normalize IEEE negative zero for clean UI formatting.
     else:
         entropy = 0.0
     return quadrant_dict, entropy
