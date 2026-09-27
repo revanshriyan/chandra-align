@@ -41,11 +41,14 @@ from chandra_align.export import (
     export_gcp_csv, export_homography_json, export_alignment_geotiff,
     export_alignment_png, export_composite_visualization, export_full_package
 )
+from chandra_align.registration_transform import (
+    MIN_REGISTRATION_INLIERS,
+    estimate_partial_affine as _estimate_partial_affine,
+    homogeneous_affine as _homogeneous_affine,
+)
 
 
 MAX_IMAGE_DIMENSION = 4096
-
-
 def _read_grayscale_image(image_file) -> np.ndarray:
     """Decode an image input, normalize its channels/depth, and cap its dimensions."""
     if isinstance(image_file, np.ndarray):
@@ -299,17 +302,16 @@ def _align_core(
             pts_ref, pts_sec, ref_original.shape[:2], grid_shape=(8, 8), max_per_bucket=8
         )
     
-    if len(pts_ref) < 4:
+    if len(pts_ref) < 3:
         raise ValueError("Insufficient keypoint correspondences detected.")
 
     geometry_exception = False
     try:
-        H, mask = cv2.findHomography(pts_sec, pts_ref, cv2.RANSAC, 3.0)
+        affine_matrix, inliers = _estimate_partial_affine(pts_sec, pts_ref)
     except cv2.error:
-        H, mask = None, None
+        affine_matrix, inliers = None, np.zeros(len(pts_ref), dtype=bool)
         geometry_exception = True
 
-    inliers = mask.reshape(-1).astype(bool) if mask is not None else np.zeros(len(pts_ref), dtype=bool)
     inlier_cnt = int(inliers.sum())
 
     # Escalate only when the primary geometric solution is weak. The fallback
@@ -347,27 +349,27 @@ def _align_core(
                         fallback_ref, fallback_sec, ref_original.shape[:2],
                         grid_shape=(8, 8), max_per_bucket=8
                     )
-                if len(fallback_ref) >= 4:
-                    fallback_H, fallback_mask = cv2.findHomography(
-                        fallback_sec, fallback_ref, cv2.RANSAC, 3.0
+                if len(fallback_ref) >= 3:
+                    fallback_affine, fallback_inliers = _estimate_partial_affine(
+                        fallback_sec, fallback_ref
                     )
-                    if fallback_H is not None and fallback_mask is not None:
-                        fallback_inliers = fallback_mask.reshape(-1).astype(bool)
-                        if int(fallback_inliers.sum()) >= 4:
+                    if fallback_affine is not None:
+                        if int(fallback_inliers.sum()) >= MIN_REGISTRATION_INLIERS:
                             pts_ref, pts_sec = fallback_ref, fallback_sec
-                            H, mask, inliers = fallback_H, fallback_mask, fallback_inliers
+                            affine_matrix, inliers = fallback_affine, fallback_inliers
                             inlier_cnt = int(inliers.sum())
                             engine_name = f"LightGlue/ALIKED ({fallback.matcher_name})"
                             execution_diagnostics["registration_engine"] = engine_name
                 if execution_diagnostics["registration_engine"] == "Phase Congruency + Quad-Tree":
-                    execution_diagnostics["fallback_error"] = fallback.error_msg or "Fallback did not yield a valid homography"
+                    execution_diagnostics["fallback_error"] = fallback.error_msg or "Fallback did not yield a valid partial affine with at least eight inliers"
             except Exception as exc:
                 execution_diagnostics["fallback_error"] = str(exc)
 
-    if inlier_cnt < 4:
-        if H is None:
-            raise ValueError("Registration failed: homography estimation was degenerate and fallback produced no valid matrix.")
-        raise ValueError("Registration failed: fewer than four geometrically consistent inliers were found.")
+    if affine_matrix is None or inlier_cnt < MIN_REGISTRATION_INLIERS:
+        raise ValueError(
+            f"Insufficient Inliers: partial affine registration requires at least "
+            f"{MIN_REGISTRATION_INLIERS}; found {inlier_cnt}."
+        )
 
     # Refine only geometrically verified matches, then re-estimate the model.
     refinement_stats = {"refined_pairs": 0, "status": "insufficient_verified_matches"}
@@ -378,23 +380,23 @@ def _align_core(
             ncc_window=11, search_range_px=1
         )
         refinement_stats["status"] = "subpixel_pairs_refined" if len(refined_ref) else "no_subpixel_pairs"
-        if len(refined_ref) >= 4:
-            refined_H, refined_mask = cv2.findHomography(refined_sec, refined_ref, cv2.RANSAC, 3.0)
-            if refined_H is not None and refined_mask is not None:
-                refined_inliers = refined_mask.reshape(-1).astype(bool)
-                if int(refined_inliers.sum()) >= 4:
-                    H = refined_H
+        if len(refined_ref) >= 3:
+            refined_affine, refined_inliers = _estimate_partial_affine(refined_sec, refined_ref)
+            if refined_affine is not None:
+                if int(refined_inliers.sum()) >= MIN_REGISTRATION_INLIERS:
+                    affine_matrix = refined_affine
                     inlier_ref = refined_ref[refined_inliers]
                     inlier_sec = refined_sec[refined_inliers]
                     refinement_stats["status"] = "subpixel_model_reestimated"
     except (cv2.error, ValueError, FloatingPointError) as exc:
         refinement_stats = {"refined_pairs": 0, "status": f"skipped: {exc}"}
 
-    warped_sec = cv2.warpPerspective(sec_original, H, (ref_original.shape[1], ref_original.shape[0]))
+    H = _homogeneous_affine(affine_matrix)
+    warped_sec = cv2.warpAffine(sec_original, affine_matrix, (ref_original.shape[1], ref_original.shape[0]))
     diff_map = cv2.absdiff(ref_original, warped_sec)
 
     inlier_cnt = len(inlier_ref)
-    pts_sec_h = cv2.perspectiveTransform(inlier_sec.reshape(-1, 1, 2), H).reshape(-1, 2)
+    pts_sec_h = cv2.transform(inlier_sec.reshape(-1, 1, 2), affine_matrix).reshape(-1, 2)
     residuals_vec = inlier_ref - pts_sec_h
     residuals_mag = np.linalg.norm(residuals_vec, axis=1)
 
@@ -436,6 +438,7 @@ def _align_core(
         "rmse_px": rmse_px,
         "mae_px": mae_px,
         "H": H,
+        "affine_matrix": affine_matrix,
         "pts_ref_inliers": inlier_ref,
         "pts_sec_inliers": inlier_sec,
         "deformation_vectors": deformation_vectors,
@@ -519,6 +522,7 @@ def process_alignment(
             f"✅ REGISTRATION COMPLETE\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"Matcher Engine: {engine_name}\n"
+            f"Registration Transform: 4-DOF Partial Affine (2x3), RANSAC threshold 3.0 px\n"
             f"Registration Matrix Engine: {result['execution_diagnostics'].get('registration_engine', engine_name)}\n"
             f"Primary Engine: {result['execution_diagnostics'].get('primary_engine', 'Phase Congruency + Quad-Tree')}\n"
             f"Fallback Triggered: {result['execution_diagnostics'].get('fallback_triggered', False)}\n"
@@ -571,6 +575,18 @@ def process_alignment(
             grid_shape=(8, 8),
             spatial_uniformity=uniformity
         )
+        # Preserve both the conventional homogeneous matrix and the exact
+        # 2x3 four-parameter affine requested by downstream consumers.
+        transform_json = Path(export_paths["transform_json"])
+        with transform_json.open("r", encoding="utf-8") as stream:
+            transform_payload = json.load(stream)
+        transform_payload["transform_model"] = "partial_affine_4dof"
+        transform_payload["partial_affine_matrix_2x3"] = np.asarray(
+            result["affine_matrix"], dtype=np.float64
+        ).tolist()
+        transform_payload["homography_matrix"] = np.asarray(H, dtype=np.float64).tolist()
+        with transform_json.open("w", encoding="utf-8") as stream:
+            json.dump(transform_payload, stream, indent=2)
         
         # Also create the 4-panel scientific dossier
         viz_path = output_dir / f"{base_name}_dossier.png"
