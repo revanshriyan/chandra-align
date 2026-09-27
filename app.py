@@ -18,6 +18,7 @@ import spaces
 import tempfile
 import json
 import zipfile
+import math
 from pathlib import Path
 from PIL import Image
 
@@ -36,6 +37,55 @@ from chandra_align.export import (
     export_gcp_csv, export_homography_json, export_alignment_geotiff,
     export_alignment_png, export_composite_visualization, export_full_package
 )
+
+
+MAX_IMAGE_DIMENSION = 4096
+
+
+def _read_grayscale_image(image_file) -> np.ndarray:
+    """Decode an image input, normalize its channels/depth, and cap its dimensions."""
+    if isinstance(image_file, np.ndarray):
+        image = np.asarray(image_file)
+    elif isinstance(image_file, Image.Image):
+        image = np.asarray(image_file)
+    else:
+        path = getattr(image_file, "name", image_file)
+        if path is None:
+            raise ValueError("Input image is missing")
+        image = cv2.imread(os.fspath(path), cv2.IMREAD_UNCHANGED)
+        if image is None:
+            raise ValueError("Unable to decode input image file")
+
+    if image.size == 0 or image.ndim not in (2, 3):
+        raise ValueError("Input must be a non-empty grayscale or color image")
+    if image.ndim == 3:
+        if image.shape[2] == 1:
+            image = image[:, :, 0]
+        elif image.shape[2] == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        elif image.shape[2] == 4:
+            image = cv2.cvtColor(image, cv2.COLOR_BGRA2GRAY)
+        else:
+            raise ValueError("Input image must have 1, 3, or 4 channels")
+
+    # Resize before float conversion so very large uint16 images do not balloon
+    # to several hundred megabytes during percentile normalization.
+    height, width = image.shape[:2]
+    scale = min(1.0, MAX_IMAGE_DIMENSION / max(height, width))
+    if scale < 1.0:
+        image = cv2.resize(image, (max(1, round(width * scale)), max(1, round(height * scale))), interpolation=cv2.INTER_AREA)
+
+    if np.issubdtype(image.dtype, np.floating) and not np.isfinite(image).all():
+        image = np.nan_to_num(image)
+    if image.dtype != np.uint8:
+        finite = image.astype(np.float32, copy=False)
+        lo, hi = np.percentile(finite, [1, 99]) if finite.size else (0, 0)
+        if hi <= lo:
+            image = np.zeros(image.shape, dtype=np.uint8)
+        else:
+            image = np.clip((finite - lo) * (255.0 / (hi - lo)), 0, 255).astype(np.uint8)
+
+    return np.ascontiguousarray(image)
 
 
 def generate_synthetic_lunar_pair(ref_path: str, sec_path: str) -> None:
@@ -100,6 +150,18 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
     Match features between two images with fallback chain.
     Returns (src_pts, dst_pts, matcher_name).
     """
+    # SIFT and most deep matcher frontends require finite uint8 image arrays.
+    def as_uint8(image):
+        image = np.asarray(image)
+        if image.ndim != 2 or image.size == 0:
+            raise ValueError("Feature matching requires non-empty grayscale images")
+        image = np.nan_to_num(image.astype(np.float32, copy=False))
+        if image.dtype == np.uint8:
+            return np.ascontiguousarray(image)
+        lo, hi = np.percentile(image, [1, 99])
+        return np.zeros(image.shape, np.uint8) if hi <= lo else np.clip((image - lo) * (255.0 / (hi - lo)), 0, 255).astype(np.uint8)
+
+    img1, img2 = as_uint8(img1), as_uint8(img2)
     # Try DeepMatcherChain first
     try:
         from chandra_align.matching.deep_matchers import ClassicalSIFTMatcher, DeepMatcherChain
@@ -122,7 +184,10 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
     matches = bf.knnMatch(des1, des2, k=2)
 
     good = []
-    for m, n in matches:
+    for pair in matches:
+        if len(pair) < 2:
+            continue
+        m, n = pair
         if m.distance < 0.75 * n.distance:
             good.append(m)
 
@@ -151,8 +216,14 @@ def _align_core(
     Returns comprehensive results dictionary.
     """
     # Store original images for visualization
-    ref_original = ref_img.copy()
-    sec_original = sec_img.copy()
+    ref_original = _read_grayscale_image(ref_img)
+    sec_original = _read_grayscale_image(sec_img)
+    try:
+        pixel_scale_m = float(pixel_scale_m)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("Pixel scale must be a finite positive number of meters per pixel.") from exc
+    if not math.isfinite(pixel_scale_m) or pixel_scale_m <= 0:
+        raise ValueError("Pixel scale must be a finite positive number of meters per pixel.")
     
     # Apply preprocessing
     ref_processed = ref_img.copy()
@@ -163,8 +234,10 @@ def _align_core(
         sec_processed = apply_clahe(sec_processed, clip_limit=clahe_clip_limit, normalize_range=(0.0, 255.0))
     
     shadow_mask = None
+    shadow_mask_sec = None
     if enable_shadow_suppression:
         shadow_mask = detect_shadows(ref_processed, method="otsu")
+        shadow_mask_sec = detect_shadows(sec_processed, method="otsu")
         # We'll apply shadow suppression during keypoint filtering
     
     if enable_wallis:
@@ -182,7 +255,7 @@ def _align_core(
         
         # Filter keypoints in shadow regions
         kp_ref_filtered = suppress_keypoints_in_shadows(kp_ref, shadow_mask)
-        kp_sec_filtered = suppress_keypoints_in_shadows(kp_sec, shadow_mask)
+        kp_sec_filtered = suppress_keypoints_in_shadows(kp_sec, shadow_mask_sec)
         
         # Rebuild point arrays
         pts_ref = np.float32([kp.pt for kp in kp_ref_filtered])
@@ -191,12 +264,17 @@ def _align_core(
     if len(pts_ref) < 4:
         raise ValueError("Insufficient keypoint correspondences detected.")
 
-    H, mask = cv2.findHomography(pts_sec, pts_ref, cv2.RANSAC, 3.0)
+    try:
+        H, mask = cv2.findHomography(pts_sec, pts_ref, cv2.RANSAC, 3.0)
+    except cv2.error as exc:
+        raise ValueError(f"Homography estimation failed for the detected correspondences: {exc}") from exc
     if H is None:
-        raise ValueError("Homography calculation failed.")
+        raise ValueError("Homography calculation failed; matches may be degenerate or collinear.")
 
-    inliers = mask.squeeze().astype(bool) if mask is not None else np.zeros(len(pts_ref), dtype=bool)
+    inliers = mask.reshape(-1).astype(bool) if mask is not None else np.zeros(len(pts_ref), dtype=bool)
     inlier_cnt = int(inliers.sum())
+    if inlier_cnt < 4:
+        raise ValueError("Registration failed: fewer than four geometrically consistent inliers were found.")
 
     warped_sec = cv2.warpPerspective(sec_original, H, (ref_original.shape[1], ref_original.shape[0]))
     diff_map = cv2.absdiff(ref_original, warped_sec)
@@ -272,13 +350,9 @@ def process_alignment(
     if ref_file is None or sec_file is None:
         return None, "Error: Please provide both Reference and Secondary surface frames.", None, None, None, None, None
 
-    ref_img = cv2.imread(ref_file.name if hasattr(ref_file, 'name') else ref_file, cv2.IMREAD_GRAYSCALE)
-    sec_img = cv2.imread(sec_file.name if hasattr(sec_file, 'name') else sec_file, cv2.IMREAD_GRAYSCALE)
-
-    if ref_img is None or sec_img is None:
-        return None, "Error: Unable to decode input image files.", None, None, None, None, None
-
     try:
+        ref_img = _read_grayscale_image(ref_file)
+        sec_img = _read_grayscale_image(sec_file)
         result = _align_core(
             ref_img, sec_img,
             pixel_scale_m=pixel_scale_m,
@@ -343,7 +417,7 @@ def process_alignment(
             {
                 "rmse_px": rmse_px,
                 "mae_px": mae_px,
-                "std_px": float(np.std(residuals_mag)) if len(deformation_vectors) > 0 else 0.0,
+                "std_px": ground_metrics.std_px,
                 "rmse_m": rmse_m,
                 "mae_m": mae_m,
                 "std_m": ground_metrics.std_m
@@ -383,7 +457,7 @@ def process_alignment(
                     zf.write(path, Path(path).name)
         
         # Convert main output to PIL
-        output_pil = Image.fromarray(side_by_side_rgb.astype(np.uint8))
+        output_pil = Image.fromarray(np.asarray(side_by_side_rgb, dtype=np.uint8))
         
         return (
             output_pil,

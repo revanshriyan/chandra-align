@@ -149,7 +149,7 @@ def run_batch_pipeline(
             f"{r.delta_azimuth_deg}° | {r.scale_ratio}x | {status_icon} {r.status} | `{err_msg}` |"
         )
 
-    with open(md_path, "w") as f:
+    with open(md_path, "w", encoding="utf-8", newline="") as f:
         f.write("\n".join(md_lines) + "\n")
 
     print(f"\n✅ Batch summary reports saved to:\n  - {json_path}\n  - {md_path}")

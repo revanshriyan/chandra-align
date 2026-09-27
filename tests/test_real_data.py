@@ -46,7 +46,9 @@ def test_download_log_gate_passes_with_entry():
             "data", "download_log.csv"
         )
         # Read existing entries
-        with open(log_path, "r") as f:
+        fieldnames = ["local_path", "run_id", "product_id", "source_url", "acquisition_date",
+                      "solar_azimuth_deg", "solar_elevation_deg", "scale_ratio"]
+        with open(log_path, "r", encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
             rows = list(reader)
         
@@ -55,8 +57,8 @@ def test_download_log_gate_passes_with_entry():
                      "source_url": "", "acquisition_date": "", "solar_azimuth_deg": "",
                      "solar_elevation_deg": "", "scale_ratio": ""})
         
-        with open(log_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        with open(log_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(rows)
         
@@ -67,8 +69,8 @@ def test_download_log_gate_passes_with_entry():
         finally:
             # Clean up: remove the test entry
             rows.pop()
-            with open(log_path, "w", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+            with open(log_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(rows)
 

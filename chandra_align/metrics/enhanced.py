@@ -61,11 +61,16 @@ def apply_transform(M: np.ndarray, pts: np.ndarray) -> np.ndarray:
     M = np.asarray(M, np.float64)
     pts = np.asarray(pts, np.float64).reshape(-1, 2)
     
+    if not np.isfinite(M).all() or not np.isfinite(pts).all():
+        raise ValueError("Transform matrix and points must contain only finite values")
     if M.shape == (3, 3):
         # Homography
         pts_h = np.hstack([pts, np.ones((len(pts), 1))])
         out = (M @ pts_h.T).T
-        out = out[:, :2] / out[:, 2:3]
+        denom = out[:, 2:3]
+        if np.any(np.isclose(denom, 0.0)):
+            raise ValueError("Homography maps one or more points to infinity")
+        out = out[:, :2] / denom
     elif M.shape == (2, 3):
         # Affine
         out = pts @ M[:, :2].T + M[:, 2]
@@ -89,7 +94,12 @@ def compute_ground_metrics(
     Returns:
         GroundMetrics dataclass with both pixel and ground metrics
     """
-    residuals_px = np.asarray(residuals_px, dtype=np.float64)
+    residuals_px = np.asarray(residuals_px, dtype=np.float64).reshape(-1)
+    pixel_scale_m = float(pixel_scale_m)
+    if not np.isfinite(pixel_scale_m) or pixel_scale_m <= 0:
+        raise ValueError("pixel_scale_m must be a finite positive value")
+    if not np.isfinite(residuals_px).all():
+        raise ValueError("residuals_px must contain only finite values")
     
     if len(residuals_px) == 0:
         return GroundMetrics(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, pixel_scale_m, 0)
@@ -131,6 +141,15 @@ def compute_deformation_field(
     """
     pts_ref = np.asarray(pts_ref, np.float64).reshape(-1, 2)
     pts_sec = np.asarray(pts_sec, np.float64).reshape(-1, 2)
+    pixel_scale_m = float(pixel_scale_m)
+    if not np.isfinite(pixel_scale_m) or pixel_scale_m <= 0:
+        raise ValueError("pixel_scale_m must be a finite positive value")
+    if len(pts_ref) != len(pts_sec):
+        raise ValueError("Reference and secondary point arrays must have equal length")
+    if len(pts_ref) == 0:
+        return []
+    if not np.isfinite(pts_ref).all() or not np.isfinite(pts_sec).all():
+        raise ValueError("Point arrays must contain only finite values")
     
     # Transform secondary points
     pts_sec_transformed = apply_transform(H, pts_sec)
@@ -178,6 +197,8 @@ def grid_deformation_analysis(
     """
     if not deformation_vectors:
         return {"cells": [], "mean_magnitude_px": 0.0, "max_magnitude_px": 0.0}
+    if len(grid_shape) != 2 or any(int(v) <= 0 for v in grid_shape):
+        raise ValueError("grid_shape must contain two positive integers")
     
     # Determine image bounds
     if image_shape:
@@ -188,7 +209,8 @@ def grid_deformation_analysis(
         w = int(np.ceil(max(ref_x)))
         h = int(np.ceil(max(ref_y)))
     
-    rows, cols = grid_shape
+    rows, cols = map(int, grid_shape)
+    h, w = max(float(h), 1.0), max(float(w), 1.0)
     cell_h, cell_w = h / rows, w / cols
     
     # Bin vectors into grid cells

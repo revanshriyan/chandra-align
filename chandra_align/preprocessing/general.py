@@ -38,6 +38,14 @@ def apply_clahe(
     if img.ndim != 2:
         raise ValueError("CLAHE requires single-channel 2D image")
     
+    if img.size == 0:
+        raise ValueError("CLAHE requires a non-empty image")
+    if not np.isfinite(clip_limit) or clip_limit <= 0:
+        raise ValueError("CLAHE clip_limit must be a finite positive value")
+    if len(tile_grid_size) != 2 or any(int(v) <= 0 for v in tile_grid_size):
+        raise ValueError("CLAHE tile_grid_size must contain two positive integers")
+    img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
+
     # Normalize to uint8 for CLAHE
     lo, hi = np.nanpercentile(img, [1, 99])
     if hi <= lo:
@@ -53,6 +61,8 @@ def apply_clahe(
     
     # Return as float64 normalized to specified range
     lo_out, hi_out = normalize_range
+    if not np.isfinite(lo_out) or not np.isfinite(hi_out):
+        raise ValueError("normalize_range must contain finite values")
     return (img_clahe.astype(np.float64) / 255.0) * (hi_out - lo_out) + lo_out
 
 
@@ -77,6 +87,10 @@ def detect_shadows(
     """
     img = np.asarray(img, dtype=np.float64)
     
+    if img.ndim != 2 or img.size == 0:
+        raise ValueError("Shadow detection requires a non-empty single-channel image")
+    img = np.nan_to_num(img, nan=0.0, posinf=255.0, neginf=0.0)
+
     # Ensure image is in [0, 255] range
     if img.max() <= 1.0:
         img_u8 = (img * 255).astype(np.uint8)
@@ -86,8 +100,15 @@ def detect_shadows(
     if method == "otsu":
         _, shadow_mask = cv2.threshold(img_u8, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     elif method == "adaptive":
+        min_dim = min(img_u8.shape)
+        if min_dim < 3:
+            _, shadow_mask = cv2.threshold(img_u8, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+            return (shadow_mask / 255.0).astype(np.float64)
+        adaptive_block = max(3, int(adaptive_block))
         if adaptive_block % 2 == 0:
             adaptive_block += 1
+        max_odd_block = min_dim if min_dim % 2 else min_dim - 1
+        adaptive_block = min(adaptive_block, max_odd_block)
         shadow_mask = cv2.adaptiveThreshold(
             img_u8, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY_INV, adaptive_block, adaptive_c
@@ -120,6 +141,12 @@ def apply_wallis_filter(
     """
     img = np.asarray(img, dtype=np.float64)
     
+    if img.ndim != 2 or img.size == 0:
+        raise ValueError("Wallis filter requires a non-empty single-channel image")
+    img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
+    if not np.isfinite(target_mean) or not np.isfinite(target_std) or target_std < 0:
+        raise ValueError("Wallis targets must be finite and target_std non-negative")
+    window_size = max(1, int(window_size))
     if window_size % 2 == 0:
         window_size += 1
     
@@ -149,6 +176,9 @@ def apply_wallis_adaptive(
     Automatically estimates target statistics from global image.
     """
     img = np.asarray(img, dtype=np.float64)
+    if img.ndim != 2 or img.size == 0:
+        raise ValueError("Wallis filter requires a non-empty single-channel image")
+    img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
     
     if window_size % 2 == 0:
         window_size += 1

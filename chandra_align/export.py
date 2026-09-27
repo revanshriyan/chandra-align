@@ -15,7 +15,6 @@ import csv
 from typing import List, Dict, Optional, Tuple, Any, Union
 from dataclasses import dataclass, asdict
 from pathlib import Path
-import tifffile
 from datetime import datetime
 
 
@@ -209,17 +208,27 @@ def export_alignment_geotiff(
             'UNIT["Meter",1.0]]'
         )
     
-    # Write GeoTIFF using tifffile
-    tifffile.imwrite(
-        output_path,
-        warped_secondary,
-        photometric='minisblack',
-        compression=compression,
-        metadata={
-            'geotransform': geotransform,
-            'projection': projection
-        }
-    )
+    # Prefer tifffile, but keep TIFF downloads available in minimal installs.
+    try:
+        import tifffile
+        px_x = abs(float(geotransform[1])) or float(pixel_scale_m)
+        px_y = abs(float(geotransform[5])) or float(pixel_scale_m)
+        tie_x, tie_y = float(geotransform[0]), float(geotransform[3])
+        extratags = [
+            (33550, 'd', 3, (px_x, px_y, 0.0), False),  # ModelPixelScaleTag
+            (33922, 'd', 6, (0.0, 0.0, 0.0, tie_x, tie_y, 0.0), False),  # ModelTiepointTag
+            (34735, 'H', 20, (1, 1, 0, 4, 1024, 0, 1, 1, 1025, 0, 1, 1,
+                              2048, 0, 1, 32767, 3072, 0, 1, 32767), False),
+        ]
+        options = dict(photometric='minisblack', metadata={'geotransform': geotransform, 'projection': projection}, extratags=extratags)
+        try:
+            tifffile.imwrite(output_path, warped_secondary, compression=compression, **options)
+        except (ValueError, KeyError, RuntimeError):
+            # Some tifffile builds do not include optional compression codecs.
+            tifffile.imwrite(output_path, warped_secondary, compression=None, **options)
+    except ImportError:
+        if not cv2.imwrite(str(output_path), warped_secondary):
+            raise RuntimeError("Neither tifffile nor OpenCV could write the GeoTIFF fallback")
 
 
 def export_alignment_png(
@@ -235,6 +244,9 @@ def export_alignment_png(
         output_path: Output PNG file path
         bit_depth: 8 or 16
     """
+    warped_secondary = np.asarray(warped_secondary)
+    if warped_secondary.size == 0:
+        raise ValueError("Cannot export an empty image")
     if warped_secondary.ndim == 3:
         if warped_secondary.shape[2] == 3:
             warped_secondary = cv2.cvtColor(warped_secondary, cv2.COLOR_RGB2GRAY)
@@ -253,7 +265,8 @@ def export_alignment_png(
     else:
         warped_secondary = cv2.normalize(warped_secondary, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     
-    cv2.imwrite(output_path, warped_secondary)
+    if not cv2.imwrite(output_path, warped_secondary):
+        raise OSError(f"OpenCV could not write PNG output: {output_path}")
 
 
 def export_composite_visualization(
