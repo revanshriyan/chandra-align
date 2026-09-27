@@ -19,13 +19,14 @@ import tempfile
 import json
 import zipfile
 import math
+import traceback
 from pathlib import Path
 from PIL import Image
 
 # Import new modules
 from chandra_align.preprocessing import (
     apply_clahe, detect_shadows, apply_wallis_filter, preprocess_multimodal_pair,
-    preprocess_iirs_raster, resize_to_common_ground_sample, suppress_keypoints_in_shadows
+    preprocess_iirs_raster, resize_to_common_ground_sample
 )
 from chandra_align.features import select_distributed_matches, spatial_distribution_metrics
 from chandra_align.refine import refine_subpixel_ncc
@@ -282,19 +283,20 @@ def _align_core(
     if sec_match_scale != 1.0:
         pts_sec = pts_sec / sec_match_scale
     
-    # Apply shadow suppression if enabled
+    # Apply shadow suppression to matched pairs jointly. Filtering each side
+    # independently can remove different matches and break correspondence order.
     if shadow_mask is not None:
-        # Convert points to keypoints for filtering
-        kp_ref = [cv2.KeyPoint(x=pt[0], y=pt[1], size=1.0) for pt in pts_ref]
-        kp_sec = [cv2.KeyPoint(x=pt[0], y=pt[1], size=1.0) for pt in pts_sec]
-        
-        # Filter keypoints in shadow regions
-        kp_ref_filtered = suppress_keypoints_in_shadows(kp_ref, shadow_mask)
-        kp_sec_filtered = suppress_keypoints_in_shadows(kp_sec, shadow_mask_sec)
-        
-        # Rebuild point arrays
-        pts_ref = np.float32([kp.pt for kp in kp_ref_filtered])
-        pts_sec = np.float32([kp.pt for kp in kp_sec_filtered])
+        def outside_shadow(points, mask):
+            xy = np.asarray(points, dtype=np.float32).reshape(-1, 2)
+            x, y = xy[:, 0].astype(int), xy[:, 1].astype(int)
+            h, w = mask.shape[:2]
+            in_bounds = (x >= 0) & (x < w) & (y >= 0) & (y < h)
+            visible = np.ones(len(xy), dtype=bool)
+            visible[in_bounds] = mask[y[in_bounds], x[in_bounds]] < 0.5
+            return visible
+
+        keep = outside_shadow(pts_ref, shadow_mask) & outside_shadow(pts_sec, shadow_mask_sec)
+        pts_ref, pts_sec = pts_ref[keep], pts_sec[keep]
 
     if enforce_uniform_distribution and len(pts_ref):
         pts_ref, pts_sec, _ = select_distributed_matches(
@@ -398,7 +400,6 @@ def _align_core(
     }
 
 
-@spaces.GPU(duration=120)
 def process_alignment(
     ref_file,
     sec_file,
@@ -552,8 +553,10 @@ def process_alignment(
         )
 
     except ValueError as e:
+        print(traceback.format_exc(), file=sys.stderr, flush=True)
         return None, f"Registration Failed: {str(e)}", None, None, None, None, None
     except Exception as e:
+        print(traceback.format_exc(), file=sys.stderr, flush=True)
         return None, f"Registration Failed: {str(e)}", None, None, None, None, None
 
 
@@ -684,20 +687,24 @@ def build_interface():
         @spaces.GPU(duration=120)
         def process_wrapper(ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
                             px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s):
-            return process_alignment(
-                ref, sec,
-                pixel_scale_m=px_scale,
-                enable_clahe=clahe,
-                clahe_clip_limit=clip,
-                enable_shadow_suppression=shadow,
-                enable_wallis=wallis,
-                wallis_target_mean=wallis_m,
-                wallis_target_std=wallis_s,
-                sensor_name=sensor,
-                secondary_sensor_name=secondary_sensor,
-                sensor_pair_mode=pair_mode,
-                enforce_uniform_distribution=enforce_uniform
-            )
+            try:
+                return process_alignment(
+                    ref, sec,
+                    pixel_scale_m=px_scale,
+                    enable_clahe=clahe,
+                    clahe_clip_limit=clip,
+                    enable_shadow_suppression=shadow,
+                    enable_wallis=wallis,
+                    wallis_target_mean=wallis_m,
+                    wallis_target_std=wallis_s,
+                    sensor_name=sensor,
+                    secondary_sensor_name=secondary_sensor,
+                    sensor_pair_mode=pair_mode,
+                    enforce_uniform_distribution=enforce_uniform
+                )
+            except Exception as e:
+                print(traceback.format_exc(), file=sys.stderr, flush=True)
+                return None, f"Registration Failed: {e}", None, None, None, None, None
         
         process_btn.click(
             fn=process_wrapper,

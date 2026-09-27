@@ -112,7 +112,7 @@ def test_align_core_synthetic():
 
 
 def test_process_alignment_synthetic():
-    """Verify process_alignment executes on CPU synthetic image pair (mocked GPU)."""
+    """Verify full CPU alignment returns metrics and every downloadable artifact."""
     temp_dir = tempfile.mkdtemp()
     img1_path = os.path.join(temp_dir, "ref.png")
     img2_path = os.path.join(temp_dir, "sec.png")
@@ -132,26 +132,26 @@ def test_process_alignment_synthetic():
         def __init__(self, path):
             self.name = path
 
-    # process_alignment has @spaces.GPU decorator which fails in local test env
-    # We test the inner _align_core instead and verify the overall structure
     result_img, status, csv_path, json_path, geotiff_path, png_path, viz_path = process_alignment(
         MockFile(img1_path), MockFile(img2_path)
     )
 
-    # In local env without GPU, the decorator may fail or pass through
-    # If it passes through, verify the outputs
-    if result_img is not None:
-        from PIL import Image
-        assert isinstance(result_img, Image.Image)
-        assert result_img.size[0] > 0 and result_img.size[1] > 0
-        assert "REGISTRATION COMPLETE" in status
-        assert "RMSE" in status
-        assert "MAE" in status
-        assert "GROUND METRICS" in status
-        assert "DEFORMATION FIELD" in status
+    from PIL import Image
+    assert isinstance(result_img, Image.Image)
+    assert result_img.size[0] > 0 and result_img.size[1] > 0
+    assert "REGISTRATION COMPLETE" in status
+    assert "RMSE" in status
+    assert "MAE" in status
+    assert "GROUND METRICS" in status
+    assert "Spatial Uniformity U:" in status
+    assert "DEFORMATION FIELD" in status
+    assert all(path and os.path.isfile(path) for path in (
+        csv_path, json_path, geotiff_path, png_path, viz_path
+    ))
 
     # Cleanup
     import shutil
+    shutil.rmtree(os.path.dirname(csv_path), ignore_errors=True)
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 

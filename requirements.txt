@@ -7,4 +7,7 @@ gradio
 spaces
 tifffile
 pillow
+matplotlib
+PyYAML
+rasterio
 huggingface_hub<0.25.0
