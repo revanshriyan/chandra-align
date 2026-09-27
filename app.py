@@ -149,11 +149,8 @@ def ensure_sample_files() -> tuple[str, str]:
     return ref_path, sec_path
 
 
-def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.ndarray, str]:
-    """
-    Match features between two images with fallback chain.
-    Returns (src_pts, dst_pts, matcher_name).
-    """
+def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.ndarray, str, dict]:
+    """Run phase-congruency RIFT2 first and disclose any LightGlue/ALIKED handoff."""
     # SIFT and most deep matcher frontends require finite uint8 image arrays.
     def as_uint8(image):
         image = np.asarray(image)
@@ -166,42 +163,41 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
         return np.zeros(image.shape, np.uint8) if hi <= lo else np.clip((image - lo) * (255.0 / (hi - lo)), 0, 255).astype(np.uint8)
 
     img1, img2 = as_uint8(img1), as_uint8(img2)
-    # Try DeepMatcherChain first
+    diagnostics = {
+        "primary_engine": "Phase Congruency + Quad-Tree",
+        "fallback_triggered": False,
+        "fallback_reason": None,
+        "registration_engine": "Phase Congruency + Quad-Tree",
+    }
+    # RIFT2 computes phase-congruency features and is the deterministic primary.
     try:
-        from chandra_align.matching.deep_matchers import ClassicalSIFTMatcher, DeepMatcherChain
-        matcher = DeepMatcherChain(matchers=[ClassicalSIFTMatcher()])
-        res = matcher.match(img1, img2)
-        if len(res.pts_src) >= 4:
-            return res.pts_src, res.pts_ref, f"DeepMatcherChain[{res.matcher_name}]"
-    except Exception:
-        pass
+        from chandra_align.matcher import RIFT2Matcher
+        primary = RIFT2Matcher(npt=2048)
+        src_pts, dst_pts = primary.match(img1, img2)
+        if len(src_pts) >= 4:
+            return src_pts, dst_pts, "RIFT2 (Phase Congruency)", diagnostics
+        primary_error = "RIFT2 returned fewer than four correspondences"
+        fallback_reason = "Low Inlier Ratio (< 0.15)"
+    except Exception as exc:
+        primary_error = str(exc)
+        fallback_reason = "Execution Exception"
 
-    # Fallback to classical SIFT
-    sift = cv2.SIFT_create()
-    kp1, des1 = sift.detectAndCompute(img1, None)
-    kp2, des2 = sift.detectAndCompute(img2, None)
-
-    if des1 is None or des2 is None or len(kp1) < 4 or len(kp2) < 4:
-        return np.empty((0, 2)), np.empty((0, 2)), "Failed"
-
-    bf = cv2.BFMatcher()
-    matches = bf.knnMatch(des1, des2, k=2)
-
-    good = []
-    for pair in matches:
-        if len(pair) < 2:
-            continue
-        m, n = pair
-        if m.distance < 0.75 * n.distance:
-            good.append(m)
-
-    if len(good) < 4:
-        return np.empty((0, 2)), np.empty((0, 2)), "ClassicalSIFT"
-
-    src_pts = np.float32([kp1[m.queryIdx].pt for m in good])
-    dst_pts = np.float32([kp2[m.trainIdx].pt for m in good])
-
-    return src_pts, dst_pts, "ClassicalSIFT"
+    # If the primary cannot produce a geometric candidate at all, make one
+    # bounded LightGlue/ALIKED attempt. Do not silently substitute SIFT here.
+    diagnostics.update(fallback_triggered=True, fallback_reason=fallback_reason)
+    try:
+        from chandra_align.matching.deep_matchers import DeepMatcherChain, LightGlueALIKEDMatcher
+        result = DeepMatcherChain(matchers=[LightGlueALIKEDMatcher(max_keypoints=2048)]).match(
+            img1, img2, min_matches=4
+        )
+        if len(result.pts_src) >= 4:
+            diagnostics["registration_engine"] = f"LightGlue/ALIKED ({result.matcher_name})"
+            return result.pts_src, result.pts_ref, diagnostics["registration_engine"], diagnostics
+        diagnostics["fallback_error"] = result.error_msg or "LightGlue/ALIKED returned fewer than four correspondences"
+    except Exception as exc:
+        diagnostics["fallback_error"] = str(exc)
+    diagnostics["primary_error"] = primary_error
+    return np.empty((0, 2), np.float32), np.empty((0, 2), np.float32), "Failed", diagnostics
 
 
 def _align_core(
@@ -277,7 +273,7 @@ def _align_core(
     except ValueError:
         match_ref, match_sec = ref_processed, sec_processed
         ref_match_scale = sec_match_scale = 1.0
-    pts_ref, pts_sec, engine_name = match_pair_hf(match_ref, match_sec)
+    pts_ref, pts_sec, engine_name, execution_diagnostics = match_pair_hf(match_ref, match_sec)
     if ref_match_scale != 1.0:
         pts_ref = pts_ref / ref_match_scale
     if sec_match_scale != 1.0:
@@ -315,6 +311,57 @@ def _align_core(
 
     inliers = mask.reshape(-1).astype(bool) if mask is not None else np.zeros(len(pts_ref), dtype=bool)
     inlier_cnt = int(inliers.sum())
+
+    # Escalate only when the primary geometric solution is weak. The fallback
+    # is bounded to one LightGlue/ALIKED pass with at most 2048 keypoints.
+    if not execution_diagnostics["fallback_triggered"]:
+        inlier_ratio = inlier_cnt / max(len(pts_ref), 1)
+        primary_uniformity = spatial_distribution_metrics(
+            pts_ref[inliers], ref_original.shape[:2], (8, 8)
+        )["uniformity"] if inlier_cnt else 0.0
+        fallback_reason = None
+        if inlier_ratio < 0.15:
+            fallback_reason = "Low Inlier Ratio (< 0.15)"
+        elif primary_uniformity < 0.125:
+            fallback_reason = "High Spatial Entropy Deficit"
+
+        if fallback_reason:
+            execution_diagnostics.update(
+                fallback_triggered=True, fallback_reason=fallback_reason
+            )
+            try:
+                from chandra_align.matching.deep_matchers import DeepMatcherChain, LightGlueALIKEDMatcher
+                fallback = DeepMatcherChain(
+                    matchers=[LightGlueALIKEDMatcher(max_keypoints=2048)]
+                ).match(match_ref, match_sec, min_matches=4)
+                fallback_ref, fallback_sec = fallback.pts_src, fallback.pts_ref
+                fallback_ref = fallback_ref / ref_match_scale if ref_match_scale != 1.0 else fallback_ref
+                fallback_sec = fallback_sec / sec_match_scale if sec_match_scale != 1.0 else fallback_sec
+                if shadow_mask is not None and len(fallback_ref):
+                    keep = outside_shadow(fallback_ref, shadow_mask) & outside_shadow(fallback_sec, shadow_mask_sec)
+                    fallback_ref, fallback_sec = fallback_ref[keep], fallback_sec[keep]
+                if enforce_uniform_distribution and len(fallback_ref):
+                    fallback_ref, fallback_sec, _ = select_distributed_matches(
+                        fallback_ref, fallback_sec, ref_original.shape[:2],
+                        grid_shape=(8, 8), max_per_bucket=8
+                    )
+                if len(fallback_ref) >= 4:
+                    fallback_H, fallback_mask = cv2.findHomography(
+                        fallback_sec, fallback_ref, cv2.RANSAC, 3.0
+                    )
+                    if fallback_H is not None and fallback_mask is not None:
+                        fallback_inliers = fallback_mask.reshape(-1).astype(bool)
+                        if int(fallback_inliers.sum()) >= 4:
+                            pts_ref, pts_sec = fallback_ref, fallback_sec
+                            H, mask, inliers = fallback_H, fallback_mask, fallback_inliers
+                            inlier_cnt = int(inliers.sum())
+                            engine_name = f"LightGlue/ALIKED ({fallback.matcher_name})"
+                            execution_diagnostics["registration_engine"] = engine_name
+                if execution_diagnostics["registration_engine"] == "Phase Congruency + Quad-Tree":
+                    execution_diagnostics["fallback_error"] = fallback.error_msg or "Fallback did not yield a valid homography"
+            except Exception as exc:
+                execution_diagnostics["fallback_error"] = str(exc)
+
     if inlier_cnt < 4:
         raise ValueError("Registration failed: fewer than four geometrically consistent inliers were found.")
 
@@ -379,6 +426,7 @@ def _align_core(
         "warped_sec": warped_sec,
         "diff_map": diff_map,
         "engine_name": engine_name,
+        "execution_diagnostics": execution_diagnostics,
         "inlier_cnt": inlier_cnt,
         "total_matches": len(pts_ref),
         "rmse_px": rmse_px,
@@ -467,6 +515,10 @@ def process_alignment(
             f"✅ REGISTRATION COMPLETE\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"Matcher Engine: {engine_name}\n"
+            f"Registration Matrix Engine: {result['execution_diagnostics'].get('registration_engine', engine_name)}\n"
+            f"Primary Engine: {result['execution_diagnostics'].get('primary_engine', 'Phase Congruency + Quad-Tree')}\n"
+            f"Fallback Triggered: {result['execution_diagnostics'].get('fallback_triggered', False)}\n"
+            f"Fallback Reason: {result['execution_diagnostics'].get('fallback_reason') or 'None'}\n"
             f"Sensor Pair Mode: {result['sensor_pair_mode']}\n"
             f"Verified Inliers: {inlier_cnt} / {total_matches} ({inlier_pct:.1f}%)\n"
             f"Spatial Uniformity U: {uniformity:.4f} (entropy {spatial_entropy:.4f} nats)\n"
@@ -790,11 +842,28 @@ def build_interface():
         # Examples
         gr.Markdown("### 📝 Example Pairs")
         sample_ref, sample_sec = ensure_sample_files()
+        lro_sample = Path("samples") / "lro_nac.png"
+        example_rows = [[
+            str(lro_sample), sample_sec, "LROC_NAC", "TMC-2", "Optical <-> Optical",
+            True, 0.5, True, 3.0, True, False, 128.0, 50.0
+        ]] if lro_sample.is_file() else []
+        example_labels = ["LRO NAC sample + synthetic counterpart · Tycho demo"] if example_rows else []
+        # Include sensor-specific examples only when their supplied files exist.
+        for filename, sensor, scale, label in (
+            ("ch2_ohrc.png", "OHRC", 0.25, "Chandrayaan-2 OHRC · Tycho preset"),
+            ("ch2_tmc2.png", "TMC-2", 0.5, "Chandrayaan-2 TMC-2 · Tycho preset"),
+            ("ch2_iirs.png", "IIRS", 80.0, "Chandrayaan-2 IIRS · Tycho preset"),
+        ):
+            sample_path = Path("samples") / filename
+            if sample_path.is_file():
+                example_rows.append([
+                    str(sample_path), sample_sec, sensor, "OHRC",
+                    "Optical <-> Infrared" if sensor == "IIRS" else "Optical <-> Optical",
+                    True, scale, True, 3.0, True, False, 128.0, 50.0
+                ])
+                example_labels.append(label)
         gr.Examples(
-            examples=[[
-                sample_ref, sample_sec, "OHRC", "TMC-2", "Optical <-> Optical",
-                True, 0.25, True, 3.0, True, False, 128.0, 50.0
-            ]],
+            examples=example_rows,
             inputs=[
                 ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
                 sensor_pair_mode, enforce_uniformity, pixel_scale,
@@ -807,9 +876,26 @@ def build_interface():
             ],
             fn=process_wrapper,
             run_on_click=True,
-            example_labels=["Run synthetic OHRC / TMC-2 demo"],
-            label="One-click synthetic lunar alignment"
+            example_labels=example_labels,
+            label="One-click lunar alignment presets"
         )
+
+        with gr.Accordion("Scientific Foundation & SAC-ISRO Benchmark Alignment", open=False):
+            gr.Markdown(
+                "**Citation:** R. Makharia, J. G. Singla, Amitabh, N. Dube, and H. Sharma, "
+                "“Comparative Evaluation of Traditional and Deep Learning Feature Matching "
+                "Algorithms using Chandrayaan-2 Lunar Data,” 2025, arXiv:2509.04775. "
+                "[Paper and metadata](https://arxiv.org/abs/2509.04775). The study compares "
+                "traditional and learned matchers across lunar sensor pairs and reports that "
+                "illumination and modality differences can degrade classical matching, while "
+                "learned matching improves robustness in difficult polar/cross-modal cases.\n\n"
+                "**CHANDRA-ALIGN implementation:** RIFT2 phase-congruency features are the "
+                "deterministic, bit-exact primary matcher, with quad-tree distribution checks and geometric verification. "
+                "A single bounded LightGlue/ALIKED escalation is attempted when the primary "
+                "solution has a low inlier ratio, poor spatial coverage, or cannot execute. "
+                "The report records the primary engine, whether escalation was attempted, its "
+                "trigger, and which engine supplied the accepted registration matrix."
+            )
     
     return interface
 
