@@ -861,27 +861,27 @@ def build_interface():
         
         # Examples
         gr.Markdown("### 📝 Example Pairs")
-        sample_ref, sample_sec = ensure_sample_files()
-        lro_sample = Path("samples") / "lro_nac.png"
-        example_rows = [[
-            str(lro_sample), sample_sec, "LROC_NAC", "TMC-2", "Optical <-> Optical",
-            True, 0.5, True, 3.0, True, False, 128.0, 50.0
-        ]] if lro_sample.is_file() else []
-        example_labels = ["LRO NAC sample + synthetic counterpart · Tycho demo"] if example_rows else []
-        # Include sensor-specific examples only when their supplied files exist.
-        for filename, sensor, scale, label in (
-            ("ch2_ohrc.png", "OHRC", 0.25, "Chandrayaan-2 OHRC · Tycho preset"),
-            ("ch2_tmc2.png", "TMC-2", 5.0, "Chandrayaan-2 TMC-2 · Tycho preset"),
-            ("ch2_iirs.png", "IIRS", 80.0, "Chandrayaan-2 IIRS · Tycho preset"),
-        ):
-            sample_path = Path("samples") / filename
-            if sample_path.is_file():
-                example_rows.append([
-                    str(sample_path), sample_sec, sensor, "OHRC",
-                    "Optical <-> Infrared" if sensor == "IIRS" else "Optical <-> Optical",
-                    True, scale, True, 3.0, True, False, 128.0, 50.0
-                ])
-                example_labels.append(label)
+        examples_dir = Path(__file__).resolve().parent / "examples" / "benchmarks"
+        example_specs = (
+            ("ohrc.png", "OHRC", "Optical <-> Optical", 0.25,
+             "OHRC sample · registration self-check"),
+            ("tmc2.png", "TMC-2", "Optical <-> Optical", 5.0,
+             "TMC-2 sample · registration self-check"),
+            ("iirs_band125_demo.png", "IIRS", "Optical <-> Infrared", 80.0,
+             "IIRS Band 125 workflow · synthetic matcher demo"),
+        )
+        example_rows = []
+        example_labels = []
+        for filename, sensor, pair_mode, scale, label in example_specs:
+            sample_path = examples_dir / filename
+            if not sample_path.is_file():
+                raise FileNotFoundError(f"Tracked Gradio example asset is missing: {sample_path}")
+            sample = str(sample_path)
+            example_rows.append([
+                sample, sample, sensor, sensor, pair_mode,
+                True, scale, True, 3.0, True, False, 128.0, 50.0
+            ])
+            example_labels.append(label)
         gr.Examples(
             examples=example_rows,
             inputs=[
@@ -895,6 +895,8 @@ def build_interface():
                 csv_btn, json_btn, geotiff_btn, png_btn, dossier_image
             ],
             fn=process_wrapper,
+            cache_examples=False,
+            examples_per_page=3,
             run_on_click=True,
             example_labels=example_labels,
             label="One-click lunar alignment presets"
