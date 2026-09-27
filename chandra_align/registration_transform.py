@@ -9,7 +9,9 @@ import numpy as np
 MIN_REGISTRATION_INLIERS = 8
 
 
-def estimate_partial_affine(src_points: np.ndarray, dst_points: np.ndarray):
+def estimate_partial_affine(
+    src_points: np.ndarray, dst_points: np.ndarray, ransac_threshold_px: float = 3.0
+):
     """Estimate a finite 4-DOF similarity transform and its RANSAC mask."""
     src = np.asarray(src_points, dtype=np.float32).reshape(-1, 2)
     dst = np.asarray(dst_points, dtype=np.float32).reshape(-1, 2)
@@ -18,8 +20,11 @@ def estimate_partial_affine(src_points: np.ndarray, dst_points: np.ndarray):
     finite = np.isfinite(src).all(axis=1) & np.isfinite(dst).all(axis=1)
     src, dst = src[finite], dst[finite]
     try:
+        threshold = float(ransac_threshold_px)
+        if not np.isfinite(threshold) or threshold <= 0:
+            raise ValueError("RANSAC threshold must be finite and positive")
         matrix, mask = cv2.estimateAffinePartial2D(
-            src, dst, method=cv2.RANSAC, ransacReprojThreshold=3.0,
+            src, dst, method=cv2.RANSAC, ransacReprojThreshold=threshold,
             maxIters=10000, confidence=0.999, refineIters=10,
         )
     except cv2.error:

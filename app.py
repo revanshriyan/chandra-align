@@ -980,15 +980,15 @@ def build_interface():
         examples_dir = Path(__file__).resolve().parent / "docs" / "assets" / "examples"
         example_specs = (
             ("nac_reference_ohrc.png", "ohrc_secondary.png", "OHRC",
-             "Optical <-> Optical", "OHRC vs NASA LROC NAC · 2× GSD gap"),
+             "Optical <-> Optical", "OHRC vs NASA LROC NAC · 2× GSD gap", 3.0),
             ("nac_reference_tmc2.png", "tmc2_secondary.png", "TMC-2",
-             "Optical <-> Optical", "TMC-2 vs NASA LROC NAC · 10× GSD gap"),
+             "Optical <-> Optical", "TMC-2 vs NASA LROC NAC · 10× GSD gap", 3.0),
             ("nac_reference_iirs.png", "iirs_band125_secondary.png", "IIRS",
-             "Optical <-> Infrared", "IIRS Band 125 (2.802 µm) vs NASA LROC NAC · 160× GSD gap"),
+             "Optical <-> Infrared", "IIRS Band 125 (2.802 µm) vs NASA LROC NAC · 160× GSD gap", 4.5),
         )
         example_rows = []
         example_labels = []
-        for reference_filename, secondary_filename, secondary_sensor, pair_mode, label in example_specs:
+        for reference_filename, secondary_filename, secondary_sensor, pair_mode, label, clip_limit in example_specs:
             reference_path = examples_dir / reference_filename
             secondary_path = examples_dir / secondary_filename
             for sample_path in (reference_path, secondary_path):
@@ -996,7 +996,7 @@ def build_interface():
                     raise FileNotFoundError(f"Tracked Gradio example asset is missing: {sample_path}")
             example_rows.append([
                 str(reference_path), str(secondary_path), "LROC_NAC", secondary_sensor,
-                pair_mode, False, 0.5, True, 3.0, False, False, 128.0, 50.0
+                pair_mode, False, 0.5, True, clip_limit, False, False, 128.0, 50.0
             ])
             example_labels.append(label)
         gr.Examples(
