@@ -3,7 +3,7 @@ torchvision
 opencv-python-headless
 numpy
 scipy
-gradio
+gradio==4.44.1
 spaces
 tifffile
 pillow
