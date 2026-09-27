@@ -92,6 +92,12 @@ def test_align_core_synthetic():
     assert result["mae_px"] >= 0.0
     assert result["ground_metrics"].rmse_m > 0.0
     assert result["ground_metrics"].pixel_scale_m == 0.25
+    assert 0.0 <= result["uniformity"] <= 1.0
+    assert result["refinement_stats"]["status"] in (
+        "subpixel_model_reestimated", "subpixel_pairs_refined", "no_subpixel_pairs",
+        "insufficient_verified_matches",
+    )
+    assert result["inlier_cnt"] <= 8 * 8 * 8
     assert len(result["deformation_vectors"]) == result["inlier_cnt"]
     assert result["grid_analysis"]["grid_shape"] == (8, 8)
 
@@ -329,7 +335,7 @@ def test_export_functions():
         reader = csv.reader(f)
         rows = list(reader)
     assert len(rows) == 3  # header + 2 data rows
-    assert rows[0] == ['point_id', 'ref_x_px', 'ref_y_px', 'sec_x_px', 'sec_y_px', 'residual_px', 'residual_m', 'inlier_weight']
+    assert rows[0] == ['point_id', 'ref_x', 'ref_y', 'sec_x', 'sec_y', 'residual_px', 'residual_m', 'bucket_id']
     
     # Test homography JSON export
     json_path = os.path.join(temp_dir, "test_transform.json")

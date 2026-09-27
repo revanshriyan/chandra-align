@@ -16,6 +16,7 @@ from typing import List, Dict, Optional, Tuple, Any, Union
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from datetime import datetime
+from chandra_align.features import bucket_ids
 
 
 @dataclass
@@ -28,18 +29,20 @@ class GCPRecord:
     sec_y_px: float
     residual_px: float
     residual_m: float
-    inlier_weight: float
+    bucket_id: int
 
 
 def export_gcp_csv(
     deformation_vectors: List[Any],
     output_path: str,
     pixel_scale_m: float = 0.25,
-    include_header: bool = True
+    include_header: bool = True,
+    image_shape: Optional[Tuple[int, int]] = None,
+    grid_shape: Tuple[int, int] = (8, 8)
 ) -> None:
     """
     Export matched inlier keypoints to CSV formatted as:
-    point_id, ref_x_px, ref_y_px, sec_x_px, sec_y_px, residual_px, residual_m, inlier_weight
+    point_id, ref_x, ref_y, sec_x, sec_y, residual_px, residual_m, bucket_id
     
     Args:
         deformation_vectors: List of objects with ref_x, ref_y, sec_x, sec_y, dx_px, dy_px, 
@@ -48,8 +51,14 @@ def export_gcp_csv(
         pixel_scale_m: Ground resolution in meters per pixel
         include_header: Whether to include CSV header row
     """
+    vectors = list(deformation_vectors)
+    if image_shape is None:
+        max_x = max((float(v.ref_x) for v in vectors), default=0.0)
+        max_y = max((float(v.ref_y) for v in vectors), default=0.0)
+        image_shape = (max(1, int(np.ceil(max_y + 1))), max(1, int(np.ceil(max_x + 1))))
+    ids = bucket_ids([(v.ref_x, v.ref_y) for v in vectors], image_shape, grid_shape) if vectors else []
     records = []
-    for i, v in enumerate(deformation_vectors):
+    for i, v in enumerate(vectors):
         record = GCPRecord(
             point_id=i,
             ref_x_px=float(v.ref_x),
@@ -58,7 +67,7 @@ def export_gcp_csv(
             sec_y_px=float(v.sec_y),
             residual_px=float(v.magnitude_px),
             residual_m=float(v.magnitude_m),
-            inlier_weight=float(getattr(v, 'inlier_weight', 1.0))
+            bucket_id=int(ids[i])
         )
         records.append(record)
     
@@ -66,15 +75,14 @@ def export_gcp_csv(
         writer = csv.writer(f)
         if include_header:
             writer.writerow([
-                'point_id', 'ref_x_px', 'ref_y_px', 
-                'sec_x_px', 'sec_y_px', 'residual_px', 
-                'residual_m', 'inlier_weight'
+                'point_id', 'ref_x', 'ref_y',
+                'sec_x', 'sec_y', 'residual_px', 'residual_m', 'bucket_id'
             ])
         for r in records:
             writer.writerow([
                 r.point_id, r.ref_x_px, r.ref_y_px,
                 r.sec_x_px, r.sec_y_px, r.residual_px,
-                r.residual_m, r.inlier_weight
+                r.residual_m, r.bucket_id
             ])
 
 
@@ -87,7 +95,8 @@ def export_homography_json(
     spatial_entropy: Optional[float] = None,
     inlier_count: int = 0,
     matcher_name: str = "Unknown",
-    trust_flag: str = "UNTRUSTED"
+    trust_flag: str = "UNTRUSTED",
+    uniformity_score: Optional[float] = None
 ) -> None:
     """
     Export homography matrix and metrics to JSON.
@@ -122,6 +131,7 @@ def export_homography_json(
         "homography_matrix": H.tolist(),
         "inlier_count": inlier_count,
         "spatial_entropy": float(spatial_entropy) if spatial_entropy is not None else "UNMEASURED",
+        "spatial_uniformity": float(uniformity_score) if uniformity_score is not None else "UNMEASURED",
         "metrics_px": {
             "rmse_px": metrics.get("rmse_px", "UNMEASURED"),
             "mae_px": metrics.get("mae_px", "UNMEASURED"),
@@ -329,7 +339,10 @@ def export_full_package(
     matcher_name: str = "Unknown",
     trust_flag: str = "UNTRUSTED",
     reference_geotransform: Optional[Tuple] = None,
-    reference_projection: Optional[str] = None
+    reference_projection: Optional[str] = None,
+    image_shape: Optional[Tuple[int, int]] = None,
+    grid_shape: Tuple[int, int] = (8, 8),
+    spatial_uniformity: Optional[float] = None
 ) -> Dict[str, str]:
     """
     Export complete scientific package with all artifacts.
@@ -344,14 +357,15 @@ def export_full_package(
     
     # 1. GCP CSV
     csv_path = output_dir / f"{base_name}_gcps.csv"
-    export_gcp_csv(deformation_vectors, str(csv_path), pixel_scale_m)
+    export_gcp_csv(deformation_vectors, str(csv_path), pixel_scale_m,
+                   image_shape=image_shape, grid_shape=grid_shape)
     paths["gcp_csv"] = str(csv_path)
     
     # 2. Homography + Metrics JSON
     json_path = output_dir / f"{base_name}_transform.json"
     export_homography_json(
         H, metrics, str(json_path), sensor_name, pixel_scale_m,
-        spatial_entropy, inlier_count, matcher_name, trust_flag
+        spatial_entropy, inlier_count, matcher_name, trust_flag, spatial_uniformity
     )
     paths["transform_json"] = str(json_path)
     

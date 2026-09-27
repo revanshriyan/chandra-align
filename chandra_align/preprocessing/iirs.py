@@ -22,13 +22,17 @@ def find_optimal_reflectance_band(wavelengths_um: List[float]) -> Tuple[int, flo
     3. Any band < 2.5 µm
     Strictly avoids thermal emission wavelengths (> 3.0 µm).
     """
-    if not wavelengths_um:
+    if wavelengths_um is None or len(wavelengths_um) == 0:
         raise ValueError("Wavelength list cannot be empty.")
 
-    valid_bands = [(idx, wl) for idx, wl in enumerate(wavelengths_um) if wl < 3.0]
+    valid_bands = [(idx, float(wl)) for idx, wl in enumerate(wavelengths_um)
+                   if np.isfinite(wl) and float(wl) < 3.0]
     if not valid_bands:
-        # Fallback to first band if metadata is malformed
-        return 0, wavelengths_um[0]
+        finite_bands = [(idx, float(wl)) for idx, wl in enumerate(wavelengths_um) if np.isfinite(wl)]
+        if finite_bands:
+            # Retain the documented fallback when metadata contains only thermal bands.
+            return finite_bands[0]
+        raise ValueError("No finite wavelength values were found.")
 
     # Check if 1.55 µm is available (within tolerance)
     target_155 = 1.55
@@ -64,8 +68,12 @@ def histogram_match_to_reference(
     Matches the cumulative histogram of the source 2D raster to the reference 2D raster.
     Both inputs should be 2D arrays normalized to uint8 (0..255).
     """
-    if source_band.ndim != 2 or ref_raster.ndim != 2:
+    source_band = np.asarray(source_band)
+    ref_raster = np.asarray(ref_raster)
+    if source_band.ndim != 2 or ref_raster.ndim != 2 or source_band.size == 0 or ref_raster.size == 0:
         raise ValueError("Histogram matching requires 2D arrays.")
+    source_band = np.nan_to_num(source_band)
+    ref_raster = np.nan_to_num(ref_raster)
 
     # Calculate CDFs
     src_hist, _ = np.histogram(source_band.flatten(), 256, [0, 256])
@@ -96,6 +104,9 @@ def preprocess_iirs_raster(
     Main entry point for IIRS hyperspectral preprocessing.
     - multiband_data shape: (C, H, W) or (H, W)
     """
+    multiband_data = np.asarray(multiband_data)
+    if multiband_data.size == 0:
+        raise ValueError("IIRS raster must not be empty.")
     if multiband_data.ndim == 2:
         band_data = multiband_data
         selected_idx = 0
@@ -112,11 +123,12 @@ def preprocess_iirs_raster(
         raise ValueError(f"Invalid raster shape: {multiband_data.shape}")
 
     # Normalize to uint8 (min-max scaling with 2% clip)
+    band_data = np.nan_to_num(np.asarray(band_data, dtype=np.float32))
     p2, p98 = np.percentile(band_data, (2, 98))
     if p98 > p2:
         norm_band = np.clip((band_data - p2) / (p98 - p2) * 255.0, 0, 255).astype(np.uint8)
     else:
-        norm_band = band_data.astype(np.uint8)
+        norm_band = np.zeros(band_data.shape, dtype=np.uint8)
 
     # Apply CLAHE first to equalize local SWIR contrast
     clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
@@ -125,6 +137,10 @@ def preprocess_iirs_raster(
     # Perform histogram matching if reference raster provided
     hist_matched = False
     if ref_raster is not None:
+        ref_raster = np.asarray(ref_raster)
+        if ref_raster.ndim != 2 or ref_raster.size == 0:
+            raise ValueError("Reference raster for IIRS histogram matching must be a non-empty 2D image.")
+        ref_raster = np.nan_to_num(ref_raster)
         if ref_raster.dtype != np.uint8:
             ref_p2, ref_p98 = np.percentile(ref_raster, (2, 98))
             if ref_p98 > ref_p2:

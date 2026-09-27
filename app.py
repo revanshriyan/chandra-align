@@ -24,8 +24,11 @@ from PIL import Image
 
 # Import new modules
 from chandra_align.preprocessing import (
-    apply_clahe, detect_shadows, apply_wallis_filter, preprocess_pipeline, suppress_keypoints_in_shadows
+    apply_clahe, detect_shadows, apply_wallis_filter, preprocess_multimodal_pair,
+    preprocess_iirs_raster, resize_to_common_ground_sample, suppress_keypoints_in_shadows
 )
+from chandra_align.features import select_distributed_matches, spatial_distribution_metrics
+from chandra_align.refine import refine_subpixel_ncc
 from chandra_align.metrics import (
     compute_deformation_field, grid_deformation_analysis, compute_ground_metrics,
     get_sensor_pixel_scale, metrics_bundle_with_ground, ResidualVector, GroundMetrics
@@ -209,7 +212,11 @@ def _align_core(
     enable_shadow_suppression: bool = True,
     enable_wallis: bool = False,
     wallis_target_mean: float = 128.0,
-    wallis_target_std: float = 50.0
+    wallis_target_std: float = 50.0,
+    enforce_uniform_distribution: bool = True,
+    sensor_pair_mode: str = "Optical <-> Optical",
+    secondary_sensor_name: str = "TMC-2",
+    reference_sensor_name: str = "OHRC"
 ) -> dict:
     """
     Core alignment logic - runs on GPU when called from process_alignment.
@@ -224,14 +231,28 @@ def _align_core(
         raise ValueError("Pixel scale must be a finite positive number of meters per pixel.") from exc
     if not math.isfinite(pixel_scale_m) or pixel_scale_m <= 0:
         raise ValueError("Pixel scale must be a finite positive number of meters per pixel.")
+    if sensor_pair_mode not in ("Optical <-> Optical", "Optical <-> Infrared"):
+        raise ValueError("Unsupported sensor pair mode.")
+    if (sensor_pair_mode == "Optical <-> Infrared"
+            and "IIRS" not in (str(reference_sensor_name).upper(), str(secondary_sensor_name).upper())):
+        raise ValueError("Optical <-> Infrared mode requires IIRS as the reference or secondary sensor.")
     
-    # Apply preprocessing
+    # Apply sensor-aware radiometric preprocessing.
     ref_processed = ref_img.copy()
     sec_processed = sec_img.copy()
-    
-    if enable_clahe:
+
+    if sensor_pair_mode == "Optical <-> Infrared":
+        if str(reference_sensor_name).upper() == "IIRS":
+            ref_processed = preprocess_iirs_raster(ref_processed).processed_2d_raster
+        if str(secondary_sensor_name).upper() == "IIRS":
+            sec_processed = preprocess_iirs_raster(sec_processed).processed_2d_raster
+
+    if enable_clahe and sensor_pair_mode != "Optical <-> Infrared":
         ref_processed = apply_clahe(ref_processed, clip_limit=clahe_clip_limit, normalize_range=(0.0, 255.0))
         sec_processed = apply_clahe(sec_processed, clip_limit=clahe_clip_limit, normalize_range=(0.0, 255.0))
+
+    if sensor_pair_mode == "Optical <-> Infrared":
+        ref_processed, sec_processed = preprocess_multimodal_pair(ref_processed, sec_processed)
     
     shadow_mask = None
     shadow_mask_sec = None
@@ -244,8 +265,22 @@ def _align_core(
         ref_processed = apply_wallis_filter(ref_processed, target_mean=wallis_target_mean, target_std=wallis_target_std)
         sec_processed = apply_wallis_filter(sec_processed, target_mean=wallis_target_mean, target_std=wallis_target_std)
     
-    # Feature matching on processed images
-    pts_ref, pts_sec, engine_name = match_pair_hf(ref_processed, sec_processed)
+    # Match at a common ground sample distance. Coordinates are restored to each
+    # source image before geometry is estimated.
+    try:
+        ref_gsd_m = pixel_scale_m
+        sec_gsd_m = get_sensor_pixel_scale(secondary_sensor_name)
+        target_gsd_m = max(ref_gsd_m, sec_gsd_m)
+        match_ref, ref_match_scale = resize_to_common_ground_sample(ref_processed, ref_gsd_m, target_gsd_m)
+        match_sec, sec_match_scale = resize_to_common_ground_sample(sec_processed, sec_gsd_m, target_gsd_m)
+    except ValueError:
+        match_ref, match_sec = ref_processed, sec_processed
+        ref_match_scale = sec_match_scale = 1.0
+    pts_ref, pts_sec, engine_name = match_pair_hf(match_ref, match_sec)
+    if ref_match_scale != 1.0:
+        pts_ref = pts_ref / ref_match_scale
+    if sec_match_scale != 1.0:
+        pts_sec = pts_sec / sec_match_scale
     
     # Apply shadow suppression if enabled
     if shadow_mask is not None:
@@ -260,6 +295,11 @@ def _align_core(
         # Rebuild point arrays
         pts_ref = np.float32([kp.pt for kp in kp_ref_filtered])
         pts_sec = np.float32([kp.pt for kp in kp_sec_filtered])
+
+    if enforce_uniform_distribution and len(pts_ref):
+        pts_ref, pts_sec, _ = select_distributed_matches(
+            pts_ref, pts_sec, ref_original.shape[:2], grid_shape=(8, 8), max_per_bucket=8
+        )
     
     if len(pts_ref) < 4:
         raise ValueError("Insufficient keypoint correspondences detected.")
@@ -276,12 +316,34 @@ def _align_core(
     if inlier_cnt < 4:
         raise ValueError("Registration failed: fewer than four geometrically consistent inliers were found.")
 
+    # Refine only geometrically verified matches, then re-estimate the model.
+    refinement_stats = {"refined_pairs": 0, "status": "insufficient_verified_matches"}
+    inlier_ref, inlier_sec = pts_ref[inliers], pts_sec[inliers]
+    try:
+        refined_ref, refined_sec, refinement_stats = refine_subpixel_ncc(
+            ref_processed, sec_processed, inlier_ref, inlier_sec,
+            ncc_window=11, search_range_px=1
+        )
+        refinement_stats["status"] = "subpixel_pairs_refined" if len(refined_ref) else "no_subpixel_pairs"
+        if len(refined_ref) >= 4:
+            refined_H, refined_mask = cv2.findHomography(refined_sec, refined_ref, cv2.RANSAC, 3.0)
+            if refined_H is not None and refined_mask is not None:
+                refined_inliers = refined_mask.reshape(-1).astype(bool)
+                if int(refined_inliers.sum()) >= 4:
+                    H = refined_H
+                    inlier_ref = refined_ref[refined_inliers]
+                    inlier_sec = refined_sec[refined_inliers]
+                    refinement_stats["status"] = "subpixel_model_reestimated"
+    except (cv2.error, ValueError, FloatingPointError) as exc:
+        refinement_stats = {"refined_pairs": 0, "status": f"skipped: {exc}"}
+
     warped_sec = cv2.warpPerspective(sec_original, H, (ref_original.shape[1], ref_original.shape[0]))
     diff_map = cv2.absdiff(ref_original, warped_sec)
 
-    pts_sec_h = cv2.perspectiveTransform(pts_sec[inliers].reshape(-1, 1, 2), H).squeeze()
-    residuals_vec = pts_ref[inliers] - pts_sec_h
-    residuals_mag = np.linalg.norm(residuals_vec, axis=1) if inlier_cnt > 0 else np.array([0])
+    inlier_cnt = len(inlier_ref)
+    pts_sec_h = cv2.perspectiveTransform(inlier_sec.reshape(-1, 1, 2), H).reshape(-1, 2)
+    residuals_vec = inlier_ref - pts_sec_h
+    residuals_mag = np.linalg.norm(residuals_vec, axis=1)
 
     rmse_px = float(np.sqrt(np.mean(residuals_mag ** 2))) if len(residuals_mag) > 0 else 0.0
     mae_px = float(np.mean(residuals_mag)) if len(residuals_mag) > 0 else 0.0
@@ -291,7 +353,7 @@ def _align_core(
 
     # Compute deformation field
     deformation_vectors = compute_deformation_field(
-        pts_ref[inliers], pts_sec[inliers], H, pixel_scale_m
+        inlier_ref, inlier_sec, H, pixel_scale_m
     )
     
     # Grid deformation analysis
@@ -303,9 +365,10 @@ def _align_core(
     # Spatial entropy (uniformity)
     from chandra_align.evaluators.quadtree import evaluate_quadtree_uniformity
     uniformity = 0.0
+    distribution = spatial_distribution_metrics(inlier_ref, ref_original.shape[:2], (8, 8))
     if inlier_cnt > 0:
-        quadtree_result = evaluate_quadtree_uniformity(pts_ref[inliers], ref_original.shape[:2], depth=4)
-        uniformity = quadtree_result.uniformity_score
+        quadtree_result = evaluate_quadtree_uniformity(inlier_ref, ref_original.shape[:2], depth=4)
+        uniformity = distribution["uniformity"]
 
     return {
         "side_by_side_rgb": side_by_side_rgb,
@@ -319,12 +382,17 @@ def _align_core(
         "rmse_px": rmse_px,
         "mae_px": mae_px,
         "H": H,
-        "pts_ref_inliers": pts_ref[inliers],
-        "pts_sec_inliers": pts_sec[inliers],
+        "pts_ref_inliers": inlier_ref,
+        "pts_sec_inliers": inlier_sec,
         "deformation_vectors": deformation_vectors,
         "grid_analysis": grid_analysis,
         "ground_metrics": ground_metrics,
         "uniformity": uniformity,
+        "spatial_entropy": distribution["spatial_entropy"],
+        "occupied_buckets": distribution["occupied_buckets"],
+        "quadtree_uniformity": quadtree_result.uniformity_score if inlier_cnt > 0 else 0.0,
+        "refinement_stats": refinement_stats,
+        "sensor_pair_mode": sensor_pair_mode,
         "shadow_mask": shadow_mask,
         "pixel_scale_m": pixel_scale_m
     }
@@ -341,7 +409,10 @@ def process_alignment(
     enable_wallis: bool = False,
     wallis_target_mean: float = 128.0,
     wallis_target_std: float = 50.0,
-    sensor_name: str = "OHRC"
+    sensor_name: str = "OHRC",
+    secondary_sensor_name: str = "TMC-2",
+    sensor_pair_mode: str = "Optical <-> Optical",
+    enforce_uniform_distribution: bool = True
 ):
     """
     Main alignment pipeline - runs on GPU when called from process_wrapper.
@@ -361,7 +432,11 @@ def process_alignment(
             enable_shadow_suppression=enable_shadow_suppression,
             enable_wallis=enable_wallis,
             wallis_target_mean=wallis_target_mean,
-            wallis_target_std=wallis_target_std
+            wallis_target_std=wallis_target_std,
+            enforce_uniform_distribution=enforce_uniform_distribution,
+            sensor_pair_mode=sensor_pair_mode,
+            secondary_sensor_name=secondary_sensor_name,
+            reference_sensor_name=sensor_name
         )
 
         side_by_side_rgb = result["side_by_side_rgb"]
@@ -378,6 +453,8 @@ def process_alignment(
         grid_analysis = result["grid_analysis"]
         ground_metrics = result["ground_metrics"]
         uniformity = result["uniformity"]
+        spatial_entropy = result["spatial_entropy"]
+        refinement_stats = result["refinement_stats"]
         pixel_scale_m = result["pixel_scale_m"]
 
         # Build comprehensive report
@@ -389,8 +466,10 @@ def process_alignment(
             f"✅ REGISTRATION COMPLETE\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"Matcher Engine: {engine_name}\n"
+            f"Sensor Pair Mode: {result['sensor_pair_mode']}\n"
             f"Verified Inliers: {inlier_cnt} / {total_matches} ({inlier_pct:.1f}%)\n"
-            f"Spatial Uniformity: {uniformity:.4f}\n"
+            f"Spatial Uniformity U: {uniformity:.4f} (entropy {spatial_entropy:.4f} nats)\n"
+            f"Refined Matches: {refinement_stats.get('refined_pairs', 0)} ({refinement_stats.get('status', 'not run')})\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"PIXEL METRICS:\n"
             f"  RMSE: {rmse_px:.4f} px\n"
@@ -426,11 +505,14 @@ def process_alignment(
             base_name,
             pixel_scale_m=pixel_scale_m,
             sensor_name=sensor_name,
-            spatial_entropy=uniformity,
+            spatial_entropy=spatial_entropy,
             inlier_count=inlier_cnt,
             total_matches=total_matches,
             matcher_name=engine_name,
-            trust_flag="TRUSTED" if inlier_cnt > 50 and rmse_px < 1.0 else "UNTRUSTED"
+            trust_flag="TRUSTED" if inlier_cnt > 50 and rmse_px < 1.0 else "UNTRUSTED",
+            image_shape=ref_original.shape[:2],
+            grid_shape=(8, 8),
+            spatial_uniformity=uniformity
         )
         
         # Also create the 4-panel scientific dossier
@@ -502,22 +584,36 @@ def build_interface():
                 # Advanced Controls
                 gr.Markdown("### ⚙️ Advanced Photogrammetric Controls")
                 
-                with gr.Accordion("Sensor & Resolution", open=True):
+                with gr.Accordion("Sensor Pair & Resolution", open=True):
                     sensor_dropdown = gr.Dropdown(
                         choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
                         value="OHRC",
-                        label="Sensor Type"
+                        label="Reference Sensor"
+                    )
+                    secondary_sensor_dropdown = gr.Dropdown(
+                        choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
+                        value="TMC-2",
+                        label="Secondary Sensor"
+                    )
+                    sensor_pair_mode = gr.Dropdown(
+                        choices=["Optical <-> Optical", "Optical <-> Infrared"],
+                        value="Optical <-> Optical",
+                        label="Sensor Pair Mode"
                     )
                     pixel_scale = gr.Number(
                         value=0.25,
-                        label="Pixel Scale (m/px)",
-                        minimum=0.1,
-                        maximum=5.0,
+                        label="Reference Pixel Scale (m/px)",
+                        minimum=0.01,
+                        maximum=100.0,
                         step=0.01,
                         info="Ground resolution in meters per pixel"
                     )
                 
                 with gr.Accordion("Illumination-Invariant Preprocessing", open=True):
+                    enforce_uniformity = gr.Checkbox(
+                        value=True,
+                        label="Enforce Uniform Keypoint Distribution (ANMS / 8×8 buckets)"
+                    )
                     enable_clahe = gr.Checkbox(value=True, label="CLAHE Enhancement")
                     clahe_clip = gr.Slider(
                         minimum=1.0, maximum=10.0, value=3.0, step=0.5,
@@ -586,7 +682,8 @@ def build_interface():
         
         # Event handlers
         @spaces.GPU(duration=120)
-        def process_wrapper(ref, sec, sensor, px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s):
+        def process_wrapper(ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
+                            px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s):
             return process_alignment(
                 ref, sec,
                 pixel_scale_m=px_scale,
@@ -596,13 +693,18 @@ def build_interface():
                 enable_wallis=wallis,
                 wallis_target_mean=wallis_m,
                 wallis_target_std=wallis_s,
-                sensor_name=sensor
+                sensor_name=sensor,
+                secondary_sensor_name=secondary_sensor,
+                sensor_pair_mode=pair_mode,
+                enforce_uniform_distribution=enforce_uniform
             )
         
         process_btn.click(
             fn=process_wrapper,
+            api_name="predict",
             inputs=[
-                ref_file, sec_file, sensor_dropdown, pixel_scale,
+                ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
+                sensor_pair_mode, enforce_uniformity, pixel_scale,
                 enable_clahe, clahe_clip, enable_shadow, enable_wallis,
                 wallis_mean, wallis_std
             ],

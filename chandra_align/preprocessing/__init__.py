@@ -28,6 +28,12 @@ from chandra_align.preprocessing.general import (
     preprocess_pipeline,
     suppress_keypoints_in_shadows,
 )
+from chandra_align.preprocessing.multimodal import (
+    gradient_structure,
+    gaussian_scale_pyramid,
+    preprocess_multimodal_pair,
+    resize_to_common_ground_sample,
+)
 
 __all__ = [
     # SAR preprocessing
@@ -46,4 +52,8 @@ __all__ = [
     "apply_wallis_adaptive",
     "preprocess_pipeline",
     "suppress_keypoints_in_shadows",
+    "gradient_structure",
+    "gaussian_scale_pyramid",
+    "preprocess_multimodal_pair",
+    "resize_to_common_ground_sample",
 ]

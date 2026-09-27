@@ -217,12 +217,16 @@ def refine_subpixel_ncc(img_a, img_b, pts_a, pts_b, ncc_window=11, search_range_
         t, bo = res[py - 1, px], res[py + 1, px]
         denom_x = (rr - 2 * cc + l)
         denom_y = (bo - 2 * cc + t)
-        dx = 0.5 * (rr - l) / denom_x if abs(denom_x) > 1e-12 else 0.0
-        dy = 0.5 * (bo - t) / denom_y if abs(denom_y) > 1e-12 else 0.0
+        # For a concave peak the denominator is negative; this sign convention
+        # returns a positive offset when the sampled maximum lies to the right/down.
+        dx = 0.5 * (l - rr) / denom_x if abs(denom_x) > 1e-12 else 0.0
+        dy = 0.5 * (t - bo) / denom_y if abs(denom_y) > 1e-12 else 0.0
         if abs(dx) > 1.0 or abs(dy) > 1.0:
             continue  # parabola apex outside the ±1 px neighbourhood: degenerate
-        sub_x = x0 + px + float(np.clip(dx, -1, 1))
-        sub_y = y0 + py + float(np.clip(dy, -1, 1))
+        # matchTemplate reports the patch's top-left corner; restore its center
+        # before applying the fitted fractional offset.
+        sub_x = x0 + px + r + float(np.clip(dx, -1, 1))
+        sub_y = y0 + py + r + float(np.clip(dy, -1, 1))
         out_b.append((sub_x, sub_y))
         kept_a.append((xa, ya))
     if not out_b:
