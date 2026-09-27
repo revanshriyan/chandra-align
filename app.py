@@ -53,6 +53,33 @@ IIRS_MAX_IMAGE_DIMENSION = 12000
 IIRS_MIN_MATCH_LONG_SIDE = 320
 
 
+def _estimate_partial_affine_with_threshold(src_points, dst_points, threshold_px):
+    """Estimate affine geometry with a threshold-aware and version-safe call."""
+    try:
+        return _estimate_partial_affine(src_points, dst_points, threshold_px)
+    except TypeError:
+        # Some Space workers can briefly retain the previous two-argument
+        # helper during a rolling deployment. Keep the requested sensor
+        # threshold by fitting directly through OpenCV on those workers.
+        src = np.asarray(src_points, dtype=np.float32).reshape(-1, 2)
+        dst = np.asarray(dst_points, dtype=np.float32).reshape(-1, 2)
+        if len(src) != len(dst) or len(src) < 3:
+            return None, np.zeros(len(src), dtype=bool)
+        finite = np.isfinite(src).all(axis=1) & np.isfinite(dst).all(axis=1)
+        if int(finite.sum()) < 3:
+            return None, np.zeros(len(src), dtype=bool)
+        matrix, mask = cv2.estimateAffinePartial2D(
+            src[finite], dst[finite], method=cv2.RANSAC,
+            ransacReprojThreshold=float(threshold_px), maxIters=10000,
+            confidence=0.999, refineIters=10,
+        )
+        if matrix is None or mask is None or not np.isfinite(matrix).all():
+            return None, np.zeros(len(src), dtype=bool)
+        inliers = np.zeros(len(src), dtype=bool)
+        inliers[np.flatnonzero(finite)] = mask.reshape(-1).astype(bool)
+        return matrix.astype(np.float64), inliers
+
+
 def _read_grayscale_image(image_file, max_dimension: int = MAX_IMAGE_DIMENSION) -> np.ndarray:
     """Decode an image input, normalize its channels/depth, and cap its dimensions."""
     if isinstance(image_file, np.ndarray):
@@ -416,7 +443,9 @@ def _align_core(
 
     geometry_exception = False
     try:
-        affine_matrix, inliers = _estimate_partial_affine(pts_sec, pts_ref, ransac_threshold_px)
+        affine_matrix, inliers = _estimate_partial_affine_with_threshold(
+            pts_sec, pts_ref, ransac_threshold_px
+        )
     except cv2.error:
         affine_matrix, inliers = None, np.zeros(len(pts_ref), dtype=bool)
         geometry_exception = True
@@ -459,7 +488,7 @@ def _align_core(
                         grid_shape=(8, 8), max_per_bucket=8
                     )
                 if len(fallback_ref) >= 3:
-                    fallback_affine, fallback_inliers = _estimate_partial_affine(
+                    fallback_affine, fallback_inliers = _estimate_partial_affine_with_threshold(
                         fallback_sec, fallback_ref, ransac_threshold_px
                     )
                     if fallback_affine is not None:
@@ -490,7 +519,7 @@ def _align_core(
         )
         refinement_stats["status"] = "subpixel_pairs_refined" if len(refined_ref) else "no_subpixel_pairs"
         if len(refined_ref) >= 3:
-            refined_affine, refined_inliers = _estimate_partial_affine(
+            refined_affine, refined_inliers = _estimate_partial_affine_with_threshold(
                 refined_sec, refined_ref, ransac_threshold_px
             )
             if refined_affine is not None:
