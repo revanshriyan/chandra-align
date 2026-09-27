@@ -159,6 +159,28 @@ def check_preprocessing() -> str:
     return f"uint8 range={gray.min()}..{gray.max()}, CLAHE/Sobel std={np.std(shadow_like):.1f}"
 
 
+def check_iirs_and_multimodal_signatures() -> str:
+    import inspect
+    import numpy as np
+    from chandra_align.preprocessing import preprocess_iirs_raster, resize_to_common_ground_sample
+
+    iirs_parameters = inspect.signature(preprocess_iirs_raster).parameters
+    resize_parameters = inspect.signature(resize_to_common_ground_sample).parameters
+    if "contrast_percentiles" not in iirs_parameters or "clahe_clip_limit" not in iirs_parameters:
+        raise AssertionError("IIRS preprocessing does not expose configurable contrast/CLAHE controls")
+    if "minimum_long_side" not in resize_parameters:
+        raise AssertionError("GSD resizer does not accept minimum_long_side")
+    cube_band = np.random.default_rng(125).normal(100, 15, (384, 384)).astype(np.float32)
+    iirs = preprocess_iirs_raster(
+        cube_band, contrast_percentiles=(1.0, 99.0), clahe_clip_limit=4.5
+    ).processed_2d_raster
+    ref = np.random.default_rng(5).integers(0, 256, (512, 512), dtype=np.uint8)
+    resized, scale = resize_to_common_ground_sample(ref, 0.5, 10.0, 192)
+    if iirs.shape != cube_band.shape or resized.shape[0] < 192 or resized.shape[1] < 192:
+        raise AssertionError(f"Preprocess/resize shape contract failed: {iirs.shape}/{resized.shape}")
+    return f"IIRS CLAHE output={iirs.shape}; common-GSD resized={resized.shape}, scale={scale:.3f}"
+
+
 def check_affine_and_gate() -> str:
     import cv2
     import numpy as np
@@ -494,6 +516,7 @@ def main(argv: list[str] | None = None) -> int:
     run_check("ODE ingestion", "data/raw/nac staging", check_raw_staging)
     run_check("Registration", "OHRC/TMC-2/IIRS GSD pyramid", check_gsd_factors)
     run_check("Registration", "Percentile + CLAHE + OHRC Sobel", check_preprocessing)
+    run_check("Preprocessing API", "IIRS contrast controls / minimum match extent", check_iirs_and_multimodal_signatures)
     run_check("Registration", "Partial Affine stability / 8-inlier gate", check_affine_and_gate)
     run_check("App transform", "/predict 4-DOF matrix / 8-inlier contract", check_app_partial_affine_contract)
     run_check("Matcher", "Vendored RIFT2 runtime dependency", check_rift2_runtime)

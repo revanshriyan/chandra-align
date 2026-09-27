@@ -60,7 +60,7 @@ def gaussian_scale_pyramid(image, min_dimension=64, max_levels=8):
     return levels
 
 
-def resize_to_common_ground_sample(image, image_gsd_m, target_gsd_m):
+def resize_to_common_ground_sample(image, image_gsd_m, target_gsd_m, minimum_long_side=128):
     """Downsample only the finer-resolution image toward the coarser GSD.
 
     Returns the resized image and its linear pixel scale relative to the original;
@@ -74,7 +74,8 @@ def resize_to_common_ground_sample(image, image_gsd_m, target_gsd_m):
     # enough raster support for feature extraction when the inputs are cropped
     # to similar pixel dimensions and their true footprints are not supplied.
     h, w = image.shape[:2]
-    minimum_scale = min(1.0, 128.0 / max(h, w))
+    minimum_long_side = max(1, int(minimum_long_side))
+    minimum_scale = min(1.0, float(minimum_long_side) / max(h, w))
     scale = max(min(1.0, gsd / target), minimum_scale)
     if scale >= 0.999:
         return image, 1.0

@@ -98,7 +98,9 @@ def histogram_match_to_reference(
 def preprocess_iirs_raster(
     multiband_data: np.ndarray,
     wavelengths_um: Optional[List[float]] = None,
-    ref_raster: Optional[np.ndarray] = None
+    ref_raster: Optional[np.ndarray] = None,
+    contrast_percentiles: Tuple[float, float] = (2.0, 98.0),
+    clahe_clip_limit: float = 3.0,
 ) -> IIRSPreprocessingResult:
     """
     Main entry point for IIRS hyperspectral preprocessing.
@@ -122,16 +124,19 @@ def preprocess_iirs_raster(
     else:
         raise ValueError(f"Invalid raster shape: {multiband_data.shape}")
 
-    # Normalize to uint8 (min-max scaling with 2% clip)
+    # Normalize to uint8 using a configurable percentile contrast stretch.
     band_data = np.nan_to_num(np.asarray(band_data, dtype=np.float32))
-    p2, p98 = np.percentile(band_data, (2, 98))
-    if p98 > p2:
-        norm_band = np.clip((band_data - p2) / (p98 - p2) * 255.0, 0, 255).astype(np.uint8)
+    low_percentile, high_percentile = map(float, contrast_percentiles)
+    if not (0 <= low_percentile < high_percentile <= 100):
+        raise ValueError("Contrast percentiles must satisfy 0 <= low < high <= 100")
+    low, high = np.percentile(band_data, (low_percentile, high_percentile))
+    if high > low:
+        norm_band = np.clip((band_data - low) / (high - low) * 255.0, 0, 255).astype(np.uint8)
     else:
         norm_band = np.zeros(band_data.shape, dtype=np.uint8)
 
     # Apply CLAHE first to equalize local SWIR contrast
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    clahe = cv2.createCLAHE(clipLimit=float(clahe_clip_limit), tileGridSize=(8, 8))
     enhanced_band = clahe.apply(norm_band)
 
     # Perform histogram matching if reference raster provided
