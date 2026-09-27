@@ -98,6 +98,21 @@ sun only), no RCM/S success-rate numbers without manual labels.
 | RoMa / EfficientLoFTR | MIT+Apache-2.0 / research | offline benchmarking only, never wired live |
 | Chandrayaan-2 data | ISRO copyright, non-profit scientific use | attribute; no commercial claims |
 
+## Automated Dataset Retrieval
+
+Search NASA's Orbital Data Explorer for LRO NAC products whose footprints overlap
+a Chandrayaan-2 PDS4 label, rank candidates by polygon overlap and incidence angle,
+and download the top direct `.IMG` products:
+
+```bash
+python scripts/get_search_results.py samples/your_label.xml --out-dir data/raw --top 3
+```
+
+Add `--no-download` to inspect rankings only. The search uses the geometry in the
+provided label; it does not search or download Chandrayaan-2 source imagery.
+Provenance: workflow adapted from
+[reyyishreyas/lunar-image-registration](https://github.com/reyyishreyas/lunar-image-registration/blob/main/dataset_download_pipeline/get_search_results.py).
+
 ## Download traceability
 
 Every external number must trace to a run ID in `data/download_log.csv`
