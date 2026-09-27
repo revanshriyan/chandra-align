@@ -1,5 +1,4 @@
 torch
-torchvision
 opencv-python-headless
 numpy
 scipy
@@ -10,4 +9,4 @@ pillow
 matplotlib
 PyYAML
 rasterio
-huggingface_hub<0.25.0
+huggingface_hub>=0.30,<2
