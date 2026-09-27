@@ -9,4 +9,4 @@ pillow
 matplotlib
 PyYAML
 rasterio
-huggingface_hub>=0.30,<2
+huggingface_hub>=0.30,<1
