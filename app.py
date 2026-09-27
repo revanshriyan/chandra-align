@@ -19,6 +19,8 @@ import tempfile
 import json
 import zipfile
 import math
+import html
+import re
 import traceback
 from pathlib import Path
 from PIL import Image
@@ -32,10 +34,11 @@ from chandra_align.features import select_distributed_matches, spatial_distribut
 from chandra_align.refine import refine_subpixel_ncc
 from chandra_align.metrics import (
     compute_deformation_field, grid_deformation_analysis, compute_ground_metrics,
-    get_sensor_pixel_scale, metrics_bundle_with_ground, ResidualVector, GroundMetrics
+    get_sensor_pixel_scale, metrics_bundle_with_ground, ResidualVector, GroundMetrics,
+    compute_quadrant_metrics, format_quadrant_html,
 )
 from chandra_align.visualization import (
-    create_combined_visualization, fig_to_file
+    create_combined_visualization, draw_error_vector_overlay, fig_to_file
 )
 from chandra_align.export import (
     export_gcp_csv, export_homography_json, export_alignment_geotiff,
@@ -539,12 +542,21 @@ def _align_core(
     pts_sec_h = cv2.transform(inlier_sec.reshape(-1, 1, 2), affine_matrix).reshape(-1, 2)
     residuals_vec = inlier_ref - pts_sec_h
     residuals_mag = np.linalg.norm(residuals_vec, axis=1)
+    quadrant_metrics, quadrant_spatial_entropy = compute_quadrant_metrics(
+        inlier_ref, residuals_vec, ref_original.shape[:2]
+    )
+    quadrant_html = format_quadrant_html(quadrant_metrics, quadrant_spatial_entropy)
+    error_vector_overlay_bgr = draw_error_vector_overlay(
+        ref_original, inlier_ref, pts_sec_h, scale_factor=10
+    )
 
     rmse_px = float(np.sqrt(np.mean(residuals_mag ** 2))) if len(residuals_mag) > 0 else 0.0
     mae_px = float(np.mean(residuals_mag)) if len(residuals_mag) > 0 else 0.0
 
     side_by_side = np.hstack((ref_original, warped_sec, diff_map))
     side_by_side_rgb = cv2.cvtColor(side_by_side, cv2.COLOR_GRAY2RGB)
+    error_vector_overlay_rgb = cv2.cvtColor(error_vector_overlay_bgr, cv2.COLOR_BGR2RGB)
+    alignment_and_vectors_rgb = np.hstack((side_by_side_rgb, error_vector_overlay_rgb))
 
     # Compute deformation field
     deformation_vectors = compute_deformation_field(
@@ -566,7 +578,11 @@ def _align_core(
         uniformity = distribution["uniformity"]
 
     return {
-        "side_by_side_rgb": side_by_side_rgb,
+        "side_by_side_rgb": alignment_and_vectors_rgb,
+        "error_vector_overlay_bgr": error_vector_overlay_bgr,
+        "quadrant_metrics": quadrant_metrics,
+        "quadrant_spatial_entropy": quadrant_spatial_entropy,
+        "quadrant_metrics_html": quadrant_html,
         "ref_original": ref_original,
         "sec_original": sec_original,
         "warped_sec": warped_sec,
@@ -690,6 +706,11 @@ def process_alignment(
             f"  Mean Mag: {grid_analysis['mean_magnitude_px']:.4f} px ({grid_analysis['mean_magnitude_m']:.4f} m)\n"
             f"  Max Mag:  {grid_analysis['max_magnitude_px']:.4f} px ({grid_analysis['max_magnitude_m']:.4f} m)\n"
         )
+        report += (
+            "\n<!--QUADRANT_METRICS_START-->"
+            f"{result['quadrant_metrics_html']}"
+            "<!--QUADRANT_METRICS_END-->\n"
+        )
 
         # Export scientific package
         output_dir = Path(tempfile.mkdtemp(prefix="chandra_align_export_"))
@@ -781,13 +802,57 @@ CPU_FALLBACK_STATUS = "💻 Execution Mode: CPU (Fallback Active - Quota/Worker 
 
 
 def _append_execution_status(outputs, status: str):
-    """Append execution mode to the UI report without changing output arity."""
+    """Append execution mode and render the UI report without changing output arity."""
     values = list(outputs) if isinstance(outputs, (tuple, list)) else [None] * 7
     if len(values) != 7:
         values = (values + [None] * 7)[:7]
     report = values[1] if isinstance(values[1], str) else ""
-    values[1] = f"{report.rstrip()}\n\n{status}".strip()
+    values[1] = _format_metric_report(f"{report.rstrip()}\n\n{status}".strip())
     return tuple(values)
+
+
+def _format_metric_report(report: str) -> str:
+    """Render the existing plain-text report as UI-only metric cards."""
+    quadrant_html = ""
+    quadrant_match = re.search(
+        r"<!--QUADRANT_METRICS_START-->(.*?)<!--QUADRANT_METRICS_END-->",
+        report,
+        flags=re.DOTALL,
+    )
+    plain_report = report
+    if quadrant_match:
+        quadrant_html = quadrant_match.group(1).strip()
+        plain_report = (report[:quadrant_match.start()] + report[quadrant_match.end():]).strip()
+    escaped_report = html.escape(plain_report)
+    accepted = report.startswith("✅ REGISTRATION COMPLETE")
+    badge_class = "pass-badge" if accepted else "fail-badge"
+    badge_text = "REGISTRATION ACCEPTED" if accepted else "REGISTRATION FAILED"
+
+    def first_match(pattern: str, default: str = "—") -> str:
+        match = re.search(pattern, report, flags=re.MULTILINE)
+        return html.escape(match.group(1).strip()) if match else default
+
+    consensus = first_match(r"^Verified Inliers:\s*(.+)$")
+    pixel_rmse = first_match(r"^\s*RMSE:\s*([\d.eE+-]+\s*px)")
+    ground_rmse = first_match(r"^\s*RMSE:\s*([\d.eE+-]+\s*m)\s*$")
+    sensor_mode = first_match(r"^Sensor Pair Mode:\s*(.+)$")
+    threshold = first_match(r"^Registration Transform:.*RANSAC threshold\s*([\d.]+\s*px)")
+
+    return (
+        '<div class="metric-card">'
+        f'<span class="{badge_class}">{badge_text}</span> '
+        f'<span>{sensor_mode}</span>'
+        '</div>'
+        '<div class="metric-card"><strong>Inlier Consensus Ratio</strong><br>'
+        f'<span>{consensus}</span></div>'
+        '<div class="metric-card"><strong>Fit Residual / RMSE</strong><br>'
+        f'<span>{pixel_rmse} · {ground_rmse}</span></div>'
+        '<div class="metric-card"><strong>RANSAC Threshold</strong><br>'
+        f'<span>{threshold}</span></div>'
+        f'{quadrant_html}'
+        '<details class="metric-card"><summary>Full processing report</summary>'
+        f'<pre>{escaped_report}</pre></details>'
+    )
 
 
 def _run_alignment_core(
@@ -858,7 +923,19 @@ def process_wrapper(
 def build_interface():
     """Build the Gradio interface with scientific controls."""
     
-    with gr.Blocks(title="CHANDRA-ALIGN: Lunar Photogrammetric Workstation") as interface:
+    custom_css = """
+    body, .gradio-container { background-color: #0f172a !important; color: #f8fafc !important; }
+    .metric-card { background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-top: 6px; }
+    .pass-badge { background-color: #065f46; color: #34d399; padding: 4px 8px; border-radius: 4px; font-weight: 600; }
+    .fail-badge { background-color: #881337; color: #f87171; padding: 4px 8px; border-radius: 4px; font-weight: 600; }
+    .metric-card pre { white-space: pre-wrap; color: #cbd5e1; }
+    """
+
+    with gr.Blocks(
+        title="CHANDRA-ALIGN: Lunar Photogrammetric Workstation",
+        theme=gr.themes.Soft(primary_hue="indigo", secondary_hue="cyan", neutral_hue="slate"),
+        css=custom_css,
+    ) as interface:
         gr.Markdown(
             "# 🌙 CHANDRA-ALIGN: Lunar Cross-Sensor Photogrammetric Workstation\n"
             "Sub-pixel registration for Chandrayaan-2 OHRC, TMC-2, IIRS, DF-SAR & LRO NAC imagery. "
@@ -869,64 +946,67 @@ def build_interface():
             with gr.Column(scale=1):
                 # Input panel
                 gr.Markdown("### 📥 Input Frames")
+                gr.Markdown(
+                    "Accepts multi-agency satellite imagery and sensor formats, including "
+                    "ISRO Chandrayaan payloads, NASA LRO products, and map imagery."
+                )
                 ref_file = gr.File(
-                    label="Reference Frame (NASA LROC NAC)",
+                    label="Reference Image (ISRO Chandrayaan / NASA LRO / Base Map)",
                     file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"]
                 )
                 sec_file = gr.File(
-                    label="Secondary Frame (ISRO Payload)",
+                    label="Secondary Image (Onboard Sensor / Target Frame)",
                     file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"]
                 )
                 
                 # Advanced Controls
-                gr.Markdown("### ⚙️ Advanced Photogrammetric Controls")
-                
-                with gr.Accordion("Sensor Pair & Resolution", open=True):
-                    sensor_dropdown = gr.Dropdown(
-                        choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
-                        value="OHRC",
-                        label="Reference Sensor"
-                    )
-                    secondary_sensor_dropdown = gr.Dropdown(
-                        choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
-                        value="TMC-2",
-                        label="Secondary Sensor"
-                    )
-                    sensor_pair_mode = gr.Dropdown(
-                        choices=["Optical <-> Optical", "Optical <-> Infrared"],
-                        value="Optical <-> Optical",
-                        label="Sensor Pair Mode"
-                    )
-                    pixel_scale = gr.Number(
-                        value=0.25,
-                        label="Reference Pixel Scale (m/px)",
-                        minimum=0.01,
-                        maximum=100.0,
-                        step=0.01,
-                        info="Ground resolution in meters per pixel"
-                    )
-                
-                with gr.Accordion("Illumination-Invariant Preprocessing", open=True):
-                    enforce_uniformity = gr.Checkbox(
-                        value=True,
-                        label="Enforce Uniform Keypoint Distribution (ANMS / 8×8 buckets)"
-                    )
-                    enable_clahe = gr.Checkbox(value=True, label="CLAHE Enhancement")
-                    clahe_clip = gr.Slider(
-                        minimum=1.0, maximum=10.0, value=3.0, step=0.5,
-                        label="CLAHE Clip Limit"
-                    )
-                    enable_shadow = gr.Checkbox(value=True, label="Shadow Suppression")
-                    enable_wallis = gr.Checkbox(value=False, label="Wallis Filter (Experimental)")
-                    with gr.Row(visible=False) as wallis_params:
-                        wallis_mean = gr.Number(value=128.0, label="Target Mean")
-                        wallis_std = gr.Number(value=50.0, label="Target Std")
-                    
-                    enable_wallis.change(
-                        lambda x: gr.update(visible=x),
-                        inputs=[enable_wallis],
-                        outputs=[wallis_params]
-                    )
+                with gr.Accordion("⚙️ Advanced Algorithm Parameters", open=False):
+                    with gr.Accordion("Sensor Pair & Resolution", open=False):
+                        sensor_dropdown = gr.Dropdown(
+                            choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
+                            value="OHRC",
+                            label="Reference Sensor"
+                        )
+                        secondary_sensor_dropdown = gr.Dropdown(
+                            choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
+                            value="TMC-2",
+                            label="Secondary Sensor"
+                        )
+                        sensor_pair_mode = gr.Dropdown(
+                            choices=["Optical <-> Optical", "Optical <-> Infrared"],
+                            value="Optical <-> Optical",
+                            label="Sensor Pair Mode"
+                        )
+                        pixel_scale = gr.Number(
+                            value=0.25,
+                            label="Reference Pixel Scale (m/px)",
+                            minimum=0.01,
+                            maximum=100.0,
+                            step=0.01,
+                            info="Ground resolution in meters per pixel"
+                        )
+
+                    with gr.Accordion("Illumination-Invariant Preprocessing", open=False):
+                        enforce_uniformity = gr.Checkbox(
+                            value=True,
+                            label="Enforce Uniform Keypoint Distribution (ANMS / 8×8 buckets)"
+                        )
+                        enable_clahe = gr.Checkbox(value=True, label="CLAHE Enhancement")
+                        clahe_clip = gr.Slider(
+                            minimum=1.0, maximum=10.0, value=3.0, step=0.5,
+                            label="CLAHE Clip Limit"
+                        )
+                        enable_shadow = gr.Checkbox(value=True, label="Shadow Suppression")
+                        enable_wallis = gr.Checkbox(value=False, label="Wallis Filter (Experimental)")
+                        with gr.Row(visible=False) as wallis_params:
+                            wallis_mean = gr.Number(value=128.0, label="Target Mean")
+                            wallis_std = gr.Number(value=50.0, label="Target Std")
+
+                        enable_wallis.change(
+                            lambda x: gr.update(visible=x),
+                            inputs=[enable_wallis],
+                            outputs=[wallis_params]
+                        )
                 
                 process_btn = gr.Button("🚀 Process Alignment", variant="primary", size="lg")
             
@@ -935,9 +1015,9 @@ def build_interface():
                 gr.Markdown("### 📊 Registration Results")
                 
                 with gr.Tabs():
-                    with gr.TabItem("Side-by-Side View"):
+                    with gr.TabItem("Registration + Error Vectors"):
                         output_image = gr.Image(
-                            label="Registration View [Reference | Aligned Secondary | Radiometric Delta]",
+                            label="Reference | Aligned Secondary | Delta | 10× Error Vectors",
                             type="pil",
                             format="png"
                         )
@@ -948,10 +1028,10 @@ def build_interface():
                             type="filepath"
                         )
                 
-                report_text = gr.Textbox(
+                report_text = gr.Markdown(
                     label="Photogrammetric Summary Report",
-                    lines=20,
-                    max_lines=30
+                    sanitize_html=False,
+                    elem_classes=["metric-report"],
                 )
                 
                 # Download buttons

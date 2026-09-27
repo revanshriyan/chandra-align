@@ -33,6 +33,84 @@ class ResidualVector:
     inlier_weight: float = 1.0
 
 
+def _display_bgr_uint8(image: np.ndarray) -> np.ndarray:
+    """Convert grayscale/color rasters, including uint16, to displayable BGR8."""
+    raster = np.asarray(image)
+    if raster.size == 0 or raster.ndim not in (2, 3):
+        raise ValueError("Reference raster must be a non-empty grayscale or color image")
+    if raster.ndim == 3 and raster.shape[2] not in (1, 3, 4):
+        raise ValueError("Reference raster must have 1, 3, or 4 channels")
+
+    if raster.dtype == np.uint8:
+        display = np.ascontiguousarray(raster)
+    else:
+        values = np.nan_to_num(
+            raster.astype(np.float32, copy=False), nan=0.0,
+            posinf=65535.0, neginf=0.0,
+        )
+        low, high = np.percentile(values, (1.0, 99.0))
+        if high <= low:
+            display = np.zeros(values.shape, dtype=np.uint8)
+        else:
+            display = np.clip((values - low) * (255.0 / (high - low)), 0, 255).astype(np.uint8)
+
+    if display.ndim == 2:
+        return cv2.cvtColor(display, cv2.COLOR_GRAY2BGR)
+    if display.shape[2] == 1:
+        return cv2.cvtColor(display[..., 0], cv2.COLOR_GRAY2BGR)
+    if display.shape[2] == 4:
+        return cv2.cvtColor(display, cv2.COLOR_BGRA2BGR)
+    return display.copy()
+
+
+def draw_error_vector_overlay(
+    ref_img: np.ndarray,
+    inliers_src: np.ndarray,
+    inliers_dst_warped: np.ndarray,
+    scale_factor: float = 10,
+) -> np.ndarray:
+    """Draw inlier points and 10x-scaled reprojection residual arrows.
+
+    Coordinates are ``(x, y)`` pairs in the reference raster pixel frame.
+    Green circles mark source/reference inliers; red arrows point toward each
+    warped destination coordinate. The returned image is BGR uint8.
+    """
+    image = _display_bgr_uint8(ref_img)
+    try:
+        factor = float(scale_factor)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("scale_factor must be a finite positive number") from exc
+    if not np.isfinite(factor) or factor <= 0:
+        raise ValueError("scale_factor must be a finite positive number")
+
+    source = np.asarray(inliers_src if inliers_src is not None else [], dtype=np.float64).reshape(-1, 2)
+    warped = np.asarray(
+        inliers_dst_warped if inliers_dst_warped is not None else [], dtype=np.float64
+    ).reshape(-1, 2)
+    if len(source) != len(warped):
+        raise ValueError("Source and warped inlier coordinate counts must match")
+
+    height, width = image.shape[:2]
+    for src, dst in zip(source, warped):
+        if not (np.isfinite(src).all() and np.isfinite(dst).all()):
+            continue
+        x, y = (int(round(float(value))) for value in src)
+        if x < 0 or x >= width or y < 0 or y >= height:
+            continue
+        dx, dy = dst - src
+        endpoint = (
+            int(round(float(src[0] + dx * factor))),
+            int(round(float(src[1] + dy * factor))),
+        )
+        cv2.circle(image, (x, y), 3, (0, 255, 0), thickness=-1, lineType=cv2.LINE_AA)
+        if endpoint != (x, y):
+            cv2.arrowedLine(
+                image, (x, y), endpoint, (0, 0, 255),
+                thickness=1, line_type=cv2.LINE_AA, tipLength=0.3,
+            )
+    return image
+
+
 def create_quiver_plot(
     ref_image: np.ndarray,
     deformation_vectors: List[ResidualVector],
@@ -397,6 +475,7 @@ def fig_to_file(fig: plt.Figure, path: str, dpi: int = 300, format: str = 'png')
 
 __all__ = [
     "ResidualVector",
+    "draw_error_vector_overlay",
     "create_quiver_plot",
     "create_error_distribution_plot",
     "create_combined_visualization",
