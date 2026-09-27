@@ -110,11 +110,10 @@ def match_pair_hf(img1: np.ndarray, img2: np.ndarray) -> tuple[np.ndarray, np.nd
     return src_pts, dst_pts, "ClassicalSIFT"
 
 
-@spaces.GPU(duration=60)
-def _align_gpu_core(ref_img: np.ndarray, sec_img: np.ndarray) -> dict:
+def _align_core(ref_img: np.ndarray, sec_img: np.ndarray) -> tuple[np.ndarray, str, int, int, float, float]:
     """
-    Inner GPU compute function - runs on CUDA.
-    Returns dict with numpy arrays and metrics for reliable pickle serialization.
+    Core alignment logic - runs on GPU when called from process_alignment.
+    Returns (side_by_side_rgb, engine_name, inliers, total_matches, rmse, mae).
     """
     pts_ref, pts_sec, engine_name = match_pair_hf(ref_img, sec_img)
 
@@ -140,21 +139,14 @@ def _align_gpu_core(ref_img: np.ndarray, sec_img: np.ndarray) -> dict:
     side_by_side = np.hstack((ref_img, warped_sec, diff_map))
     side_by_side_rgb = cv2.cvtColor(side_by_side, cv2.COLOR_GRAY2RGB)
 
-    # Return dict with numpy arrays and metrics - pickle serializes correctly
-    return {
-        "image": side_by_side_rgb,
-        "engine": engine_name,
-        "inliers": inlier_cnt,
-        "total_matches": len(pts_ref),
-        "rmse": rmse,
-        "mae": mae
-    }
+    return side_by_side_rgb, engine_name, inlier_cnt, len(pts_ref), rmse, mae
 
 
+@spaces.GPU(duration=60)
 def process_alignment(ref_file, sec_file):
     """
-    Outer Gradio handler - calls GPU worker, saves result to temp file,
-    returns file path for Gradio Image component.
+    Main alignment pipeline - decorated with @spaces.GPU for ZeroGPU execution.
+    Returns (numpy_array, report_text) - numpy array serialized via Gradio queue.
     """
     if ref_file is None or sec_file is None:
         return None, "Error: Please provide both Reference and Secondary surface frames."
@@ -166,20 +158,7 @@ def process_alignment(ref_file, sec_file):
         return None, "Error: Unable to decode input image files."
 
     try:
-        # Call GPU worker - returns dict with numpy array and metrics
-        result = _align_gpu_core(ref_img, sec_img)
-
-        side_by_side_rgb = result["image"]
-        engine_name = result["engine"]
-        inlier_cnt = result["inliers"]
-        total_matches = result["total_matches"]
-        rmse = result["rmse"]
-        mae = result["mae"]
-
-        # Save to temp file in main process (accessible to Gradio)
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-            cv2.imwrite(tmp.name, cv2.cvtColor(side_by_side_rgb, cv2.COLOR_RGB2BGR))
-            temp_path = tmp.name
+        side_by_side_rgb, engine_name, inlier_cnt, total_matches, rmse, mae = _align_core(ref_img, sec_img)
 
         report = (
             f"✅ REGISTRATION COMPLETE\n"
@@ -189,7 +168,9 @@ def process_alignment(ref_file, sec_file):
             f"MAE Error: {mae:.4f} px"
         )
 
-        return temp_path, report
+        # Convert to PIL Image for clean pickle serialization over ZeroGPU IPC
+        output_pil = Image.fromarray(side_by_side_rgb.astype(np.uint8))
+        return output_pil, report
 
     except ValueError as e:
         return None, f"Registration Failed: {str(e)}"
@@ -210,7 +191,7 @@ interface = gr.Interface(
         gr.File(label="Secondary Frame (LRO NAC / Target)", file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"])
     ],
     outputs=[
-        gr.Image(label="Registration View [Reference | Aligned Secondary | Radiometric Delta]"),
+        gr.Image(label="Registration View [Reference | Aligned Secondary | Radiometric Delta]", type="pil"),
         gr.Textbox(label="Photogrammetric Summary Report", lines=10)
     ],
     title="CHANDRA-ALIGN: Lunar Cross-Sensor Registration Engine",
