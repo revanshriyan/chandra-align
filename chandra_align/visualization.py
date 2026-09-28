@@ -65,50 +65,89 @@ def _display_bgr_uint8(image: np.ndarray) -> np.ndarray:
 
 def draw_error_vector_overlay(
     ref_img: np.ndarray,
+    sensed_img: np.ndarray,
     inliers_src: np.ndarray,
-    inliers_dst_warped: np.ndarray,
-    scale_factor: float = 10,
+    inliers_dst: np.ndarray,
+    transform_matrix: np.ndarray,
+    scale: float = 10.0,
 ) -> np.ndarray:
-    """Draw inlier points and 10x-scaled reprojection residual arrows.
+    """Overlay color-coded, magnified transform residuals on the target frame.
 
-    Coordinates are ``(x, y)`` pairs in the reference raster pixel frame.
-    Green circles mark source/reference inliers; red arrows point toward each
-    warped destination coordinate. The returned image is BGR uint8.
+    ``transform_matrix`` maps source/sensed inliers into reference coordinates.
+    ``inliers_dst`` contains their target/reference positions. The arrow starts
+    at that target position and points toward the transformed source position,
+    with residual magnitude thresholds evaluated before magnification.
+    Returns a BGR uint8 image.
     """
     image = _display_bgr_uint8(ref_img)
+    sensed = _display_bgr_uint8(sensed_img)
+    if sensed.shape[:2] != image.shape[:2]:
+        sensed = cv2.resize(sensed, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_LINEAR)
+    image = cv2.addWeighted(image, 0.6, sensed, 0.4, 0.0)
     try:
-        factor = float(scale_factor)
+        factor = float(scale)
     except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError("scale_factor must be a finite positive number") from exc
+        raise ValueError("scale must be a finite positive number") from exc
     if not np.isfinite(factor) or factor <= 0:
-        raise ValueError("scale_factor must be a finite positive number")
+        raise ValueError("scale must be a finite positive number")
 
     source = np.asarray(inliers_src if inliers_src is not None else [], dtype=np.float64).reshape(-1, 2)
-    warped = np.asarray(
-        inliers_dst_warped if inliers_dst_warped is not None else [], dtype=np.float64
-    ).reshape(-1, 2)
-    if len(source) != len(warped):
-        raise ValueError("Source and warped inlier coordinate counts must match")
+    target = np.asarray(inliers_dst if inliers_dst is not None else [], dtype=np.float64).reshape(-1, 2)
+    if len(source) != len(target):
+        raise ValueError("Source and target inlier coordinate counts must match")
+    matrix = np.asarray(transform_matrix, dtype=np.float64)
+    if matrix.shape == (2, 3):
+        transformed = cv2.transform(source.reshape(-1, 1, 2), matrix).reshape(-1, 2)
+    elif matrix.shape == (3, 3):
+        transformed = cv2.perspectiveTransform(source.reshape(-1, 1, 2), matrix).reshape(-1, 2)
+    else:
+        raise ValueError("transform_matrix must have shape (2, 3) or (3, 3)")
 
     height, width = image.shape[:2]
-    for src, dst in zip(source, warped):
-        if not (np.isfinite(src).all() and np.isfinite(dst).all()):
+    for target_xy, transformed_xy in zip(target, transformed):
+        if not (np.isfinite(target_xy).all() and np.isfinite(transformed_xy).all()):
             continue
-        x, y = (int(round(float(value))) for value in src)
+        x, y = (int(round(float(value))) for value in target_xy)
         if x < 0 or x >= width or y < 0 or y >= height:
             continue
-        dx, dy = dst - src
+        dx, dy = transformed_xy - target_xy
+        magnitude = float(np.hypot(dx, dy))
         endpoint = (
-            int(round(float(src[0] + dx * factor))),
-            int(round(float(src[1] + dy * factor))),
+            int(round(float(target_xy[0] + dx * factor))),
+            int(round(float(target_xy[1] + dy * factor))),
         )
         cv2.circle(image, (x, y), 3, (0, 255, 0), thickness=-1, lineType=cv2.LINE_AA)
         if endpoint != (x, y):
+            if magnitude < 0.5:
+                color = (0, 255, 0)
+            elif magnitude <= 1.0:
+                color = (0, 255, 255)
+            else:
+                color = (0, 0, 255)
             cv2.arrowedLine(
-                image, (x, y), endpoint, (0, 0, 255),
+                image, (x, y), endpoint, color,
                 thickness=1, line_type=cv2.LINE_AA, tipLength=0.3,
             )
     return image
+
+
+def create_checkerboard_overlay(img1: np.ndarray, img2: np.ndarray, tile_size: int = 64) -> np.ndarray:
+    """Return an RGB checkerboard blend, padding differently sized rasters."""
+    if isinstance(tile_size, bool) or int(tile_size) <= 0:
+        raise ValueError("tile_size must be a positive integer")
+    tile_size = int(tile_size)
+    first = cv2.cvtColor(_display_bgr_uint8(img1), cv2.COLOR_BGR2RGB)
+    second = cv2.cvtColor(_display_bgr_uint8(img2), cv2.COLOR_BGR2RGB)
+    height = max(first.shape[0], second.shape[0])
+    width = max(first.shape[1], second.shape[1])
+    first_padded = np.zeros((height, width, 3), dtype=np.uint8)
+    second_padded = np.zeros((height, width, 3), dtype=np.uint8)
+    first_padded[:first.shape[0], :first.shape[1]] = first
+    second_padded[:second.shape[0], :second.shape[1]] = second
+
+    rows, cols = np.indices((height, width))
+    use_first = ((rows // tile_size) + (cols // tile_size)) % 2 == 0
+    return np.where(use_first[..., None], first_padded, second_padded).astype(np.uint8)
 
 
 def create_quiver_plot(
@@ -476,6 +515,7 @@ def fig_to_file(fig: plt.Figure, path: str, dpi: int = 300, format: str = 'png')
 __all__ = [
     "ResidualVector",
     "draw_error_vector_overlay",
+    "create_checkerboard_overlay",
     "create_quiver_plot",
     "create_error_distribution_plot",
     "create_combined_visualization",

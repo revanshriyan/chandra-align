@@ -35,10 +35,11 @@ from chandra_align.refine import refine_subpixel_ncc
 from chandra_align.metrics import (
     compute_deformation_field, grid_deformation_analysis, compute_ground_metrics,
     get_sensor_pixel_scale, metrics_bundle_with_ground, ResidualVector, GroundMetrics,
-    compute_quadrant_metrics, format_quadrant_html,
+    compute_quadrant_metrics, format_quadrant_html, build_judge_metrics_summary,
 )
 from chandra_align.visualization import (
-    create_combined_visualization, draw_error_vector_overlay, fig_to_file
+    create_combined_visualization, draw_error_vector_overlay,
+    create_checkerboard_overlay, fig_to_file
 )
 from chandra_align.export import (
     export_gcp_csv, export_homography_json, export_alignment_geotiff,
@@ -547,16 +548,22 @@ def _align_core(
     )
     quadrant_html = format_quadrant_html(quadrant_metrics, quadrant_spatial_entropy)
     error_vector_overlay_bgr = draw_error_vector_overlay(
-        ref_original, inlier_ref, pts_sec_h, scale_factor=10
+        ref_original, warped_sec, inlier_sec, inlier_ref, affine_matrix, scale=10.0
     )
 
     rmse_px = float(np.sqrt(np.mean(residuals_mag ** 2))) if len(residuals_mag) > 0 else 0.0
     mae_px = float(np.mean(residuals_mag)) if len(residuals_mag) > 0 else 0.0
+    judge_metrics = build_judge_metrics_summary(
+        rmse_px,
+        inlier_cnt,
+        len(pts_ref),
+        quadrant_spatial_entropy,
+        quadrant_metrics,
+    )
 
-    side_by_side = np.hstack((ref_original, warped_sec, diff_map))
-    side_by_side_rgb = cv2.cvtColor(side_by_side, cv2.COLOR_GRAY2RGB)
+    warped_preview_rgb = cv2.cvtColor(warped_sec, cv2.COLOR_GRAY2RGB)
+    checkerboard_rgb = create_checkerboard_overlay(ref_original, warped_sec, tile_size=64)
     error_vector_overlay_rgb = cv2.cvtColor(error_vector_overlay_bgr, cv2.COLOR_BGR2RGB)
-    alignment_and_vectors_rgb = np.hstack((side_by_side_rgb, error_vector_overlay_rgb))
 
     # Compute deformation field
     deformation_vectors = compute_deformation_field(
@@ -578,11 +585,14 @@ def _align_core(
         uniformity = distribution["uniformity"]
 
     return {
-        "side_by_side_rgb": alignment_and_vectors_rgb,
+        "warped_preview_rgb": warped_preview_rgb,
+        "checkerboard_rgb": checkerboard_rgb,
+        "error_vector_overlay_rgb": error_vector_overlay_rgb,
         "error_vector_overlay_bgr": error_vector_overlay_bgr,
         "quadrant_metrics": quadrant_metrics,
         "quadrant_spatial_entropy": quadrant_spatial_entropy,
         "quadrant_metrics_html": quadrant_html,
+        "judge_metrics": judge_metrics,
         "ref_original": ref_original,
         "sec_original": sec_original,
         "warped_sec": warped_sec,
@@ -612,6 +622,16 @@ def _align_core(
     }
 
 
+def _failed_judge_metrics_summary(inlier_count: int = 0, total_correspondences: int = 0):
+    empty_quadrants = {
+        key: {"rmse_px": 0.0}
+        for key in ("Q1", "Q2", "Q3", "Q4")
+    }
+    return build_judge_metrics_summary(
+        0.0, inlier_count, total_correspondences, 0.0, empty_quadrants
+    )
+
+
 def process_alignment(
     ref_file,
     sec_file,
@@ -629,10 +649,11 @@ def process_alignment(
 ):
     """
     Main alignment pipeline - runs on GPU when called from process_wrapper.
-    Returns (PIL Image, report_text, csv_path, json_path, geotiff_path, png_path, viz_path)
+    Returns three preview images, report, judge metrics, four export paths, and dossier path.
     """
     if ref_file is None or sec_file is None:
-        return None, "Error: Please provide both Reference and Secondary surface frames.", None, None, None, None, None
+        return (None, None, None, "Error: Please provide both Reference and Secondary surface frames.",
+                _failed_judge_metrics_summary(), None, None, None, None, None)
 
     try:
         is_iirs_pair = sensor_pair_mode == "Optical <-> Infrared"
@@ -655,7 +676,10 @@ def process_alignment(
             max_image_dimension=max_image_dimension
         )
 
-        side_by_side_rgb = result["side_by_side_rgb"]
+        warped_preview_rgb = result["warped_preview_rgb"]
+        checkerboard_rgb = result["checkerboard_rgb"]
+        error_vector_overlay_rgb = result["error_vector_overlay_rgb"]
+        judge_metrics = result["judge_metrics"]
         ref_original = result["ref_original"]
         warped_sec = result["warped_sec"]
         diff_map = result["diff_map"]
@@ -750,8 +774,9 @@ def process_alignment(
             result["affine_matrix"], dtype=np.float64
         ).tolist()
         transform_payload["homography_matrix"] = np.asarray(H, dtype=np.float64).tolist()
+        transform_payload["judge_metrics_summary"] = judge_metrics
         with transform_json.open("w", encoding="utf-8") as stream:
-            json.dump(transform_payload, stream, indent=2)
+            json.dump(transform_payload, stream, indent=2, allow_nan=False)
         
         # Also create the 4-panel scientific dossier
         viz_path = output_dir / f"{base_name}_dossier.png"
@@ -776,12 +801,17 @@ def process_alignment(
                 if path and Path(path).exists():
                     zf.write(path, Path(path).name)
         
-        # Convert main output to PIL
-        output_pil = Image.fromarray(np.asarray(side_by_side_rgb, dtype=np.uint8))
+        # Build RGB previews and return the fixed-key judge summary to Gradio.
+        warped_pil = Image.fromarray(np.asarray(warped_preview_rgb, dtype=np.uint8))
+        checkerboard_pil = Image.fromarray(np.asarray(checkerboard_rgb, dtype=np.uint8))
+        vector_overlay_pil = Image.fromarray(np.asarray(error_vector_overlay_rgb, dtype=np.uint8))
         
         return (
-            output_pil,
+            warped_pil,
+            checkerboard_pil,
+            vector_overlay_pil,
             report,
+            judge_metrics,
             export_paths.get("gcp_csv"),
             export_paths.get("transform_json"),
             export_paths.get("warped_geotiff"),
@@ -791,10 +821,16 @@ def process_alignment(
 
     except ValueError as e:
         print(traceback.format_exc(), file=sys.stderr, flush=True)
-        return None, f"Registration Failed: {str(e)}", None, None, None, None, None
+        failure = re.search(r"found\s+(\d+)", str(e), flags=re.IGNORECASE)
+        failed_inliers = int(failure.group(1)) if failure else 0
+        return (None, None, None, f"Registration Failed: {str(e)}",
+                _failed_judge_metrics_summary(failed_inliers),
+                None, None, None, None, None)
     except Exception as e:
         print(traceback.format_exc(), file=sys.stderr, flush=True)
-        return None, f"Registration Failed: {str(e)}", None, None, None, None, None
+        return (None, None, None, f"Registration Failed: {str(e)}",
+                _failed_judge_metrics_summary(),
+                None, None, None, None, None)
 
 
 GPU_EXECUTION_STATUS = "⚡ Execution Mode: ZeroGPU (A10G Accelerated)"
@@ -803,11 +839,11 @@ CPU_FALLBACK_STATUS = "💻 Execution Mode: CPU (Fallback Active - Quota/Worker 
 
 def _append_execution_status(outputs, status: str):
     """Append execution mode and render the UI report without changing output arity."""
-    values = list(outputs) if isinstance(outputs, (tuple, list)) else [None] * 7
-    if len(values) != 7:
-        values = (values + [None] * 7)[:7]
-    report = values[1] if isinstance(values[1], str) else ""
-    values[1] = _format_metric_report(f"{report.rstrip()}\n\n{status}".strip())
+    values = list(outputs) if isinstance(outputs, (tuple, list)) else [None] * 10
+    if len(values) != 10:
+        values = (values + [None] * 10)[:10]
+    report = values[3] if isinstance(values[3], str) else ""
+    values[3] = _format_metric_report(f"{report.rstrip()}\n\n{status}".strip())
     return tuple(values)
 
 
@@ -913,7 +949,11 @@ def process_wrapper(
         except Exception as cpu_error:
             print("CPU fallback failed.", file=sys.stderr, flush=True)
             print(traceback.format_exc(), file=sys.stderr, flush=True)
-            outputs = (None, f"Registration Failed: {cpu_error}", None, None, None, None, None)
+            outputs = (
+                None, None, None, f"Registration Failed: {cpu_error}",
+                _failed_judge_metrics_summary(),
+                None, None, None, None, None,
+            )
         return _append_execution_status(outputs, CPU_FALLBACK_STATUS)
     status = GPU_EXECUTION_STATUS if _zerogpu_runtime_enabled() else "💻 Execution Mode: CPU (Local Runtime)"
     return _append_execution_status(outputs, status)
@@ -1015,9 +1055,23 @@ def build_interface():
                 gr.Markdown("### 📊 Registration Results")
                 
                 with gr.Tabs():
-                    with gr.TabItem("Registration + Error Vectors"):
-                        output_image = gr.Image(
-                            label="Reference | Aligned Secondary | Delta | 10× Error Vectors",
+                    with gr.TabItem("Warped Result"):
+                        warped_result_image = gr.Image(
+                            label="Warped Secondary on Reference Grid",
+                            type="pil",
+                            format="png"
+                        )
+
+                    with gr.TabItem("Checkerboard Blend"):
+                        checkerboard_image = gr.Image(
+                            label="Reference / Warped Secondary Checkerboard",
+                            type="pil",
+                            format="png"
+                        )
+
+                    with gr.TabItem("Vector Overlay"):
+                        vector_overlay_image = gr.Image(
+                            label="Color-Coded 10× Reprojection Residuals",
                             type="pil",
                             format="png"
                         )
@@ -1033,6 +1087,7 @@ def build_interface():
                     sanitize_html=False,
                     elem_classes=["metric-report"],
                 )
+                metrics_json = gr.JSON(label="Judge Metrics Summary JSON")
                 
                 # Download buttons
                 gr.Markdown("### 💾 Scientific Export Package")
@@ -1069,8 +1124,9 @@ def build_interface():
                 wallis_mean, wallis_std
             ],
             outputs=[
-                output_image, report_text,
-                csv_btn, json_btn, geotiff_btn, png_btn, dossier_image
+                warped_result_image, checkerboard_image, vector_overlay_image,
+                report_text, metrics_json, csv_btn, json_btn,
+                geotiff_btn, png_btn, dossier_image
             ]
         )
         
@@ -1117,8 +1173,9 @@ def build_interface():
                 wallis_mean, wallis_std
             ],
             outputs=[
-                output_image, report_text,
-                csv_btn, json_btn, geotiff_btn, png_btn, dossier_image
+                warped_result_image, checkerboard_image, vector_overlay_image,
+                report_text, metrics_json, csv_btn, json_btn,
+                geotiff_btn, png_btn, dossier_image
             ],
             fn=process_wrapper,
             cache_examples=False,
