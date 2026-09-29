@@ -100,6 +100,8 @@ class ClassicalSIFTMatcher:
         start_time = time.perf_counter()
         
         try:
+            img_src = _tensor_to_numpy(img_src)
+            img_ref = _tensor_to_numpy(img_ref)
             # Convert to grayscale 8-bit if necessary
             if len(img_src.shape) == 3:
                 img_src_8u = cv2.cvtColor(img_src, cv2.COLOR_RGB2GRAY)
@@ -231,6 +233,7 @@ class LightGlueALIKEDMatcher:
             
             # Convert to tensor
             def img_to_tensor(img):
+                img = _tensor_to_numpy(img)
                 if len(img.shape) == 3:
                     img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
                 img = img.astype(np.float32) / 255.0
@@ -377,6 +380,8 @@ class LoFTRMatcher:
             torch, matcher, device = self._model
             
             # Convert to grayscale
+            img_src = _tensor_to_numpy(img_src)
+            img_ref = _tensor_to_numpy(img_ref)
             if len(img_src.shape) == 3:
                 img_src = cv2.cvtColor(img_src, cv2.COLOR_RGB2GRAY)
             if len(img_ref.shape) == 3:

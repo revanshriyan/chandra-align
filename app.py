@@ -140,6 +140,122 @@ def _read_grayscale_image(image_file, max_dimension: int = MAX_IMAGE_DIMENSION) 
     return np.ascontiguousarray(image)
 
 
+def load_lunar_raster(file_input, max_dimension: int = MAX_IMAGE_DIMENSION, band_index=None):
+    """Load planetary imagery from arrays or raster files into normalized uint8.
+
+    Rasterio is used for scientific raster formats so large PDS/ENVI/GeoTIFF
+    inputs are read at a bounded resolution. Standard image formats retain an
+    OpenCV fallback. ENVI datasets need their matching .hdr metadata file.
+    """
+    if file_input is None:
+        return None
+
+    if isinstance(file_input, np.ndarray):
+        raw = np.asarray(file_input)
+    elif isinstance(file_input, Image.Image):
+        raw = np.asarray(file_input)
+    else:
+        if isinstance(file_input, (str, os.PathLike)):
+            path = os.fspath(file_input)
+        elif isinstance(file_input, dict):
+            path = file_input.get("path") or file_input.get("name")
+        else:
+            path = getattr(file_input, "path", None) or getattr(file_input, "name", None)
+        if not path or not os.path.isfile(os.fspath(path)):
+            return None
+        path = os.fspath(path)
+        raw = None
+
+        # Rasterio understands PDS, ENVI, and scientific GeoTIFF products.
+        # Read only one science band (or RGB) and bound the read before scaling.
+        try:
+            import rasterio
+            from rasterio.enums import Resampling
+
+            with rasterio.open(path) as src:
+                if src.count < 1 or src.width < 1 or src.height < 1:
+                    return None
+                scale = min(1.0, float(max_dimension) / max(src.height, src.width))
+                out_height = max(1, round(src.height * scale))
+                out_width = max(1, round(src.width * scale))
+                out_shape = (out_height, out_width)
+                if band_index is not None:
+                    selected_band = (
+                        int(band_index) if src.count >= int(band_index)
+                        else max(1, src.count // 2)
+                    )
+                    bands = [selected_band]
+                elif src.count in (3, 4):
+                    bands = [1, 2, 3]
+                elif src.count == 1:
+                    bands = [1]
+                else:
+                    # IIRS is commonly supplied as a 256-band ENVI cube; use
+                    # the specified science band, or the center for other cubes.
+                    bands = [125 if src.count >= 125 else max(1, src.count // 2)]
+
+                if len(bands) == 1:
+                    band = src.read(
+                        bands[0], out_shape=out_shape,
+                        resampling=Resampling.average, masked=True,
+                    )
+                    raw = np.asarray(band.astype(np.float32).filled(np.nan))
+                else:
+                    rgb = src.read(
+                        bands, out_shape=(len(bands), *out_shape),
+                        resampling=Resampling.average, masked=True,
+                    )
+                    rgb = np.asarray(rgb.astype(np.float32).filled(np.nan))
+                    raw = cv2.cvtColor(np.moveaxis(rgb, 0, -1), cv2.COLOR_RGB2GRAY)
+                if src.nodata is not None:
+                    raw[raw == src.nodata] = np.nan
+        except Exception:
+            raw = None
+
+        # OpenCV handles PNG/JPEG and many ordinary TIFFs without optional GIS
+        # dependencies. Do not interpret binary PDS/ENVI files as ordinary images.
+        if raw is None:
+            suffix = Path(path).suffix.lower()
+            if suffix in {".img", ".qub"}:
+                return None
+            decoded = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+            if decoded is None:
+                return None
+            raw = decoded
+
+    if raw.size == 0 or raw.ndim not in (2, 3):
+        return None
+    if raw.ndim == 3:
+        if raw.shape[2] == 1:
+            raw = raw[:, :, 0]
+        elif raw.shape[2] == 3:
+            raw = cv2.cvtColor(raw, cv2.COLOR_BGR2GRAY)
+        elif raw.shape[2] == 4:
+            raw = cv2.cvtColor(raw, cv2.COLOR_BGRA2GRAY)
+        else:
+            return None
+
+    height, width = raw.shape
+    scale = min(1.0, float(max_dimension) / max(height, width))
+    if scale < 1.0:
+        raw = cv2.resize(
+            raw, (max(1, round(width * scale)), max(1, round(height * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
+    raw = raw.astype(np.float32, copy=False)
+    valid = np.isfinite(raw)
+    if not valid.any():
+        return np.zeros(raw.shape, dtype=np.uint8)
+    low, high = np.nanpercentile(raw[valid], (2, 98))
+    if not np.isfinite(low) or not np.isfinite(high):
+        return None
+    if high <= low:
+        high = low + 1e-5
+    normalized = np.clip((raw - low) / (high - low), 0.0, 1.0)
+    normalized[~valid] = 0.0
+    return np.ascontiguousarray((normalized * 255.0).astype(np.uint8))
+
+
 def match_pair_hf(
     img1: np.ndarray, img2: np.ndarray, ransac_threshold_px: float = 3.0
 ) -> tuple[np.ndarray, np.ndarray, str, dict]:
@@ -853,8 +969,15 @@ def process_alignment(
     try:
         is_iirs_pair = sensor_pair_mode == "Optical <-> Infrared"
         max_image_dimension = IIRS_MAX_IMAGE_DIMENSION if is_iirs_pair else MAX_IMAGE_DIMENSION
-        ref_img = _read_grayscale_image(ref_file, max_image_dimension)
-        sec_img = _read_grayscale_image(sec_file, max_image_dimension)
+        ref_band = 125 if sensor_name == "IIRS" else None
+        sec_band = 125 if secondary_sensor_name == "IIRS" else None
+        ref_img = load_lunar_raster(ref_file, max_image_dimension, ref_band)
+        sec_img = load_lunar_raster(sec_file, max_image_dimension, sec_band)
+        if ref_img is None or sec_img is None:
+            return _safe_rejection_output_tuple(
+                _failed_judge_metrics_summary(),
+                "Invalid or Unsupported Planetary File Format",
+            )
         result = _align_core(
             ref_img, sec_img,
             pixel_scale_m=pixel_scale_m,
@@ -1195,9 +1318,15 @@ def update_interactive_blend(images, alpha):
 
 
 def _process_alignment_from_ui(
-    ref_input, sec_input, engine, chk_anms, chk_clahe, chk_shadow, chk_wallis
+    ref_input, sec_input, engine, chk_anms, chk_clahe, chk_shadow, chk_wallis,
+    ref_raw_file=None, sec_raw_file=None,
 ):
     """Adapt the compact workstation controls to the full engine callback."""
+    # gr.Image(filepath) is convenient for regular pictures, but Gradio still
+    # validates/decode-processes its payload as an image. Raw PDS/ENVI products
+    # therefore use the adjacent gr.File controls, which preserve the bytes.
+    ref_input = ref_raw_file or ref_input
+    sec_input = sec_raw_file or sec_input
     reference_sensor = engine or "OHRC"
     secondary_sensor = "IIRS" if reference_sensor == "IIRS" else "TMC-2"
     pair_mode = (
@@ -1238,15 +1367,30 @@ def build_interface():
                 # Input panel
                 gr.Markdown("### 📥 Input Frames")
                 ref_input = gr.Image(
-                    label="Reference Surface Frame (e.g., LRO NAC)",
-                    type="numpy",
+                    label="Reference Surface Frame (e.g., LRO NAC / PDS .IMG)",
+                    type="filepath",
                     interactive=True,
                 )
                 sec_input = gr.Image(
-                    label="Secondary Surface Frame (e.g., OHRC / TMC-2 / IIRS)",
-                    type="numpy",
+                    label="Secondary Surface Frame (e.g., OHRC / TMC-2 / IIRS .qub)",
+                    type="filepath",
                     interactive=True,
                 )
+                with gr.Accordion("Raw PDS / ENVI / Scientific Raster Uploads", open=False):
+                    gr.Markdown(
+                        "Use these file inputs for binary `.IMG` / `.qub` products or "
+                        "rasters Gradio cannot preview. ENVI files require their matching `.hdr` file."
+                    )
+                    ref_raw_file = gr.File(
+                        label="Reference raw raster file",
+                        file_types=[".img", ".qub", ".tif", ".tiff", ".png", ".jpg", ".jpeg"],
+                        type="filepath",
+                    )
+                    sec_raw_file = gr.File(
+                        label="Secondary raw raster file",
+                        file_types=[".img", ".qub", ".tif", ".tiff", ".png", ".jpg", ".jpeg"],
+                        type="filepath",
+                    )
                 
                 engine_dropdown = gr.Dropdown(
                     choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
@@ -1347,6 +1491,7 @@ def build_interface():
             inputs=[
                 ref_input, sec_input, engine_dropdown,
                 chk_anms, chk_clahe, chk_shadow, chk_wallis,
+                ref_raw_file, sec_raw_file,
             ],
             outputs=[
                 warped_result_image, checkerboard_image, vector_overlay_image, blend_image,

@@ -36,6 +36,23 @@ def _to_uint16_image(image: np.ndarray) -> np.ndarray:
     return np.clip(values, 0.0, 65535.0).astype(np.uint16)
 
 
+def _json_safe(value):
+    """Convert NumPy values to strict JSON types and map non-finite floats to null."""
+    if isinstance(value, np.ndarray):
+        return _json_safe(value.tolist())
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, float):
+        return value if np.isfinite(value) else None
+    if isinstance(value, (str, int, bool)) or value is None:
+        return value
+    return str(value)
+
+
 @dataclass
 class GCPRecord:
     """Ground Control Point record for CSV export."""
@@ -136,6 +153,24 @@ def export_homography_json(
         H_full = np.eye(3, dtype=np.float64)
         H_full[:2, :] = H
         H = H_full
+
+    if H.shape != (3, 3):
+        raise ValueError("Transformation matrix must have shape (2, 3) or (3, 3)")
+
+    affine_parameters = None
+    if np.isfinite(H).all() and np.allclose(H[2], (0.0, 0.0, 1.0)):
+        affine = H[:2, :]
+        scale = float(np.hypot(affine[0, 0], affine[1, 0]))
+        rotation_deg = float(np.degrees(np.arctan2(affine[1, 0], affine[0, 0])))
+        rmse_value = metrics.get("rmse_px")
+        affine_parameters = {
+            "scale": scale,
+            "rotation_deg": rotation_deg,
+            "translation_x": float(affine[0, 2]),
+            "translation_y": float(affine[1, 2]),
+            "inliers": int(inlier_count),
+            "rmse": rmse_value,
+        }
     
     export_data = {
         "metadata": {
@@ -147,6 +182,8 @@ def export_homography_json(
         },
         "homography_matrix": H.tolist(),
         "inlier_count": inlier_count,
+        "safety_gate_passed": int(inlier_count) >= 8,
+        "partial_affine_parameters": affine_parameters,
         "spatial_entropy": float(spatial_entropy) if spatial_entropy is not None else "UNMEASURED",
         "spatial_uniformity": float(uniformity_score) if uniformity_score is not None else "UNMEASURED",
         "metrics_px": {
@@ -161,8 +198,8 @@ def export_homography_json(
         }
     }
     
-    with open(output_path, 'w') as f:
-        json.dump(export_data, f, indent=2)
+    with open(output_path, 'w', encoding="utf-8") as f:
+        json.dump(_json_safe(export_data), f, indent=2, allow_nan=False)
 
 
 def export_alignment_geotiff(
@@ -195,8 +232,9 @@ def export_alignment_geotiff(
             warped_secondary = warped_secondary[:, :, 0]
     
     # Preserve bit depth if requested
-    if preserve_bit_depth and warped_secondary.dtype != np.uint16:
-        warped_secondary = _to_uint16_image(warped_secondary)
+    if preserve_bit_depth:
+        if warped_secondary.dtype != np.uint16:
+            warped_secondary = _to_uint16_image(warped_secondary)
     elif warped_secondary.dtype != np.uint8:
         # Normalize to 8-bit
         warped_secondary = cv2.normalize(warped_secondary, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)

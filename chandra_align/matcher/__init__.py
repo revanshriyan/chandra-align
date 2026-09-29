@@ -95,6 +95,12 @@ class SIFTMatcher:
 
 def _to_uint8(img):
     """Percentile-contrast float64 -> uint8 for matchers that expect 8-bit input."""
+    if hasattr(img, "detach"):
+        img = img.detach()
+    if hasattr(img, "cpu"):
+        img = img.cpu()
+    if hasattr(img, "numpy"):
+        img = img.numpy()
     img = np.asarray(img)
     if img.ndim == 3:
         return ensure_uint8(img)
