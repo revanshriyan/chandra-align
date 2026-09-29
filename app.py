@@ -182,15 +182,18 @@ def generate_synthetic_lunar_pair(ref_path: str, sec_path: str) -> None:
 
 def ensure_sample_files() -> tuple[str, str]:
     """
-    Check for sample files; generate if missing.
+    Check for cached sample files; generate in writable temporary storage if missing.
     Returns paths to reference and secondary sample images.
     """
-    root = Path(__file__).resolve().parent
-    ref_path = root / "sample_ref.png"
-    sec_path = root / "sample_sec.png"
+    demo_dir = Path(tempfile.gettempdir()) / "chandra_align_pitch_demo"
+    demo_dir.mkdir(parents=True, exist_ok=True)
+    ref_path = demo_dir / "sample_ref.png"
+    sec_path = demo_dir / "sample_sec.png"
 
     if not (ref_path.is_file() and sec_path.is_file()):
         generate_synthetic_lunar_pair(str(ref_path), str(sec_path))
+    if not (ref_path.is_file() and sec_path.is_file()):
+        raise RuntimeError("Could not create the synthetic pitch demo image pair")
 
     return str(ref_path), str(sec_path)
 
