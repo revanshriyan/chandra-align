@@ -459,7 +459,7 @@ def _align_core(
     wallis_target_std: float = 50.0,
     enforce_uniform_distribution: bool = True,
     sensor_pair_mode: str = "Optical <-> Optical",
-    secondary_sensor_name: str = "TMC-2",
+    secondary_sensor_name: str | None = None,
     reference_sensor_name: str = "OHRC",
     max_image_dimension: int = MAX_IMAGE_DIMENSION,
 ) -> dict:
@@ -467,6 +467,8 @@ def _align_core(
     Core alignment logic - runs on GPU when called from process_alignment.
     Returns comprehensive results dictionary.
     """
+    if secondary_sensor_name is None:
+        secondary_sensor_name = reference_sensor_name
     # Store original images for visualization
     ref_original = _read_grayscale_image(ref_img, max_image_dimension)
     sec_original = _read_grayscale_image(sec_img, max_image_dimension)
@@ -983,7 +985,7 @@ def process_alignment(
     wallis_target_mean: float = 128.0,
     wallis_target_std: float = 50.0,
     sensor_name: str = "OHRC",
-    secondary_sensor_name: str = "TMC-2",
+    secondary_sensor_name: str | None = None,
     sensor_pair_mode: str = "Optical <-> Optical",
     enforce_uniform_distribution: bool = True
 ):
@@ -1011,6 +1013,9 @@ def process_alignment(
     dossier_path = None
     report_text = "Initializing pipeline..."
     reference_image = None
+
+    if secondary_sensor_name is None:
+        secondary_sensor_name = sensor_name
 
     if ref_file is None or sec_file is None:
         return _safe_rejection_output_tuple(
@@ -1370,6 +1375,56 @@ def update_interactive_blend(images, alpha):
         return None
 
 
+def _infer_input_sensor(file_input, fallback_sensor="OHRC"):
+    """Resolve a sensor from a PDS4 label or known example filename.
+
+    Uploaded images without sensor metadata use the workstation's selected
+    sensor. In particular, do not silently invent TMC-2 for an unlabelled
+    secondary image: that changes its assumed ground-sample distance and can
+    downsample otherwise same-scale image pairs before feature matching.
+    """
+    if isinstance(file_input, (str, os.PathLike)):
+        path = Path(file_input)
+    elif isinstance(file_input, dict):
+        value = file_input.get("path") or file_input.get("name")
+        path = Path(value) if value else None
+    else:
+        value = getattr(file_input, "path", None) or getattr(file_input, "name", None)
+        path = Path(value) if value else None
+
+    if path is None:
+        return str(fallback_sensor or "OHRC")
+
+    # Native example assets encode both sensors in their pair-specific names.
+    stem = path.stem.upper()
+    if stem.startswith("NAC_REFERENCE_") or re.match(r"^M\d{9}(LE|RE)", stem):
+        return "LROC_NAC"
+    for token, sensor in (
+        ("IIRS", "IIRS"), ("TMC2", "TMC-2"), ("TMC_2", "TMC-2"),
+        ("TMC", "TMC-2"), ("OHRC", "OHRC"), ("LROC", "LROC_NAC"),
+        ("NAC", "LROC_NAC"), ("WAC", "LROC_WAC"),
+    ):
+        if token in stem:
+            return sensor
+
+    # Raw PDS4 .IMG products carry the authoritative instrument identifier in
+    # a detached XML label. Prefer it over filename heuristics.
+    if path.suffix.lower() == ".img":
+        for label_path in (path.with_suffix(".xml"), Path(os.fspath(path) + ".xml")):
+            if not label_path.is_file():
+                continue
+            try:
+                from chandra_align.ingestion.pds4 import parse_pds4_metadata
+                sensor = parse_pds4_metadata(label_path).sensor_name
+                if sensor and sensor != "UNKNOWN_SENSOR":
+                    return "TMC-2" if sensor.upper() == "TMC2" else sensor
+            except Exception:
+                pass
+            break
+
+    return str(fallback_sensor or "OHRC")
+
+
 def _process_alignment_from_ui(
     ref_input, sec_input, engine, chk_anms, chk_clahe, chk_shadow, chk_wallis,
     ref_raw_file=None, sec_raw_file=None,
@@ -1380,8 +1435,8 @@ def _process_alignment_from_ui(
     # therefore use the adjacent gr.File controls, which preserve the bytes.
     ref_input = ref_raw_file or ref_input
     sec_input = sec_raw_file or sec_input
-    reference_sensor = engine or "OHRC"
-    secondary_sensor = "IIRS" if reference_sensor == "IIRS" else "TMC-2"
+    reference_sensor = _infer_input_sensor(ref_input, engine or "OHRC")
+    secondary_sensor = _infer_input_sensor(sec_input, reference_sensor)
     pair_mode = (
         "Optical <-> Infrared"
         if "IIRS" in (reference_sensor, secondary_sensor)

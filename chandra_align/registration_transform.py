@@ -9,6 +9,31 @@ import numpy as np
 MIN_REGISTRATION_INLIERS = 8
 
 
+def refit_partial_affine_lstsq(src_points: np.ndarray, dst_points: np.ndarray) -> np.ndarray | None:
+    src = np.asarray(src_points, dtype=np.float64).reshape(-1, 2)
+    dst = np.asarray(dst_points, dtype=np.float64).reshape(-1, 2)
+    N = len(src)
+    if N < 2:
+        return None
+    A = np.zeros((2 * N, 4), dtype=np.float64)
+    b = np.zeros(2 * N, dtype=np.float64)
+    A[0::2, 0] = src[:, 0]
+    A[0::2, 1] = -src[:, 1]
+    A[0::2, 2] = 1.0
+    A[1::2, 0] = src[:, 1]
+    A[1::2, 1] = src[:, 0]
+    A[1::2, 3] = 1.0
+    b[0::2] = dst[:, 0]
+    b[1::2] = dst[:, 1]
+    try:
+        p, _, rank, _ = np.linalg.lstsq(A, b, rcond=None)
+        if rank < 4 or not np.isfinite(p).all():
+            return None
+        a, b_param, tx, ty = p
+        return np.array([[a, -b_param, tx], [b_param, a, ty]], dtype=np.float64)
+    except (np.linalg.LinAlgError, ValueError):
+        return None
+
 def estimate_partial_affine(
     src_points: np.ndarray, dst_points: np.ndarray, ransac_threshold_px: float = 3.0
 ):
@@ -32,6 +57,10 @@ def estimate_partial_affine(
     if matrix is None or mask is None or not np.isfinite(matrix).all():
         return None, np.zeros(len(src_points), dtype=bool)
     accepted = mask.reshape(-1).astype(bool)
+    if accepted.sum() >= 3:
+        refitted = refit_partial_affine_lstsq(src[accepted], dst[accepted])
+        if refitted is not None and np.isfinite(refitted).all():
+            matrix = refitted
     if not finite.all():
         expanded = np.zeros(len(finite), dtype=bool)
         expanded[np.flatnonzero(finite)] = accepted
