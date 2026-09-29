@@ -1194,6 +1194,34 @@ def update_interactive_blend(images, alpha):
         return None
 
 
+def _process_alignment_from_ui(
+    ref_input, sec_input, engine, chk_anms, chk_clahe, chk_shadow, chk_wallis
+):
+    """Adapt the compact workstation controls to the full engine callback."""
+    reference_sensor = engine or "OHRC"
+    secondary_sensor = "IIRS" if reference_sensor == "IIRS" else "TMC-2"
+    pair_mode = (
+        "Optical <-> Infrared"
+        if "IIRS" in (reference_sensor, secondary_sensor)
+        else "Optical <-> Optical"
+    )
+    return process_wrapper(
+        ref_input,
+        sec_input,
+        reference_sensor,
+        secondary_sensor,
+        pair_mode,
+        chk_anms,
+        get_sensor_pixel_scale(reference_sensor),
+        chk_clahe,
+        3.0,
+        chk_shadow,
+        chk_wallis,
+        128.0,
+        50.0,
+    )
+
+
 # Build Gradio interface with advanced controls
 def build_interface():
     with gr.Blocks(
@@ -1209,46 +1237,28 @@ def build_interface():
             with gr.Column(scale=1):
                 # Input panel
                 gr.Markdown("### 📥 Input Frames")
-                ref_file = gr.File(
-                    label="Reference Image",
-                    file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"]
+                ref_input = gr.Image(
+                    label="Reference Surface Frame (e.g., LRO NAC)",
+                    type="numpy",
+                    interactive=True,
                 )
-                sec_file = gr.File(
-                    label="Secondary Image",
-                    file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"]
+                sec_input = gr.Image(
+                    label="Secondary Surface Frame (e.g., OHRC / TMC-2 / IIRS)",
+                    type="numpy",
+                    interactive=True,
                 )
                 
-                sensor_dropdown = gr.Dropdown(
+                engine_dropdown = gr.Dropdown(
                     choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
                     value="OHRC",
                     label="Engine Selection / Reference Sensor"
                 )
-                secondary_sensor_dropdown = gr.Dropdown(
-                    choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
-                    value="TMC-2",
-                    label="Secondary Sensor"
-                )
-                sensor_pair_mode = gr.Dropdown(
-                    choices=["Optical <-> Optical", "Optical <-> Infrared"],
-                    value="Optical <-> Optical",
-                    label="Sensor Pair Mode"
-                )
-                pixel_scale = gr.Number(
-                    value=0.25,
-                    label="Reference Pixel Scale (m/px)",
-                    minimum=0.01,
-                    maximum=100.0,
-                    step=0.01,
-                )
 
                 gr.Markdown("### Preprocessing")
-                enforce_uniformity = gr.Checkbox(value=True, label="ANMS / Uniform Keypoint Distribution")
-                enable_clahe = gr.Checkbox(value=True, label="CLAHE")
-                enable_shadow = gr.Checkbox(value=True, label="Shadow Suppression")
-                enable_wallis = gr.Checkbox(value=False, label="Wallis Filter")
-                clahe_clip = gr.State(value=3.0)
-                wallis_mean = gr.State(value=128.0)
-                wallis_std = gr.State(value=50.0)
+                chk_anms = gr.Checkbox(value=True, label="ANMS / Uniform Keypoint Distribution")
+                chk_clahe = gr.Checkbox(value=True, label="CLAHE")
+                chk_shadow = gr.Checkbox(value=True, label="Shadow Suppression")
+                chk_wallis = gr.Checkbox(value=False, label="Wallis Filter")
                 
                 btn_submit = gr.Button("Run Registration", variant="primary")
             
@@ -1332,13 +1342,11 @@ def build_interface():
         
         # Event handlers
         btn_submit.click(
-            fn=process_wrapper,
+            fn=_process_alignment_from_ui,
             api_name="predict",
             inputs=[
-                ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
-                sensor_pair_mode, enforce_uniformity, pixel_scale,
-                enable_clahe, clahe_clip, enable_shadow, enable_wallis,
-                wallis_mean, wallis_std
+                ref_input, sec_input, engine_dropdown,
+                chk_anms, chk_clahe, chk_shadow, chk_wallis,
             ],
             outputs=[
                 warped_result_image, checkerboard_image, vector_overlay_image, blend_image,
@@ -1353,48 +1361,27 @@ def build_interface():
             outputs=[blend_image],
         )
         
-        # Sensor change updates pixel scale
-        def update_pixel_scale(sensor):
-            return get_sensor_pixel_scale(sensor)
-        
-        sensor_dropdown.change(
-            fn=update_pixel_scale,
-            inputs=[sensor_dropdown],
-            outputs=[pixel_scale]
-        )
-        
-        # Native Gradio examples populate only the two image inputs.
+        # Native Gradio examples load image paths directly into the image widgets.
         gr.Markdown("### Example Pairs")
         examples_dir = Path(__file__).resolve().parent / "docs" / "assets" / "examples"
         example_specs = (
-            ("nac_reference_ohrc.png", "ohrc_secondary.png", "OHRC example pair"),
-            ("nac_reference_tmc2.png", "tmc2_secondary.png", "TMC-2 example pair"),
-            ("nac_reference_iirs.png", "iirs_band125_secondary.png", "IIRS example pair"),
-            ("synthetic_groundtruth_reference.png", "synthetic_groundtruth_secondary.png", "Synthetic pair"),
+            ("nac_reference_ohrc.png", "ohrc_secondary.png"),
+            ("nac_reference_tmc2.png", "tmc2_secondary.png"),
+            ("nac_reference_iirs.png", "iirs_band125_secondary.png"),
+            ("synthetic_groundtruth_reference.png", "synthetic_groundtruth_secondary.png"),
         )
         example_rows = []
-        example_labels = []
-        for reference_filename, secondary_filename, label in example_specs:
+        for reference_filename, secondary_filename in example_specs:
             reference_path = examples_dir / reference_filename
             secondary_path = examples_dir / secondary_filename
-            if not reference_path.is_file() or not secondary_path.is_file():
-                print(
-                    f"Skipping incomplete example {label!r}: "
-                    f"missing {reference_path if not reference_path.is_file() else secondary_path}",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                continue
             example_rows.append([str(reference_path), str(secondary_path)])
-            example_labels.append(label)
         if example_rows:
             gr.Examples(
                 examples=example_rows,
-                inputs=[ref_file, sec_file],
+                inputs=[ref_input, sec_input],
                 cache_examples=False,
                 examples_per_page=4,
-                example_labels=example_labels,
-                label="Load an example pair"
+                label="Select Lunar Data Pair Presets"
             )
         else:
             gr.Markdown("No example image pairs are available in this deployment.")
