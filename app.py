@@ -44,7 +44,8 @@ from chandra_align.metrics import (
 )
 from chandra_align.visualization import (
     create_combined_visualization, draw_error_vector_overlay,
-    create_checkerboard_overlay, create_interactive_blend, fig_to_file
+    create_checkerboard_overlay, create_interactive_blend, create_rejection_banner,
+    create_warped_preview, fig_to_file
 )
 from chandra_align.export import (
     export_gcp_csv, export_homography_json, export_alignment_geotiff,
@@ -534,7 +535,7 @@ def _align_core(
             except Exception as exc:
                 execution_diagnostics["fallback_error"] = str(exc)
 
-    if affine_matrix is None or inlier_cnt < MIN_REGISTRATION_INLIERS:
+    if affine_matrix is None:
         raise ValueError(
             f"Insufficient Inliers: partial affine registration requires at least "
             f"{MIN_REGISTRATION_INLIERS}; found {inlier_cnt}."
@@ -544,6 +545,8 @@ def _align_core(
     refinement_stats = {"refined_pairs": 0, "status": "insufficient_verified_matches"}
     inlier_ref, inlier_sec = pts_ref[inliers], pts_sec[inliers]
     try:
+        if inlier_cnt < MIN_REGISTRATION_INLIERS:
+            raise ValueError("Below minimum inlier safety gate; subpixel refinement skipped")
         refined_ref, refined_sec, refinement_stats = refine_subpixel_ncc(
             ref_processed, sec_processed, inlier_ref, inlier_sec,
             ncc_window=11, search_range_px=1
@@ -562,12 +565,11 @@ def _align_core(
     except (cv2.error, ValueError, FloatingPointError) as exc:
         refinement_stats = {"refined_pairs": 0, "status": f"skipped: {exc}"}
 
-    H = _homogeneous_affine(affine_matrix)
-    warped_sec = cv2.warpAffine(sec_original, affine_matrix, (ref_original.shape[1], ref_original.shape[0]))
-    diff_map = cv2.absdiff(ref_original, warped_sec)
-
     inlier_cnt = len(inlier_ref)
-    pts_sec_h = cv2.transform(inlier_sec.reshape(-1, 1, 2), affine_matrix).reshape(-1, 2)
+    pts_sec_h = (
+        cv2.transform(inlier_sec.reshape(-1, 1, 2), affine_matrix).reshape(-1, 2)
+        if inlier_cnt else np.empty((0, 2), dtype=np.float32)
+    )
     residuals_vec = inlier_ref - pts_sec_h
     residuals_mag = np.linalg.norm(residuals_vec, axis=1)
     quadrant_metrics, quadrant_spatial_entropy = compute_quadrant_metrics(
@@ -594,8 +596,51 @@ def _align_core(
         min_inliers=MIN_REGISTRATION_INLIERS,
     )
 
-    warped_preview_rgb = cv2.cvtColor(warped_sec, cv2.COLOR_GRAY2RGB)
-    checkerboard_rgb = create_checkerboard_overlay(ref_original, warped_sec, tile_size=64)
+    engine_lower = engine_name.lower()
+    if "sift" in engine_lower:
+        engine_used = "Fallback (SIFT)"
+    elif "lightglue" in engine_lower or "aliked" in engine_lower:
+        engine_used = "Fallback (LightGlue/ALIKED)"
+    else:
+        engine_used = "Primary (Phase Congruency)"
+    execution_device = "GPU (ZeroGPU)" if _zerogpu_runtime_enabled() else "CPU"
+
+    if status_code != "SUCCESS":
+        banner_bgr = create_rejection_banner(ref_original.shape[:2])
+        banner_rgb = cv2.cvtColor(banner_bgr, cv2.COLOR_BGR2RGB)
+        return {
+            "rejected": True,
+            "banner_rgb": banner_rgb,
+            "banner_bgr": banner_bgr,
+            "ref_original": ref_original,
+            "judge_metrics": judge_metrics,
+            "status_message": status_message,
+            "status_code": status_code,
+            "inlier_cnt": inlier_cnt,
+            "total_matches": len(pts_ref),
+            "rmse_px": rmse_px,
+            "quadrant_spatial_entropy": quadrant_spatial_entropy,
+            "engine_used": engine_used,
+            "execution_device": execution_device,
+            "affine_telemetry": None,
+        }
+
+    H = _homogeneous_affine(affine_matrix)
+    warped_sec = cv2.warpAffine(sec_original, affine_matrix, (ref_original.shape[1], ref_original.shape[0]))
+    diff_map = cv2.absdiff(ref_original, warped_sec)
+    error_vector_overlay_bgr = draw_error_vector_overlay(
+        ref_original, warped_sec, inlier_sec, inlier_ref, affine_matrix, scale=10.0,
+        inlier_count=inlier_cnt, min_inliers=MIN_REGISTRATION_INLIERS, status=status_code,
+    )
+
+    warped_preview_rgb = create_warped_preview(
+        warped_sec, image_shape=ref_original.shape[:2], inlier_count=inlier_cnt,
+        min_inliers=MIN_REGISTRATION_INLIERS, status=status_code,
+    )
+    checkerboard_rgb = create_checkerboard_overlay(
+        ref_original, warped_sec, tile_size=64, inlier_count=inlier_cnt,
+        min_inliers=MIN_REGISTRATION_INLIERS, status=status_code,
+    )
     error_vector_overlay_rgb = cv2.cvtColor(error_vector_overlay_bgr, cv2.COLOR_BGR2RGB)
 
     # Compute deformation field
@@ -617,15 +662,8 @@ def _align_core(
         quadtree_result = evaluate_quadtree_uniformity(inlier_ref, ref_original.shape[:2], depth=4)
         uniformity = distribution["uniformity"]
 
-    engine_lower = engine_name.lower()
-    if "sift" in engine_lower:
-        engine_used = "Fallback (SIFT)"
-    elif "lightglue" in engine_lower or "aliked" in engine_lower:
-        engine_used = "Fallback (LightGlue/ALIKED)"
-    else:
-        engine_used = "Primary (Phase Congruency)"
-
     return {
+        "rejected": False,
         "warped_preview_rgb": warped_preview_rgb,
         "checkerboard_rgb": checkerboard_rgb,
         "error_vector_overlay_rgb": error_vector_overlay_rgb,
@@ -641,7 +679,7 @@ def _align_core(
         "affine_telemetry": affine_telemetry,
         "transformation_telemetry": affine_telemetry,
         "engine_used": engine_used,
-        "execution_device": "GPU (ZeroGPU)" if _zerogpu_runtime_enabled() else "CPU",
+        "execution_device": execution_device,
         "starvation_guard": starvation_stats,
         "ref_original": ref_original,
         "sec_original": sec_original,
@@ -679,6 +717,80 @@ def _failed_judge_metrics_summary(inlier_count: int = 0, total_correspondences: 
     }
     return build_judge_metrics_summary(
         0.0, inlier_count, total_correspondences, 0.0, empty_quadrants
+    )
+
+
+def format_telemetry_report(
+    status, inliers, total_pts, inlier_ratio, spatial_entropy,
+    quad_counts, rmse=None, affine_telemetry=None, engine="N/A", device="N/A",
+):
+    """Format calibrated telemetry only for registrations accepted by the gate."""
+    accepted = str(status).strip().upper() in ("SUCCESS", "REGISTRATION ACCEPTED")
+    counts = list(quad_counts or [0, 0, 0, 0])[:4]
+    counts.extend([0] * (4 - len(counts)))
+    if not accepted:
+        return (
+            "===================================================\n"
+            "PHOTOGRAMMETRIC TELEMETRY REPORT\n"
+            "===================================================\n"
+            "Registration Status : REJECTED (Degenerate or Low-Coverage Fit)\n"
+            "Recovered Transform : N/A — Alignment Rejected\n"
+            "Spatial Uniformity  : REJECTED (Clustered Inliers)\n"
+            "\nQUALITY METRICS:\n"
+            "Global RMSE          : N/A\n"
+            f"Inlier Ratio         : {int(inliers)} / {int(total_pts)} ({float(inlier_ratio):.2f}%)\n"
+            f"Spatial Entropy      : {float(spatial_entropy):.4f} / 2.0000\n"
+            f"Quadrant Inliers     : Q1:{int(counts[0])} Q2:{int(counts[1])} Q3:{int(counts[2])} Q4:{int(counts[3])}\n\n"
+            "NOTICE: Transform telemetry is suppressed on degenerate fits\n"
+            "to prevent uncalibrated coordinate propagation into DEM products.\n"
+            "==================================================="
+        )
+    values = affine_telemetry or {}
+    return (
+        "===================================================\n"
+        "PHOTOGRAMMETRIC TELEMETRY REPORT\n"
+        "===================================================\n"
+        f"Registration Status    : REGISTRATION ACCEPTED\n"
+        f"Execution Engine Path  : {engine} ({device})\n"
+        f"Recovered Translation  : ΔX = {float(values.get('delta_x_px', 0.0)):.4f} px, ΔY = {float(values.get('delta_y_px', 0.0)):.4f} px\n"
+        f"Recovered Rotation     : θ  = {float(values.get('rotation_deg', 0.0)):.4f}°\n"
+        f"Recovered Uniform Scale: s  = {float(values.get('scale_s', 0.0)):.8f}\n"
+        "\nQUALITY METRICS:\n"
+        f"Global RMSE            : {float(rmse or 0.0):.4f} px\n"
+        f"Inlier Count / Ratio   : {int(inliers)} / {int(total_pts)} ({float(inlier_ratio):.2f}%)\n"
+        f"Spatial Entropy        : {float(spatial_entropy):.4f} / 2.0000\n"
+        f"Quadrant Inliers (Q1-4): {counts} (Active: {sum(int(v) > 0 for v in counts)}/4)\n"
+        "==================================================="
+    )
+
+
+def _rejected_output_tuple(summary, status_message=None, image_shape=(768, 1024), total_pts=0):
+    """Build diagnostic image outputs and suppress downloads for rejected fits."""
+    metrics = summary if isinstance(summary, dict) else _failed_judge_metrics_summary()
+    global_metrics = metrics.get("global_metrics", {})
+    inliers = int(global_metrics.get("inlier_count", 0))
+    ratio = float(global_metrics.get("inlier_ratio_pct", 0.0))
+    entropy = float(global_metrics.get("spatial_entropy_score", 0.0))
+    if total_pts <= 0 and ratio > 0.0:
+        total_pts = int(round(inliers * 100.0 / ratio))
+    counts = metrics.get("quadrant_counts", [0, 0, 0, 0])
+    message = status_message or metrics.get("status_message", "REJECTED: Alignment quality gate failed")
+    banner_bgr = create_rejection_banner(image_shape)
+    banner_rgb = cv2.cvtColor(banner_bgr, cv2.COLOR_BGR2RGB)
+    banner_pil = Image.fromarray(banner_rgb)
+    report = (
+        f"❌ {message}\n\n"
+        "REGISTRATION REJECTED: Insufficient Spatial Uniformity\n"
+        "Sub-pixel alignment gate prevented degenerate warp execution."
+    )
+    telemetry = format_telemetry_report(
+        metrics.get("status_code", "FAILED"), inliers, total_pts, ratio,
+        entropy, counts,
+    )
+    return (
+        banner_pil, banner_pil, banner_pil, banner_pil,
+        report, metrics, telemetry, (banner_bgr, banner_bgr),
+        None, None, None, None, None,
     )
 
 
@@ -725,6 +837,14 @@ def process_alignment(
             reference_sensor_name=sensor_name,
             max_image_dimension=max_image_dimension
         )
+
+        if result.get("rejected"):
+            return _rejected_output_tuple(
+                result["judge_metrics"],
+                status_message=result["status_message"],
+                image_shape=result["ref_original"].shape[:2],
+                total_pts=result["total_matches"],
+            )
 
         warped_preview_rgb = result["warped_preview_rgb"]
         checkerboard_rgb = result["checkerboard_rgb"]
@@ -786,21 +906,11 @@ def process_alignment(
             f"  Mean Mag: {grid_analysis['mean_magnitude_px']:.4f} px ({grid_analysis['mean_magnitude_m']:.4f} m)\n"
             f"  Max Mag:  {grid_analysis['max_magnitude_px']:.4f} px ({grid_analysis['max_magnitude_m']:.4f} m)\n"
         )
-        telemetry_report = (
-            "===================================================\n"
-            "PHOTOGRAMMETRIC TELEMETRY REPORT\n"
-            "===================================================\n"
-            f"Registration Status    : {status_message}\n"
-            f"Execution Engine Path  : {result['engine_used']} ({result['execution_device']})\n"
-            f"Recovered Translation  : ΔX = {affine_telemetry['delta_x_px']:.4f} px, ΔY = {affine_telemetry['delta_y_px']:.4f} px\n"
-            f"Recovered Rotation     : θ  = {affine_telemetry['rotation_deg']:.4f}°\n"
-            f"Recovered Uniform Scale: s  = {affine_telemetry['scale_s']:.8f}\n"
-            "\nQUALITY METRICS:\n"
-            f"Global RMSE            : {rmse_px:.4f} px\n"
-            f"Inlier Count / Ratio   : {inlier_cnt} / {total_matches} ({inlier_pct:.2f}%)\n"
-            f"Spatial Entropy        : {quadrant_entropy:.4f} / 2.000\n"
-            f"Quadrant Inliers (Q1-4): {quadrant_counts} (Active: {active_quadrants}/4)\n"
-            "==================================================="
+        telemetry_report = format_telemetry_report(
+            status_code, inlier_cnt, total_matches, inlier_pct,
+            quadrant_entropy, quadrant_counts, rmse=rmse_px,
+            affine_telemetry=affine_telemetry,
+            engine=result["engine_used"], device=result["execution_device"],
         )
         report += (
             "\n<!--QUADRANT_METRICS_START-->"
@@ -903,14 +1013,20 @@ def process_alignment(
         print(traceback.format_exc(), file=sys.stderr, flush=True)
         failure = re.search(r"found\s+(\d+)", str(e), flags=re.IGNORECASE)
         failed_inliers = int(failure.group(1)) if failure else 0
-        return (None, None, None, None, f"Registration Failed: {str(e)}",
-                _failed_judge_metrics_summary(failed_inliers),
-                "", None, None, None, None, None, None)
+        failed_summary = _failed_judge_metrics_summary(failed_inliers)
+        image_shape = ref_img.shape[:2] if "ref_img" in locals() else (768, 1024)
+        return _rejected_output_tuple(
+            failed_summary, status_message=failed_summary["status_message"],
+            image_shape=image_shape,
+        )
     except Exception as e:
         print(traceback.format_exc(), file=sys.stderr, flush=True)
-        return (None, None, None, None, f"Registration Failed: {str(e)}",
-                _failed_judge_metrics_summary(),
-                "", None, None, None, None, None, None)
+        failed_summary = _failed_judge_metrics_summary()
+        image_shape = ref_img.shape[:2] if "ref_img" in locals() else (768, 1024)
+        return _rejected_output_tuple(
+            failed_summary, status_message=f"Registration Failed: {str(e)}",
+            image_shape=image_shape,
+        )
 
 
 GPU_EXECUTION_STATUS = "⚡ Execution Mode: ZeroGPU (A10G Accelerated)"

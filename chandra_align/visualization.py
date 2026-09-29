@@ -63,6 +63,51 @@ def _display_bgr_uint8(image: np.ndarray) -> np.ndarray:
     return display.copy()
 
 
+def _registration_rejected(inlier_count=None, min_inliers=8, status=None) -> bool:
+    """Return true when a supplied gate status/count requires a diagnostic canvas."""
+    if status is not None:
+        normalized = str(status).strip().upper()
+        if normalized not in ("SUCCESS", "REGISTRATION ACCEPTED"):
+            return True
+    if inlier_count is not None:
+        try:
+            return int(inlier_count) < int(min_inliers)
+        except (TypeError, ValueError, OverflowError):
+            return True
+    return False
+
+
+def create_rejection_banner(image_shape, message=None):
+    """Create a high-contrast BGR diagnostic banner at the raster dimensions."""
+    if len(image_shape) < 2:
+        raise ValueError("image_shape must include height and width")
+    height, width = max(1, int(image_shape[0])), max(1, int(image_shape[1]))
+    canvas = np.empty((height, width, 3), dtype=np.uint8)
+    canvas[:] = (42, 23, 15)  # BGR for #0f172a dark slate.
+    lines = (
+        "REGISTRATION REJECTED: Insufficient Spatial Uniformity",
+        "Sub-pixel alignment gate prevented degenerate warp execution.",
+    )
+    if message:
+        lines = ("REGISTRATION REJECTED: Insufficient Spatial Uniformity", str(message))
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    margin = max(8, width // 30)
+    max_width = max(1, width - 2 * margin)
+    scale = min(1.0, max_width / max(cv2.getTextSize(line, font, 1.0, 2)[0][0] for line in lines))
+    scale = max(0.2, scale)
+    thickness = max(1, int(round(scale * 2)))
+    line_sizes = [cv2.getTextSize(line, font, scale, thickness)[0] for line in lines]
+    line_gap = max(8, int(height * 0.04))
+    total_height = line_sizes[0][1] + line_gap + line_sizes[1][1]
+    baseline_y = max(line_sizes[0][1] + 4, (height - total_height) // 2 + line_sizes[0][1])
+    for index, (line, size) in enumerate(zip(lines, line_sizes)):
+        x = max(4, (width - size[0]) // 2)
+        y = baseline_y if index == 0 else baseline_y + line_gap + size[1]
+        color = (90, 90, 255) if index == 0 else (255, 255, 255)
+        cv2.putText(canvas, line, (x, y), font, scale, color, thickness, cv2.LINE_AA)
+    return canvas
+
+
 def draw_error_vector_overlay(
     ref_img: np.ndarray,
     sensed_img: np.ndarray,
@@ -70,6 +115,9 @@ def draw_error_vector_overlay(
     inliers_dst: np.ndarray,
     transform_matrix: np.ndarray,
     scale: float = 10.0,
+    inlier_count=None,
+    min_inliers: int = 8,
+    status=None,
 ) -> np.ndarray:
     """Overlay color-coded, magnified transform residuals on the target frame.
 
@@ -79,6 +127,8 @@ def draw_error_vector_overlay(
     with residual magnitude thresholds evaluated before magnification.
     Returns a BGR uint8 image.
     """
+    if _registration_rejected(inlier_count, min_inliers, status):
+        return create_rejection_banner(np.asarray(ref_img).shape[:2])
     image = _display_bgr_uint8(ref_img)
     sensed = _display_bgr_uint8(sensed_img)
     if sensed.shape[:2] != image.shape[:2]:
@@ -131,8 +181,17 @@ def draw_error_vector_overlay(
     return image
 
 
-def create_checkerboard_overlay(img1: np.ndarray, img2: np.ndarray, tile_size: int = 64) -> np.ndarray:
+def create_checkerboard_overlay(
+    img1: np.ndarray,
+    img2: np.ndarray,
+    tile_size: int = 64,
+    inlier_count=None,
+    min_inliers: int = 8,
+    status=None,
+) -> np.ndarray:
     """Return an RGB checkerboard blend, padding differently sized rasters."""
+    if _registration_rejected(inlier_count, min_inliers, status):
+        return cv2.cvtColor(create_rejection_banner(np.asarray(img1).shape[:2]), cv2.COLOR_BGR2RGB)
     if isinstance(tile_size, bool) or int(tile_size) <= 0:
         raise ValueError("tile_size must be a positive integer")
     tile_size = int(tile_size)
@@ -170,6 +229,20 @@ def create_interactive_blend(ref_img: np.ndarray, warped_img: np.ndarray, alpha:
         canvas[:warped.shape[0], :warped.shape[1]] = warped
         warped = canvas
     return cv2.addWeighted(ref, weight, warped, 1.0 - weight, 0.0)
+
+
+def create_warped_preview(
+    warped_img: np.ndarray,
+    image_shape=None,
+    inlier_count=None,
+    min_inliers: int = 8,
+    status=None,
+) -> np.ndarray:
+    """Return a display RGB warp or a rejection banner when the fit is unsafe."""
+    if _registration_rejected(inlier_count, min_inliers, status):
+        shape = image_shape if image_shape is not None else np.asarray(warped_img).shape[:2]
+        return cv2.cvtColor(create_rejection_banner(shape), cv2.COLOR_BGR2RGB)
+    return cv2.cvtColor(_display_bgr_uint8(warped_img), cv2.COLOR_BGR2RGB)
 
 
 def create_quiver_plot(
@@ -539,6 +612,8 @@ __all__ = [
     "draw_error_vector_overlay",
     "create_checkerboard_overlay",
     "create_interactive_blend",
+    "create_rejection_banner",
+    "create_warped_preview",
     "create_quiver_plot",
     "create_error_distribution_plot",
     "create_combined_visualization",
