@@ -161,9 +161,11 @@ def load_lunar_raster(file_input, max_dimension: int = MAX_IMAGE_DIMENSION, band
             path = file_input.get("path") or file_input.get("name")
         else:
             path = getattr(file_input, "path", None) or getattr(file_input, "name", None)
-        if not path or not os.path.isfile(os.fspath(path)):
+        if not path:
             return None
-        path = os.fspath(path)
+        path = os.path.abspath(os.fspath(path))
+        if not os.path.isfile(path):
+            return None
         raw = None
 
         # Preserve the original byte values for ordinary pictures. Re-stretching
@@ -172,6 +174,16 @@ def load_lunar_raster(file_input, max_dimension: int = MAX_IMAGE_DIMENSION, band
         if Path(path).suffix.lower() in {".png", ".jpg", ".jpeg"}:
             raw = cv2.imread(path, cv2.IMREAD_UNCHANGED)
 
+        # PDS4 products keep raster metadata in a detached XML product label.
+        # Prefer the matching sibling label when present; retain direct opens
+        # for attached-label PDS3 files and ENVI/ISIS products.
+        raster_path = path
+        if Path(path).suffix.lower() == ".img":
+            for label_path in (Path(path).with_suffix(".xml"), Path(path + ".xml")):
+                if label_path.is_file():
+                    raster_path = os.fspath(label_path)
+                    break
+
         # Rasterio understands PDS, ENVI, and scientific GeoTIFF products.
         # Read only one science band (or RGB) and bound the read before scaling.
         try:
@@ -179,7 +191,7 @@ def load_lunar_raster(file_input, max_dimension: int = MAX_IMAGE_DIMENSION, band
                 import rasterio
                 from rasterio.enums import Resampling
 
-                with rasterio.open(path) as src:
+                with rasterio.open(raster_path) as src:
                     if src.count < 1 or src.width < 1 or src.height < 1:
                         return None
                     scale = min(1.0, float(max_dimension) / max(src.height, src.width))
@@ -239,13 +251,20 @@ def load_lunar_raster(file_input, max_dimension: int = MAX_IMAGE_DIMENSION, band
     if raw.size == 0 or raw.ndim not in (2, 3):
         return None
     if raw.ndim == 3:
-        if raw.shape[2] == 1:
+        # Handle channel-first layout (C, H, W) from Rasterio before the
+        # channel-last (H, W, C) branches.  Without this, a (1, H, W) array
+        # evaluates shape[2] == width, falls through to `return None`, and
+        # silently drops all keypoint extraction on the HF Linux container.
+        if raw.shape[0] in (1, 3, 4) and raw.shape[2] not in (1, 3, 4):
+            # Almost certainly channel-first: transpose to (H, W, C)
+            raw = np.moveaxis(raw, 0, -1)
+        if raw.ndim == 3 and raw.shape[2] == 1:
             raw = raw[:, :, 0]
-        elif raw.shape[2] == 3:
+        elif raw.ndim == 3 and raw.shape[2] == 3:
             raw = cv2.cvtColor(raw, cv2.COLOR_BGR2GRAY)
-        elif raw.shape[2] == 4:
+        elif raw.ndim == 3 and raw.shape[2] == 4:
             raw = cv2.cvtColor(raw, cv2.COLOR_BGRA2GRAY)
-        else:
+        elif raw.ndim == 3:
             return None
 
     # Keep uint8 inputs byte-for-byte stable after grayscale conversion.
@@ -434,7 +453,7 @@ def _align_core(
     pixel_scale_m: float = 0.25,
     enable_clahe: bool = True,
     clahe_clip_limit: float = 3.0,
-    enable_shadow_suppression: bool = True,
+    enable_shadow_suppression: bool = False,
     enable_wallis: bool = False,
     wallis_target_mean: float = 128.0,
     wallis_target_std: float = 50.0,
@@ -829,11 +848,25 @@ def format_telemetry_report(
     rmse_pass = rmse_value <= 0.5
     entropy_pass = entropy_value >= 0.75
     quadrant_pass = active >= 3
-    status_text = status_message or (
-        "ACCEPTED (Sub-Pixel Precision)" if tier1 else
-        "COARSE ALIGNMENT (Regional Fit Advisory)" if tier2 else
-        "REJECTED (Degenerate Single-Quadrant Cluster)"
-    )
+    # Priority-ordered header: use the caller's message when available;
+    # otherwise derive an explicit rejection reason instead of the old
+    # catch-all "Degenerate Single-Quadrant Cluster" default.
+    if status_message:
+        status_text = status_message
+    elif tier1:
+        status_text = "ACCEPTED (Sub-Pixel Precision)"
+    elif tier2:
+        status_text = "COARSE ALIGNMENT (Regional Fit Advisory)"
+    elif inliers == 0:
+        status_text = "REJECTED (Zero Inlier Matches Detected)"
+    elif not rmse_pass:
+        status_text = f"REJECTED (High Residual RMSE: {rmse_value:.4f} px > 0.50 px)"
+    elif not quadrant_pass:
+        status_text = f"REJECTED (Degenerate Spatial Cluster: {active}/4 Active Quadrants)"
+    elif not entropy_pass:
+        status_text = f"REJECTED (Low Spatial Entropy: {entropy_value:.4f} < 0.75)"
+    else:
+        status_text = "REJECTED (Validation Criteria Not Satisfied)"
     check = lambda passed: "✓" if passed else "✗"
     lines = [
         "===================================================",
@@ -894,7 +927,7 @@ def _rejected_output_tuple(summary, status_message=None, image_shape=(768, 1024)
     )
     telemetry = format_telemetry_report(
         metrics.get("status_code", "FAILED"), inliers, total_pts, ratio,
-        entropy, counts,
+        entropy, counts, status_message=message,
     )
     return (
         banner_pil, banner_pil, banner_pil, banner_pil,
@@ -945,7 +978,7 @@ def process_alignment(
     pixel_scale_m: float = 0.25,
     enable_clahe: bool = True,
     clahe_clip_limit: float = 3.0,
-    enable_shadow_suppression: bool = True,
+    enable_shadow_suppression: bool = False,
     enable_wallis: bool = False,
     wallis_target_mean: float = 128.0,
     wallis_target_std: float = 50.0,
@@ -1086,6 +1119,7 @@ def process_alignment(
             quadrant_entropy, quadrant_counts, rmse=rmse_px,
             affine_telemetry=affine_telemetry,
             engine=result["engine_used"], device=result["execution_device"],
+            status_message=status_message,
         )
         report += (
             "\n<!--QUADRANT_METRICS_START-->"
@@ -1420,7 +1454,11 @@ def build_interface():
                 gr.Markdown("### Preprocessing")
                 chk_anms = gr.Checkbox(value=True, label="ANMS / Uniform Keypoint Distribution")
                 chk_clahe = gr.Checkbox(value=True, label="CLAHE")
-                chk_shadow = gr.Checkbox(value=True, label="Shadow Suppression")
+                chk_shadow = gr.Checkbox(
+                    value=False,
+                    label="Shadow Suppression",
+                    info="Opt-in: Otsu masking can discard valid dark-surface features.",
+                )
                 chk_wallis = gr.Checkbox(value=False, label="Wallis Filter")
                 
                 btn_submit = gr.Button("Run Registration", variant="primary")
