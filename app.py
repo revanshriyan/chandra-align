@@ -19,7 +19,6 @@ import tempfile
 import json
 import zipfile
 import math
-import html
 import re
 import traceback
 from pathlib import Path
@@ -141,85 +140,24 @@ def _read_grayscale_image(image_file, max_dimension: int = MAX_IMAGE_DIMENSION) 
     return np.ascontiguousarray(image)
 
 
-def generate_synthetic_lunar_pair(ref_path: str, sec_path: str) -> None:
-    """
-    Generate synthetic lunar terrain image pair with known homography shift.
-    Saves reference and secondary images to disk.
-    """
-    h, w = 512, 512
-    ref = np.zeros((h, w), dtype=np.float32)
-    np.random.seed(42)
-
-    # Generate crater-like features
-    for _ in range(40):
-        cx, cy = np.random.randint(40, w - 40), np.random.randint(40, h - 40)
-        r = np.random.randint(8, 35)
-        cv2.circle(ref, (cx, cy), r, np.random.uniform(0.2, 1.0), -1)
-
-    # Generate ridge-like linear features
-    for _ in range(20):
-        x1, y1 = np.random.randint(0, w), np.random.randint(0, h)
-        x2, y2 = np.random.randint(0, w), np.random.randint(0, h)
-        cv2.line(ref, (x1, y1), (x2, y2), np.random.uniform(0.15, 0.7), 2)
-
-    # Apply Gaussian blur for realistic texture
-    ref = cv2.GaussianBlur(ref, (7, 7), 1.5)
-    ref = (ref * 255).astype(np.uint8)
-
-    # Apply known homography (simulate orbital shift + rotation)
-    angle = np.deg2rad(1.2)
-    tx, ty = 14.5, -9.3
-    scale = 1.008
-    M = np.array([
-        [scale * np.cos(angle), -scale * np.sin(angle), tx],
-        [scale * np.sin(angle), scale * np.cos(angle), ty]
-    ], dtype=np.float32)
-
-    sec = cv2.warpAffine(ref, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
-
-    # Add slight radiometric variation to secondary
-    noise = np.random.normal(0.0, 3.0, sec.shape).astype(np.float32)
-    sec = np.clip(sec.astype(np.float32) * 0.95 + noise * 0.05, 0, 255).astype(np.uint8)
-
-    if not cv2.imwrite(ref_path, ref) or not cv2.imwrite(sec_path, sec):
-        raise OSError("OpenCV could not write the synthetic pitch demo image pair")
-
-
-def ensure_sample_files() -> tuple[str, str]:
-    """
-    Check for cached sample files; generate in writable temporary storage if missing.
-    Returns paths to reference and secondary sample images.
-    """
-    demo_dir = Path(tempfile.gettempdir()) / "chandra_align_pitch_demo"
-    demo_dir.mkdir(parents=True, exist_ok=True)
-    ref_path = demo_dir / "sample_ref.png"
-    sec_path = demo_dir / "sample_sec.png"
-
-    pair_is_readable = (
-        ref_path.is_file()
-        and sec_path.is_file()
-        and cv2.imread(str(ref_path), cv2.IMREAD_UNCHANGED) is not None
-        and cv2.imread(str(sec_path), cv2.IMREAD_UNCHANGED) is not None
-    )
-    if not pair_is_readable:
-        generate_synthetic_lunar_pair(str(ref_path), str(sec_path))
-    if (
-        not ref_path.is_file()
-        or not sec_path.is_file()
-        or cv2.imread(str(ref_path), cv2.IMREAD_UNCHANGED) is None
-        or cv2.imread(str(sec_path), cv2.IMREAD_UNCHANGED) is None
-    ):
-        raise RuntimeError("Could not create the synthetic pitch demo image pair")
-
-    return str(ref_path), str(sec_path)
-
-
 def match_pair_hf(
     img1: np.ndarray, img2: np.ndarray, ransac_threshold_px: float = 3.0
 ) -> tuple[np.ndarray, np.ndarray, str, dict]:
     """Run phase-congruency RIFT2 first and disclose any LightGlue/ALIKED handoff."""
+    def as_numpy(image):
+        # Gradio/ZeroGPU callers can hand a tensor-backed image to the matcher.
+        # Detach and move it to host memory before NumPy/OpenCV conversion.
+        if hasattr(image, "detach"):
+            image = image.detach()
+        if hasattr(image, "cpu"):
+            image = image.cpu()
+        if hasattr(image, "numpy"):
+            image = image.numpy()
+        return np.asarray(image)
+
     # SIFT and most deep matcher frontends require finite uint8 image arrays.
     def as_uint8(image):
+        image = as_numpy(image)
         image = ensure_uint8(image)
         if image.ndim != 2 or image.size == 0:
             raise ValueError("Feature matching requires non-empty grayscale images")
@@ -229,7 +167,7 @@ def match_pair_hf(
         lo, hi = np.percentile(image, [1, 99])
         return np.zeros(image.shape, np.uint8) if hi <= lo else np.clip((image - lo) * (255.0 / (hi - lo)), 0, 255).astype(np.uint8)
 
-    sift_input1, sift_input2 = np.asarray(img1), np.asarray(img2)
+    sift_input1, sift_input2 = as_numpy(img1), as_numpy(img2)
     img1, img2 = as_uint8(sift_input1), as_uint8(sift_input2)
     diagnostics = {
         "primary_engine": "Phase Congruency + Quad-Tree",
@@ -826,12 +764,12 @@ def _rejected_output_tuple(summary, status_message=None, image_shape=(768, 1024)
     return (
         banner_pil, banner_pil, banner_pil, banner_pil,
         report, metrics, telemetry, (banner_bgr, banner_bgr),
-        None, None, None, None, None,
+        None, None, None, None, None, None,
     )
 
 
 def _minimal_rejection_output_tuple(status_message, summary=None):
-    """Dependency-light emergency result that always matches the 13 outputs."""
+    """Dependency-light emergency result that always matches the 14 outputs."""
     blank = np.zeros((512, 512, 3), dtype=np.uint8)
     preview = Image.fromarray(blank)
     metrics = summary if isinstance(summary, dict) else _failed_judge_metrics_summary()
@@ -845,7 +783,7 @@ def _minimal_rejection_output_tuple(status_message, summary=None):
     return (
         preview, preview, preview, preview,
         report, metrics, telemetry, (blank, blank),
-        None, None, None, None, None,
+        None, None, None, None, None, None,
     )
 
 
@@ -856,9 +794,9 @@ def _safe_rejection_output_tuple(summary, status_message, image_shape=(768, 1024
             summary, status_message=status_message,
             image_shape=image_shape, total_pts=total_pts,
         ))
-        if len(outputs) == 13:
+        if len(outputs) == 14:
             return outputs
-        raise ValueError(f"Rejection callback produced {len(outputs)} outputs, expected 13")
+        raise ValueError(f"Rejection callback produced {len(outputs)} outputs, expected 14")
     except Exception:
         print("Failed to render the normal rejection banner; using a minimal safe result.",
               file=sys.stderr, flush=True)
@@ -886,7 +824,7 @@ def process_alignment(
     Returns visual previews, telemetry, judge metrics, and scientific export paths.
     """
     # Pre-allocate safe values before image I/O or processing. The declared
-    # Gradio return order remains the fixed 13-component contract below.
+    # Gradio return order remains the fixed 14-component contract below.
     default_blank_img = np.zeros((512, 512, 3), dtype=np.uint8)
     warped_sec = default_blank_img.copy()
     vector_overlay = default_blank_img.copy()
@@ -898,6 +836,7 @@ def process_alignment(
     export_csv = None
     export_json = None
     export_png = None
+    export_zip = None
     banner_img = default_blank_img.copy()
     active_badge = "Runtime Mode: Active"
     checklist_status = "INITIALIZING"
@@ -1081,6 +1020,7 @@ def process_alignment(
             for key, path in export_paths.items():
                 if path and Path(path).exists():
                     zf.write(path, Path(path).name)
+        export_zip = str(zip_path)
         
         # Build RGB previews and return the fixed-key judge summary to Gradio.
         warped_pil = Image.fromarray(np.asarray(warped_preview_rgb, dtype=np.uint8))
@@ -1101,7 +1041,8 @@ def process_alignment(
             export_paths.get("transform_json"),
             export_paths.get("warped_geotiff"),
             export_paths.get("warped_png"),
-            str(viz_path)
+            str(viz_path),
+            export_zip,
         )
 
     except ValueError as e:
@@ -1140,11 +1081,11 @@ RUNTIME_MODE_BADGE = (
 
 def _append_execution_status(outputs, status: str):
     """Append execution mode and render the UI report without changing output arity."""
-    values = list(outputs) if isinstance(outputs, (tuple, list)) else [None] * 13
-    if len(values) != 13:
-        values = (values + [None] * 13)[:13]
+    values = list(outputs) if isinstance(outputs, (tuple, list)) else [None] * 14
+    if len(values) != 14:
+        values = (values + [None] * 14)[:14]
     report = values[4] if isinstance(values[4], str) else ""
-    values[4] = _format_metric_report(f"{report.rstrip()}\n\n{status}".strip())
+    values[4] = f"{report.rstrip()}\n\n{status}".strip()
     telemetry = values[6] if isinstance(values[6], str) else ""
     device = "GPU (ZeroGPU)" if "ZeroGPU" in status else "CPU"
     telemetry = re.sub(
@@ -1154,52 +1095,6 @@ def _append_execution_status(outputs, status: str):
     )
     values[6] = telemetry
     return tuple(values)
-
-
-def _format_metric_report(report: str) -> str:
-    """Render the existing plain-text report as UI-only metric cards."""
-    quadrant_html = ""
-    quadrant_match = re.search(
-        r"<!--QUADRANT_METRICS_START-->(.*?)<!--QUADRANT_METRICS_END-->",
-        report,
-        flags=re.DOTALL,
-    )
-    plain_report = report
-    if quadrant_match:
-        quadrant_html = quadrant_match.group(1).strip()
-        plain_report = (report[:quadrant_match.start()] + report[quadrant_match.end():]).strip()
-    escaped_report = html.escape(plain_report)
-    accepted = report.startswith("✅ ACCEPTED (Sub-Pixel Precision)")
-    coarse = report.startswith("🟠 COARSE ALIGNMENT")
-    badge_class = "pass-badge" if accepted else "advisory-badge" if coarse else "fail-badge"
-    badge_text = "SUB-PIXEL ACCEPTED" if accepted else "COARSE ADVISORY" if coarse else "REGISTRATION REJECTED"
-
-    def first_match(pattern: str, default: str = "—") -> str:
-        match = re.search(pattern, report, flags=re.MULTILINE)
-        return html.escape(match.group(1).strip()) if match else default
-
-    consensus = first_match(r"^Verified Inliers:\s*(.+)$")
-    pixel_rmse = first_match(r"^\s*RMSE:\s*([\d.eE+-]+\s*px)")
-    ground_rmse = first_match(r"^\s*RMSE:\s*([\d.eE+-]+\s*m)\s*$")
-    sensor_mode = first_match(r"^Sensor Pair Mode:\s*(.+)$")
-    threshold = first_match(r"^Registration Transform:.*RANSAC threshold\s*([\d.]+\s*px)")
-
-    return (
-        '<div class="metric-card">'
-        f'<span class="{badge_class}">{badge_text}</span> '
-        f'<span>{sensor_mode}</span>'
-        '</div>'
-        '<div class="metric-card"><strong>Inlier Consensus Ratio</strong><br>'
-        f'<span>{consensus}</span></div>'
-        '<div class="metric-card"><strong>Fit Residual / RMSE</strong><br>'
-        f'<span>{pixel_rmse} · {ground_rmse}</span></div>'
-        '<div class="metric-card"><strong>RANSAC Threshold</strong><br>'
-        f'<span>{threshold}</span></div>'
-        + ('<div class="metric-card advisory-banner"><strong>NOTICE:</strong> Regional fit established (RMSE &lt;= 2.5 px). Sub-pixel refinement recommended for DEM production.</div>' if coarse else '')
-        + f'{quadrant_html}'
-        '<details class="metric-card"><summary>Full processing report</summary>'
-        f'<pre>{escaped_report}</pre></details>'
-    )
 
 
 def _run_alignment_core(
@@ -1268,25 +1163,25 @@ def process_wrapper(
             status = CPU_FALLBACK_STATUS
 
         normalized = tuple(_append_execution_status(outputs, status))
-        if len(normalized) != 13:
-            raise ValueError(f"Alignment callback returned {len(normalized)} outputs; expected 13")
+        if len(normalized) != 14:
+            raise ValueError(f"Alignment callback returned {len(normalized)} outputs; expected 14")
         return normalized
     except Exception as callback_error:
         # Last-resort boundary: Gradio callbacks must not leak an exception or
         # return a shape/type mismatch that can surface as an HTTP 500.
-        print("Unhandled alignment callback error; returning a safe 13-output rejection.",
+        print("Unhandled alignment callback error; returning a safe 14-output rejection.",
               file=sys.stderr, flush=True)
         print(traceback.format_exc(), file=sys.stderr, flush=True)
         try:
             fallback = _minimal_rejection_output_tuple(
                 f"Registration callback failed: {callback_error}", summary={}
             )
-            return tuple(fallback) if len(fallback) == 13 else (None,) * 13
+            return tuple(fallback) if len(fallback) == 14 else (None,) * 14
         except Exception:
             print("Emergency callback fallback construction also failed.",
                   file=sys.stderr, flush=True)
             print(traceback.format_exc(), file=sys.stderr, flush=True)
-            return (None,) * 13
+            return (None,) * 14
 
 
 def update_interactive_blend(images, alpha):
@@ -1301,26 +1196,9 @@ def update_interactive_blend(images, alpha):
 
 # Build Gradio interface with advanced controls
 def build_interface():
-    """Build the Gradio interface with scientific controls."""
-    
-    custom_css = """
-    body, .gradio-container { background-color: #0f172a !important; color: #f8fafc !important; }
-    .metric-card { background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-top: 6px; }
-    .pass-badge { background-color: #065f46; color: #34d399; padding: 4px 8px; border-radius: 4px; font-weight: 600; }
-    .advisory-badge { background-color: #78350f; color: #fbbf24; padding: 4px 8px; border-radius: 4px; font-weight: 600; }
-    .advisory-banner { border-color: #f59e0b; color: #fcd34d; }
-    .fail-badge { background-color: #881337; color: #f87171; padding: 4px 8px; border-radius: 4px; font-weight: 600; }
-    .accent-button button { background: linear-gradient(90deg, #4f46e5, #0891b2) !important; font-weight: 700 !important; }
-    .runtime-mode-badge { display: inline-block; padding: 6px 12px; border-radius: 999px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; }
-    .metric-card pre { white-space: pre-wrap; color: #cbd5e1; }
-    """
-
     with gr.Blocks(
         title="CHANDRA-ALIGN: Lunar Photogrammetric Workstation",
-        theme=gr.themes.Soft(primary_hue="indigo", secondary_hue="cyan", neutral_hue="slate"),
-        css=custom_css,
     ) as interface:
-        gr.Markdown(f"### {RUNTIME_MODE_BADGE}", elem_classes=["runtime-mode-badge"])
         gr.Markdown(
             "# 🌙 CHANDRA-ALIGN: Lunar Cross-Sensor Photogrammetric Workstation\n"
             "Sub-pixel registration for Chandrayaan-2 OHRC, TMC-2, IIRS, DF-SAR & LRO NAC imagery. "
@@ -1331,72 +1209,48 @@ def build_interface():
             with gr.Column(scale=1):
                 # Input panel
                 gr.Markdown("### 📥 Input Frames")
-                gr.Markdown(
-                    "Accepts multi-agency satellite imagery and sensor formats, including "
-                    "ISRO Chandrayaan payloads, NASA LRO products, and map imagery."
-                )
                 ref_file = gr.File(
-                    label="Reference Image (ISRO Chandrayaan / NASA LRO / Base Map)",
+                    label="Reference Image",
                     file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"]
                 )
                 sec_file = gr.File(
-                    label="Secondary Image (Onboard Sensor / Target Frame)",
+                    label="Secondary Image",
                     file_types=[".png", ".tif", ".tiff", ".jpg", ".jpeg"]
                 )
                 
-                # Advanced Controls
-                with gr.Accordion("⚙️ Advanced Algorithm Parameters", open=False):
-                    with gr.Accordion("Sensor Pair & Resolution", open=False):
-                        sensor_dropdown = gr.Dropdown(
-                            choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
-                            value="OHRC",
-                            label="Reference Sensor"
-                        )
-                        secondary_sensor_dropdown = gr.Dropdown(
-                            choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
-                            value="TMC-2",
-                            label="Secondary Sensor"
-                        )
-                        sensor_pair_mode = gr.Dropdown(
-                            choices=["Optical <-> Optical", "Optical <-> Infrared"],
-                            value="Optical <-> Optical",
-                            label="Sensor Pair Mode"
-                        )
-                        pixel_scale = gr.Number(
-                            value=0.25,
-                            label="Reference Pixel Scale (m/px)",
-                            minimum=0.01,
-                            maximum=100.0,
-                            step=0.01,
-                            info="Ground resolution in meters per pixel"
-                        )
-
-                    with gr.Accordion("Illumination-Invariant Preprocessing", open=False):
-                        enforce_uniformity = gr.Checkbox(
-                            value=True,
-                            label="Enforce Uniform Keypoint Distribution (ANMS / 8×8 buckets)"
-                        )
-                        enable_clahe = gr.Checkbox(value=True, label="CLAHE Enhancement")
-                        clahe_clip = gr.Slider(
-                            minimum=1.0, maximum=10.0, value=3.0, step=0.5,
-                            label="CLAHE Clip Limit"
-                        )
-                        enable_shadow = gr.Checkbox(value=True, label="Shadow Suppression")
-                        enable_wallis = gr.Checkbox(value=False, label="Wallis Filter (Experimental)")
-                        with gr.Row(visible=False) as wallis_params:
-                            wallis_mean = gr.Number(value=128.0, label="Target Mean")
-                            wallis_std = gr.Number(value=50.0, label="Target Std")
-
-                        enable_wallis.change(
-                            lambda x: gr.update(visible=x),
-                            inputs=[enable_wallis],
-                            outputs=[wallis_params]
-                        )
-                
-                process_btn = gr.Button("🚀 Process Alignment", variant="primary", size="lg")
-                btn_judge_demo = gr.Button(
-                    "⚡ Run Pitch Demo", variant="primary", elem_classes=["accent-button"]
+                sensor_dropdown = gr.Dropdown(
+                    choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
+                    value="OHRC",
+                    label="Engine Selection / Reference Sensor"
                 )
+                secondary_sensor_dropdown = gr.Dropdown(
+                    choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
+                    value="TMC-2",
+                    label="Secondary Sensor"
+                )
+                sensor_pair_mode = gr.Dropdown(
+                    choices=["Optical <-> Optical", "Optical <-> Infrared"],
+                    value="Optical <-> Optical",
+                    label="Sensor Pair Mode"
+                )
+                pixel_scale = gr.Number(
+                    value=0.25,
+                    label="Reference Pixel Scale (m/px)",
+                    minimum=0.01,
+                    maximum=100.0,
+                    step=0.01,
+                )
+
+                gr.Markdown("### Preprocessing")
+                enforce_uniformity = gr.Checkbox(value=True, label="ANMS / Uniform Keypoint Distribution")
+                enable_clahe = gr.Checkbox(value=True, label="CLAHE")
+                enable_shadow = gr.Checkbox(value=True, label="Shadow Suppression")
+                enable_wallis = gr.Checkbox(value=False, label="Wallis Filter")
+                clahe_clip = gr.State(value=3.0)
+                wallis_mean = gr.State(value=128.0)
+                wallis_std = gr.State(value=50.0)
+                
+                btn_submit = gr.Button("Run Registration", variant="primary")
             
             with gr.Column(scale=2):
                 # Output panel
@@ -1443,14 +1297,12 @@ def build_interface():
                 report_text = gr.Markdown(
                     label="Photogrammetric Summary Report",
                     sanitize_html=False,
-                    elem_classes=["metric-report"],
                 )
                 metrics_json = gr.JSON(label="Judge Metrics Summary JSON")
                 telemetry_text = gr.Textbox(
                     label="Photogrammetric Telemetry Report",
                     lines=15,
                     interactive=False,
-                    elem_classes=["metric-card"],
                 )
                 blend_inputs_state = gr.State(value=None)
                 
@@ -1479,7 +1331,7 @@ def build_interface():
                     )
         
         # Event handlers
-        process_btn.click(
+        btn_submit.click(
             fn=process_wrapper,
             api_name="predict",
             inputs=[
@@ -1491,44 +1343,8 @@ def build_interface():
             outputs=[
                 warped_result_image, checkerboard_image, vector_overlay_image, blend_image,
                 report_text, metrics_json, telemetry_text, blend_inputs_state,
-                csv_btn, json_btn, geotiff_btn, png_btn, dossier_image
+                csv_btn, json_btn, geotiff_btn, png_btn, dossier_image, zip_btn
             ]
-        )
-
-        def apply_judge_demo_preset():
-            """Load the synthetic pair and force the calibrated demo defaults."""
-            sample_ref, sample_sec = ensure_sample_files()
-            gr.Info("Applied preset defaults")
-            return (
-                sample_ref, sample_sec,
-                "OHRC", "OHRC", "Optical <-> Optical", False, 0.25,
-                True, 3.0, False, False, 128.0, 50.0,
-            )
-
-        btn_judge_demo.click(
-            fn=apply_judge_demo_preset,
-            inputs=None,
-            outputs=[
-                ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
-                sensor_pair_mode, enforce_uniformity, pixel_scale,
-                enable_clahe, clahe_clip, enable_shadow, enable_wallis,
-                wallis_mean, wallis_std,
-            ],
-            show_progress="hidden",
-        ).then(
-            fn=process_wrapper,
-            inputs=[
-                ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
-                sensor_pair_mode, enforce_uniformity, pixel_scale,
-                enable_clahe, clahe_clip, enable_shadow, enable_wallis,
-                wallis_mean, wallis_std,
-            ],
-            outputs=[
-                warped_result_image, checkerboard_image, vector_overlay_image, blend_image,
-                report_text, metrics_json, telemetry_text, blend_inputs_state,
-                csv_btn, json_btn, geotiff_btn, png_btn, dossier_image,
-            ],
-            show_progress="hidden",
         )
 
         blend_alpha.change(
@@ -1547,24 +1363,18 @@ def build_interface():
             outputs=[pixel_scale]
         )
         
-        # Examples
-        gr.Markdown("### 📝 Example Pairs")
+        # Native Gradio examples populate only the two image inputs.
+        gr.Markdown("### Example Pairs")
         examples_dir = Path(__file__).resolve().parent / "docs" / "assets" / "examples"
         example_specs = (
-            ("nac_reference_ohrc.png", "ohrc_secondary.png", "LROC_NAC", "OHRC",
-             "Optical <-> Optical", "OHRC vs NASA LROC NAC · 2× GSD gap", 0.5, 3.0),
-            ("nac_reference_tmc2.png", "tmc2_secondary.png", "LROC_NAC", "TMC-2",
-             "Optical <-> Optical", "TMC-2 vs NASA LROC NAC · 10× GSD gap", 0.5, 3.0),
-            ("nac_reference_iirs.png", "iirs_band125_secondary.png", "LROC_NAC", "IIRS",
-             "Optical <-> Infrared", "IIRS Band 125 (2.802 µm) vs NASA LROC NAC · 160× GSD gap", 0.5, 4.5),
-            ("synthetic_groundtruth_reference.png", "synthetic_groundtruth_secondary.png",
-             "OHRC", "OHRC", "Optical <-> Optical",
-             "Synthetic Ground Truth · 1:1 GSD", 0.25, 3.0),
+            ("nac_reference_ohrc.png", "ohrc_secondary.png", "OHRC example pair"),
+            ("nac_reference_tmc2.png", "tmc2_secondary.png", "TMC-2 example pair"),
+            ("nac_reference_iirs.png", "iirs_band125_secondary.png", "IIRS example pair"),
+            ("synthetic_groundtruth_reference.png", "synthetic_groundtruth_secondary.png", "Synthetic pair"),
         )
         example_rows = []
         example_labels = []
-        for (reference_filename, secondary_filename, reference_sensor, secondary_sensor,
-             pair_mode, label, pixel_scale_m, clip_limit) in example_specs:
+        for reference_filename, secondary_filename, label in example_specs:
             reference_path = examples_dir / reference_filename
             secondary_path = examples_dir / secondary_filename
             if not reference_path.is_file() or not secondary_path.is_file():
@@ -1575,31 +1385,16 @@ def build_interface():
                     flush=True,
                 )
                 continue
-            example_rows.append([
-                str(reference_path), str(secondary_path), reference_sensor, secondary_sensor,
-                pair_mode, False, pixel_scale_m, True, clip_limit, False, False, 128.0, 50.0
-            ])
+            example_rows.append([str(reference_path), str(secondary_path)])
             example_labels.append(label)
         if example_rows:
             gr.Examples(
                 examples=example_rows,
-                inputs=[
-                    ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
-                    sensor_pair_mode, enforce_uniformity, pixel_scale,
-                    enable_clahe, clahe_clip, enable_shadow, enable_wallis,
-                    wallis_mean, wallis_std
-                ],
-                outputs=[
-                    warped_result_image, checkerboard_image, vector_overlay_image, blend_image,
-                    report_text, metrics_json, telemetry_text, blend_inputs_state,
-                    csv_btn, json_btn, geotiff_btn, png_btn, dossier_image
-                ],
-                fn=process_wrapper,
+                inputs=[ref_file, sec_file],
                 cache_examples=False,
-                examples_per_page=3,
-                run_on_click=True,
+                examples_per_page=4,
                 example_labels=example_labels,
-                label="One-click lunar alignment presets"
+                label="Load an example pair"
             )
         else:
             gr.Markdown("No example image pairs are available in this deployment.")
