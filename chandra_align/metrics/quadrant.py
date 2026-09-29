@@ -108,7 +108,7 @@ def format_quadrant_html(quadrant_dict, spatial_entropy):
 
 
 def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad_counts):
-    """Apply the SIH compound quality gate and return its user message and code."""
+    """Classify a fit as sub-pixel, coarse advisory, or rejected."""
     try:
         rmse_value = float(rmse)
     except (TypeError, ValueError, OverflowError):
@@ -138,10 +138,15 @@ def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad
     has_spatial_spread = entropy_value >= 0.750
     has_quadrant_balance = active_quadrants >= 3
     if is_subpixel and has_enough_inliers and has_spatial_spread and has_quadrant_balance:
-        return "REGISTRATION ACCEPTED", "SUCCESS"
-    if is_subpixel and (not has_spatial_spread or not has_quadrant_balance):
-        return "REJECTED: Degenerate Single-Quadrant Cluster", "DEGENERATE_FAILURE"
-    return "REJECTED: High Residuals or Insufficient Matches", "ALIGNMENT_FAILURE"
+        return "ACCEPTED (Sub-Pixel Precision)", "SUCCESS_SUBPIXEL"
+    if (
+        rmse_value <= 2.500
+        and has_enough_inliers
+        and entropy_value >= 0.500
+        and active_quadrants >= 2
+    ):
+        return "COARSE ALIGNMENT (Regional Fit Advisory)", "COARSE_ADVISORY"
+    return "REJECTED (Degenerate Single-Quadrant Cluster)", "DEGENERATE_FAILURE"
 
 
 def _safe_count(value):
@@ -180,7 +185,7 @@ def build_judge_metrics_summary(
     )
 
     return {
-        "registration_status": "SUCCESS" if status_code == "SUCCESS" else "FAILED",
+        "registration_status": status_code,
         "active_quadrants_count": sum(count > 0 for count in quadrant_counts),
         "quadrant_counts": quadrant_counts,
         "status_message": status_message,

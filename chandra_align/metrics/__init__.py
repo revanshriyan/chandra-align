@@ -11,8 +11,15 @@ from .quadrant import (
     build_judge_metrics_summary,
     compute_quadrant_metrics,
     format_quadrant_html,
-    validate_registration_gate,
+    validate_registration_gate as _validate_registration_gate,
 )
+
+
+def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad_counts):
+    """Public package entry point for the three-tier photogrammetric gate."""
+    return _validate_registration_gate(
+        rmse, inliers, min_inliers, spatial_entropy, quad_counts
+    )
 
 
 def apply_transform(M, pts):

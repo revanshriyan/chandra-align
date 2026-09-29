@@ -67,7 +67,11 @@ def _registration_rejected(inlier_count=None, min_inliers=8, status=None) -> boo
     """Return true when a supplied gate status/count requires a diagnostic canvas."""
     if status is not None:
         normalized = str(status).strip().upper()
-        if normalized not in ("SUCCESS", "REGISTRATION ACCEPTED"):
+        if normalized not in (
+            "SUCCESS", "SUCCESS_SUBPIXEL", "COARSE_ADVISORY",
+            "REGISTRATION ACCEPTED", "ACCEPTED (SUB-PIXEL PRECISION)",
+            "COARSE ALIGNMENT (REGIONAL FIT ADVISORY)",
+        ):
             return True
     if inlier_count is not None:
         try:

@@ -605,7 +605,7 @@ def _align_core(
         engine_used = "Primary (Phase Congruency)"
     execution_device = "GPU (ZeroGPU)" if _zerogpu_runtime_enabled() else "CPU"
 
-    if status_code != "SUCCESS":
+    if status_code == "DEGENERATE_FAILURE":
         banner_bgr = create_rejection_banner(ref_original.shape[:2])
         banner_rgb = cv2.cvtColor(banner_bgr, cv2.COLOR_BGR2RGB)
         return {
@@ -723,45 +723,63 @@ def _failed_judge_metrics_summary(inlier_count: int = 0, total_correspondences: 
 def format_telemetry_report(
     status, inliers, total_pts, inlier_ratio, spatial_entropy,
     quad_counts, rmse=None, affine_telemetry=None, engine="N/A", device="N/A",
+    status_message=None, active_quadrants=None,
 ):
-    """Format calibrated telemetry only for registrations accepted by the gate."""
-    accepted = str(status).strip().upper() in ("SUCCESS", "REGISTRATION ACCEPTED")
+    """Render three-tier checklist; hide transform values for rejected fits."""
+    code = str(status).strip().upper()
+    tier1 = code in ("SUCCESS", "SUCCESS_SUBPIXEL", "REGISTRATION ACCEPTED")
+    tier2 = code in ("COARSE_ADVISORY", "COARSE ALIGNMENT (REGIONAL FIT ADVISORY)")
+    accepted = tier1 or tier2
     counts = list(quad_counts or [0, 0, 0, 0])[:4]
     counts.extend([0] * (4 - len(counts)))
-    if not accepted:
-        return (
-            "===================================================\n"
-            "PHOTOGRAMMETRIC TELEMETRY REPORT\n"
-            "===================================================\n"
-            "Registration Status : REJECTED (Degenerate or Low-Coverage Fit)\n"
-            "Recovered Transform : N/A — Alignment Rejected\n"
-            "Spatial Uniformity  : REJECTED (Clustered Inliers)\n"
-            "\nQUALITY METRICS:\n"
-            "Global RMSE          : N/A\n"
-            f"Inlier Ratio         : {int(inliers)} / {int(total_pts)} ({float(inlier_ratio):.2f}%)\n"
-            f"Spatial Entropy      : {float(spatial_entropy):.4f} / 2.0000\n"
-            f"Quadrant Inliers     : Q1:{int(counts[0])} Q2:{int(counts[1])} Q3:{int(counts[2])} Q4:{int(counts[3])}\n\n"
-            "NOTICE: Transform telemetry is suppressed on degenerate fits\n"
-            "to prevent uncalibrated coordinate propagation into DEM products.\n"
-            "==================================================="
-        )
-    values = affine_telemetry or {}
-    return (
-        "===================================================\n"
-        "PHOTOGRAMMETRIC TELEMETRY REPORT\n"
-        "===================================================\n"
-        f"Registration Status    : REGISTRATION ACCEPTED\n"
-        f"Execution Engine Path  : {engine} ({device})\n"
-        f"Recovered Translation  : ΔX = {float(values.get('delta_x_px', 0.0)):.4f} px, ΔY = {float(values.get('delta_y_px', 0.0)):.4f} px\n"
-        f"Recovered Rotation     : θ  = {float(values.get('rotation_deg', 0.0)):.4f}°\n"
-        f"Recovered Uniform Scale: s  = {float(values.get('scale_s', 0.0)):.8f}\n"
-        "\nQUALITY METRICS:\n"
-        f"Global RMSE            : {float(rmse or 0.0):.4f} px\n"
-        f"Inlier Count / Ratio   : {int(inliers)} / {int(total_pts)} ({float(inlier_ratio):.2f}%)\n"
-        f"Spatial Entropy        : {float(spatial_entropy):.4f} / 2.0000\n"
-        f"Quadrant Inliers (Q1-4): {counts} (Active: {sum(int(v) > 0 for v in counts)}/4)\n"
-        "==================================================="
+    active = sum(int(value) > 0 for value in counts) if active_quadrants is None else int(active_quadrants)
+    rmse_value = float(rmse) if rmse is not None and math.isfinite(float(rmse)) else float("inf")
+    entropy_value = float(spatial_entropy) if math.isfinite(float(spatial_entropy)) else 0.0
+    rmse_pass = rmse_value <= 0.5
+    entropy_pass = entropy_value >= 0.75
+    quadrant_pass = active >= 3
+    status_text = status_message or (
+        "ACCEPTED (Sub-Pixel Precision)" if tier1 else
+        "COARSE ALIGNMENT (Regional Fit Advisory)" if tier2 else
+        "REJECTED (Degenerate Single-Quadrant Cluster)"
     )
+    check = lambda passed: "✓" if passed else "✗"
+    lines = [
+        "===================================================",
+        "PHOTOGRAMMETRIC TELEMETRY REPORT",
+        "===================================================",
+        f"Registration Status   : {status_text}",
+        f"Hardware Runtime Mode : {device}",
+        "",
+        "VALIDATION GATE CHECKLIST:",
+        f"[{check(rmse_pass)}] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: {rmse_value:.4f} px)" if math.isfinite(rmse_value) else "[✗] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: N/A)",
+        f"[{check(entropy_pass)}] Spatial Spread Score : Entropy >= 0.75 (Measured: {entropy_value:.4f} / 2.00)",
+        f"[{check(quadrant_pass)}] Quadrant Distribution: Active Quads >= 3 (Measured: {active} / 4)",
+        "",
+        f"QUADRANT BREAKDOWN: Q1:{int(counts[0])} | Q2:{int(counts[1])} | Q3:{int(counts[2])} | Q4:{int(counts[3])}",
+        "---------------------------------------------------",
+    ]
+    if not accepted:
+        lines.extend([
+            "Recovered Transform : N/A — Alignment Rejected",
+            "NOTICE: Transform telemetry is suppressed on rejected fits",
+            "to prevent uncalibrated coordinate propagation into DEM products.",
+        ])
+    else:
+        values = affine_telemetry or {}
+        lines.extend([
+            f"Recovered Translation  : ΔX = {float(values.get('delta_x_px', 0.0)):.4f} px, ΔY = {float(values.get('delta_y_px', 0.0)):.4f} px",
+            f"Recovered Rotation     : θ = {float(values.get('rotation_deg', 0.0)):.4f}°",
+            f"Recovered Uniform Scale: s = {float(values.get('scale_s', 0.0)):.8f}",
+        ])
+        if tier2:
+            lines.extend([
+                "",
+                "NOTICE: Regional fit established (RMSE <= 2.5 px).",
+                "Sub-pixel refinement recommended for DEM production.",
+            ])
+    lines.append("===================================================")
+    return "\n".join(lines)
 
 
 def _rejected_output_tuple(summary, status_message=None, image_shape=(768, 1024), total_pts=0):
@@ -813,6 +831,21 @@ def process_alignment(
     Main alignment pipeline - runs on GPU when called from process_wrapper.
     Returns visual previews, telemetry, judge metrics, and scientific export paths.
     """
+    # Safe defaults for the full fixed 13-component Gradio return contract.
+    warped_sec = None
+    vector_overlay = None
+    checkerboard_blend = None
+    alpha_blend = None
+    telemetry_report = "Initializing pipeline..."
+    judge_json = {}
+    export_geotiff = None
+    export_csv = None
+    export_json = None
+    export_png = None
+    dossier_path = None
+    report_text = "Initializing pipeline..."
+    reference_image = None
+
     if ref_file is None or sec_file is None:
         return (None, None, None, None, "Error: Please provide both Reference and Secondary surface frames.",
                 _failed_judge_metrics_summary(), "", None, None, None, None, None, None)
@@ -879,7 +912,7 @@ def process_alignment(
         mae_m = mae_px * pixel_scale_m
         
         report = (
-            f"{'✅' if status_code == 'SUCCESS' else '❌'} {status_message}\n"
+            f"{'✅' if status_code == 'SUCCESS_SUBPIXEL' else '🟠' if status_code == 'COARSE_ADVISORY' else '❌'} {status_message}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"Matcher Engine: {engine_name}\n"
             f"Registration Transform: 4-DOF Partial Affine (2x3), RANSAC threshold {result['ransac_threshold_px']:.1f} px\n"
@@ -957,7 +990,8 @@ def process_alignment(
         ).tolist()
         transform_payload["homography_matrix"] = np.asarray(H, dtype=np.float64).tolist()
         transform_payload["judge_metrics_summary"] = judge_metrics
-        transform_payload["safety_gate_passed"] = status_code == "SUCCESS"
+        transform_payload["safety_gate_passed"] = status_code == "SUCCESS_SUBPIXEL"
+        transform_payload["coarse_advisory"] = status_code == "COARSE_ADVISORY"
         transform_payload["transformation_telemetry"] = affine_telemetry
         transform_payload["engine_used"] = result["engine_used"]
         transform_payload["execution_device"] = result["execution_device"]
@@ -1032,6 +1066,16 @@ def process_alignment(
 GPU_EXECUTION_STATUS = "⚡ Execution Mode: ZeroGPU (A10G Accelerated)"
 CPU_FALLBACK_STATUS = "💻 Execution Mode: CPU (Fallback Active - Quota/Worker Limit Handled Gracefully)"
 
+try:
+    import torch
+    TORCH_CUDA_AVAILABLE = bool(torch.cuda.is_available())
+except Exception:
+    TORCH_CUDA_AVAILABLE = False
+RUNTIME_MODE_BADGE = (
+    "Runtime Mode: 🟢 GPU Active (ZeroGPU)"
+    if TORCH_CUDA_AVAILABLE else "Runtime Mode: 🟠 CPU Fallback"
+)
+
 
 def _append_execution_status(outputs, status: str):
     """Append execution mode and render the UI report without changing output arity."""
@@ -1043,8 +1087,9 @@ def _append_execution_status(outputs, status: str):
     telemetry = values[6] if isinstance(values[6], str) else ""
     device = "GPU (ZeroGPU)" if "ZeroGPU" in status else "CPU"
     telemetry = re.sub(
-        r"(?m)^(Execution Engine Path\s*:\s*.*)\s+\((?:CPU|GPU \(ZeroGPU\))\)$",
-        rf"\1 ({device})", telemetry,
+        r"(?m)^Hardware Runtime Mode\s*:\s*.*$",
+        f"Hardware Runtime Mode : {'GPU (ZeroGPU Active)' if 'ZeroGPU' in status else 'CPU Fallback'}",
+        telemetry,
     )
     values[6] = telemetry
     return tuple(values)
@@ -1063,9 +1108,10 @@ def _format_metric_report(report: str) -> str:
         quadrant_html = quadrant_match.group(1).strip()
         plain_report = (report[:quadrant_match.start()] + report[quadrant_match.end():]).strip()
     escaped_report = html.escape(plain_report)
-    accepted = report.startswith("✅ REGISTRATION ACCEPTED")
-    badge_class = "pass-badge" if accepted else "fail-badge"
-    badge_text = "REGISTRATION ACCEPTED" if accepted else "REGISTRATION FAILED"
+    accepted = report.startswith("✅ ACCEPTED (Sub-Pixel Precision)")
+    coarse = report.startswith("🟠 COARSE ALIGNMENT")
+    badge_class = "pass-badge" if accepted else "advisory-badge" if coarse else "fail-badge"
+    badge_text = "SUB-PIXEL ACCEPTED" if accepted else "COARSE ADVISORY" if coarse else "REGISTRATION REJECTED"
 
     def first_match(pattern: str, default: str = "—") -> str:
         match = re.search(pattern, report, flags=re.MULTILINE)
@@ -1088,7 +1134,8 @@ def _format_metric_report(report: str) -> str:
         f'<span>{pixel_rmse} · {ground_rmse}</span></div>'
         '<div class="metric-card"><strong>RANSAC Threshold</strong><br>'
         f'<span>{threshold}</span></div>'
-        f'{quadrant_html}'
+        + ('<div class="metric-card advisory-banner"><strong>NOTICE:</strong> Regional fit established (RMSE &lt;= 2.5 px). Sub-pixel refinement recommended for DEM production.</div>' if coarse else '')
+        + f'{quadrant_html}'
         '<details class="metric-card"><summary>Full processing report</summary>'
         f'<pre>{escaped_report}</pre></details>'
     )
@@ -1180,7 +1227,11 @@ def build_interface():
     body, .gradio-container { background-color: #0f172a !important; color: #f8fafc !important; }
     .metric-card { background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-top: 6px; }
     .pass-badge { background-color: #065f46; color: #34d399; padding: 4px 8px; border-radius: 4px; font-weight: 600; }
+    .advisory-badge { background-color: #78350f; color: #fbbf24; padding: 4px 8px; border-radius: 4px; font-weight: 600; }
+    .advisory-banner { border-color: #f59e0b; color: #fcd34d; }
     .fail-badge { background-color: #881337; color: #f87171; padding: 4px 8px; border-radius: 4px; font-weight: 600; }
+    .accent-button button { background: linear-gradient(90deg, #4f46e5, #0891b2) !important; font-weight: 700 !important; }
+    .runtime-mode-badge { display: inline-block; padding: 6px 12px; border-radius: 999px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; }
     .metric-card pre { white-space: pre-wrap; color: #cbd5e1; }
     """
 
@@ -1189,6 +1240,7 @@ def build_interface():
         theme=gr.themes.Soft(primary_hue="indigo", secondary_hue="cyan", neutral_hue="slate"),
         css=custom_css,
     ) as interface:
+        gr.Markdown(f"### {RUNTIME_MODE_BADGE}", elem_classes=["runtime-mode-badge"])
         gr.Markdown(
             "# 🌙 CHANDRA-ALIGN: Lunar Cross-Sensor Photogrammetric Workstation\n"
             "Sub-pixel registration for Chandrayaan-2 OHRC, TMC-2, IIRS, DF-SAR & LRO NAC imagery. "
@@ -1262,6 +1314,9 @@ def build_interface():
                         )
                 
                 process_btn = gr.Button("🚀 Process Alignment", variant="primary", size="lg")
+                btn_judge_demo = gr.Button(
+                    "⚡ Run Pitch Demo", variant="primary", elem_classes=["accent-button"]
+                )
             
             with gr.Column(scale=2):
                 # Output panel
@@ -1358,6 +1413,43 @@ def build_interface():
                 report_text, metrics_json, telemetry_text, blend_inputs_state,
                 csv_btn, json_btn, geotiff_btn, png_btn, dossier_image
             ]
+        )
+
+        def apply_judge_demo_preset():
+            """Load the reproducible synthetic ground-truth pair and demo defaults."""
+            sample_ref, sample_sec = ensure_sample_files()
+            root = Path(__file__).resolve().parent
+            gr.Info("Applied preset defaults")
+            return (
+                str((root / sample_ref).resolve()), str((root / sample_sec).resolve()),
+                "OHRC", "OHRC", "Optical <-> Optical", False, 0.25,
+                True, 3.0, False, False, 128.0, 50.0,
+            )
+
+        btn_judge_demo.click(
+            fn=apply_judge_demo_preset,
+            inputs=None,
+            outputs=[
+                ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
+                sensor_pair_mode, enforce_uniformity, pixel_scale,
+                enable_clahe, clahe_clip, enable_shadow, enable_wallis,
+                wallis_mean, wallis_std,
+            ],
+            show_progress="hidden",
+        ).then(
+            fn=process_wrapper,
+            inputs=[
+                ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
+                sensor_pair_mode, enforce_uniformity, pixel_scale,
+                enable_clahe, clahe_clip, enable_shadow, enable_wallis,
+                wallis_mean, wallis_std,
+            ],
+            outputs=[
+                warped_result_image, checkerboard_image, vector_overlay_image, blend_image,
+                report_text, metrics_json, telemetry_text, blend_inputs_state,
+                csv_btn, json_btn, geotiff_btn, png_btn, dossier_image,
+            ],
+            show_progress="hidden",
         )
 
         blend_alpha.change(
