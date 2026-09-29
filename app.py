@@ -1644,4 +1644,7 @@ except Exception as startup_error:
 
 
 if __name__ == "__main__":
-    interface.launch()
+    # HF Spaces currently enables Gradio SSR by default, which inserts a Node
+    # proxy in front of the Python app. Serve client-side to keep the Space on
+    # its direct Python listener and remove that extra cold-start failure path.
+    interface.launch(ssr_mode=False)

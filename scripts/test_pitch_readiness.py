@@ -189,6 +189,7 @@ def test_assets_and_examples() -> str:
     assert "Synthetic Ground Truth · 1:1 GSD" in APP_SOURCE
     assert "cache_examples=False" in APP_SOURCE
     assert "examples_per_page=3" in APP_SOURCE
+    assert "interface.launch(ssr_mode=False)" in APP_SOURCE
     return "8 tracked-format assets valid; synthetic pair distinct; Examples caching disabled"
 
 
