@@ -205,6 +205,29 @@ def test_fixed_contract_and_primary_ratio() -> str:
     return f"{len(tuple_returns)} literal tuple path(s) have 13 values; Lowe ratio 0.75"
 
 
+def test_warp_is_initialized_before_visualization() -> str:
+    node = function_node("_align_core")
+    warp_assignment = next(
+        (child for child in ast.walk(node)
+         if isinstance(child, ast.Assign)
+         and any(isinstance(target, ast.Name) and target.id == "warped_sec"
+                 for target in child.targets)),
+        None,
+    )
+    assert warp_assignment is not None, "_align_core no longer assigns warped_sec"
+    reads = [
+        child.lineno for child in ast.walk(node)
+        if isinstance(child, ast.Name) and child.id == "warped_sec"
+        and isinstance(child.ctx, ast.Load)
+    ]
+    assert reads, "_align_core does not consume the warped raster"
+    first_read = min(reads)
+    assert warp_assignment.lineno < first_read, (
+        f"warped_sec read on line {first_read} before assignment on line {warp_assignment.lineno}"
+    )
+    return f"warped_sec initialized on line {warp_assignment.lineno} before its first read on line {first_read}"
+
+
 def test_compile() -> str:
     targets = [
         APP_PATH,
@@ -226,6 +249,7 @@ def main() -> int:
         ("Gradio callback master guard", "13 outputs", test_wrapper_catches_gpu_cpu_and_append_errors),
         ("Native example assets", "8 valid PNGs", test_assets_and_examples),
         ("Tuple and ratio contract", "13 tuple / 0.75 ratio", test_fixed_contract_and_primary_ratio),
+        ("Warped raster initialization order", "assign before read", test_warp_is_initialized_before_visualization),
         ("Python compilation", "5 modules", test_compile),
     )
     for name, metric, check in checks:

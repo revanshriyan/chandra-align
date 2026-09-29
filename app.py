@@ -597,9 +597,6 @@ def _align_core(
         inlier_ref, residuals_vec, ref_original.shape[:2]
     )
     quadrant_html = format_quadrant_html(quadrant_metrics, quadrant_spatial_entropy)
-    error_vector_overlay_bgr = draw_error_vector_overlay(
-        ref_original, warped_sec, inlier_sec, inlier_ref, affine_matrix, scale=10.0
-    )
 
     rmse_px = float(np.sqrt(np.mean(residuals_mag ** 2))) if len(residuals_mag) > 0 else 0.0
     mae_px = float(np.mean(residuals_mag)) if len(residuals_mag) > 0 else 0.0
