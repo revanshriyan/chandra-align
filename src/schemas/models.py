@@ -40,6 +40,7 @@ class CalibrationStatus(str, Enum):
 
 
 class NotTrustedReason(str, Enum):
+    LOW_TRUST = "LOW_TRUST"
     LOW_INLIER_RATIO = "LOW_INLIER_RATIO"
     LOW_UNIFORMITY = "LOW_UNIFORMITY"
     INSUFFICIENT_COVERAGE = "INSUFFICIENT_COVERAGE"

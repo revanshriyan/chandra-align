@@ -26,7 +26,6 @@ def test_calibrated_pair_keeps_subpixel_registration_after_raster_loading():
         reference, secondary,
         pixel_scale_m=0.25,
         enable_clahe=True,
-        enable_shadow_suppression=True,
         enable_wallis=False,
         sensor_name="OHRC",
         secondary_sensor_name="OHRC",
