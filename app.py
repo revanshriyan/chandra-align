@@ -1425,35 +1425,28 @@ def build_interface():
             ]
         )
 
-        def apply_judge_demo_preset():
-            """Load the reproducible synthetic ground-truth pair and demo defaults."""
+        def run_judge_demo():
+            """Load the synthetic pair, force demo defaults, and align in one event."""
             sample_ref, sample_sec = ensure_sample_files()
             gr.Info("Applied preset defaults")
-            return (
+            preset = (
                 sample_ref, sample_sec,
                 "OHRC", "OHRC", "Optical <-> Optical", False, 0.25,
                 True, 3.0, False, False, 128.0, 50.0,
             )
+            # Pass file paths directly to the prediction function so a Gradio
+            # File-component refresh cannot race the chained alignment event.
+            result = process_wrapper(*preset)
+            return (*preset, *result)
 
         btn_judge_demo.click(
-            fn=apply_judge_demo_preset,
+            fn=run_judge_demo,
             inputs=None,
             outputs=[
                 ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
                 sensor_pair_mode, enforce_uniformity, pixel_scale,
                 enable_clahe, clahe_clip, enable_shadow, enable_wallis,
                 wallis_mean, wallis_std,
-            ],
-            show_progress="hidden",
-        ).then(
-            fn=process_wrapper,
-            inputs=[
-                ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
-                sensor_pair_mode, enforce_uniformity, pixel_scale,
-                enable_clahe, clahe_clip, enable_shadow, enable_wallis,
-                wallis_mean, wallis_std,
-            ],
-            outputs=[
                 warped_result_image, checkerboard_image, vector_overlay_image, blend_image,
                 report_text, metrics_json, telemetry_text, blend_inputs_state,
                 csv_btn, json_btn, geotiff_btn, png_btn, dossier_image,
