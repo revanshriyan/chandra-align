@@ -128,9 +128,8 @@ def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad
         inlier_count, required_inliers = 0, 1
     counts = quad_counts if isinstance(quad_counts, dict) else {}
     active_quadrants = sum(
-        1 for key in ("Q1", "Q2", "Q3", "Q4")
-        if _safe_count(counts.get(key, 0).get("inlier_count", 0)
-                        if isinstance(counts.get(key, 0), dict) else counts.get(key, 0)) > 0
+        1 for index, key in enumerate(("Q1", "Q2", "Q3", "Q4"), start=1)
+        if _safe_count(_quadrant_count(counts.get(key, counts.get(index, 0)))) > 0
     )
 
     is_subpixel = rmse_value <= 0.500
@@ -156,6 +155,10 @@ def _safe_count(value):
         return 0
 
 
+def _quadrant_count(value):
+    return value.get("inlier_count", 0) if isinstance(value, dict) else value
+
+
 def build_judge_metrics_summary(
     rmse_pixels,
     inlier_count,
@@ -176,8 +179,8 @@ def build_judge_metrics_summary(
     ratio_pct = (100.0 * inliers / total) if total > 0 else 0.0
     quadrants = quadrant_metrics if isinstance(quadrant_metrics, dict) else {}
     quadrant_counts = [
-        _safe_count(quadrants.get(key, {}).get("inlier_count", 0))
-        for key in ("Q1", "Q2", "Q3", "Q4")
+        _safe_count(_quadrant_count(quadrants.get(key, quadrants.get(index, 0))))
+        for index, key in enumerate(("Q1", "Q2", "Q3", "Q4"), start=1)
     ]
     counts_dict = dict(zip(("Q1", "Q2", "Q3", "Q4"), quadrant_counts))
     status_message, status_code = validate_registration_gate(
