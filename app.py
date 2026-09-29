@@ -185,13 +185,14 @@ def ensure_sample_files() -> tuple[str, str]:
     Check for sample files; generate if missing.
     Returns paths to reference and secondary sample images.
     """
-    ref_path = "sample_ref.png"
-    sec_path = "sample_sec.png"
+    root = Path(__file__).resolve().parent
+    ref_path = root / "sample_ref.png"
+    sec_path = root / "sample_sec.png"
 
-    if not (os.path.exists(ref_path) and os.path.exists(sec_path)):
-        generate_synthetic_lunar_pair(ref_path, sec_path)
+    if not (ref_path.is_file() and sec_path.is_file()):
+        generate_synthetic_lunar_pair(str(ref_path), str(sec_path))
 
-    return ref_path, sec_path
+    return str(ref_path), str(sec_path)
 
 
 def match_pair_hf(
@@ -1424,10 +1425,9 @@ def build_interface():
         def apply_judge_demo_preset():
             """Load the reproducible synthetic ground-truth pair and demo defaults."""
             sample_ref, sample_sec = ensure_sample_files()
-            root = Path(__file__).resolve().parent
             gr.Info("Applied preset defaults")
             return (
-                str((root / sample_ref).resolve()), str((root / sample_sec).resolve()),
+                sample_ref, sample_sec,
                 "OHRC", "OHRC", "Optical <-> Optical", False, 0.25,
                 True, 3.0, False, False, 128.0, 50.0,
             )
