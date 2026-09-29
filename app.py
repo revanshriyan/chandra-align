@@ -832,17 +832,22 @@ def process_alignment(
     Main alignment pipeline - runs on GPU when called from process_wrapper.
     Returns visual previews, telemetry, judge metrics, and scientific export paths.
     """
-    # Safe defaults for the full fixed 13-component Gradio return contract.
-    warped_sec = None
-    vector_overlay = None
-    checkerboard_blend = None
-    alpha_blend = None
+    # Pre-allocate safe values before image I/O or processing. The declared
+    # Gradio return order remains the fixed 13-component contract below.
+    default_blank_img = np.zeros((512, 512, 3), dtype=np.uint8)
+    warped_sec = default_blank_img.copy()
+    vector_overlay = default_blank_img.copy()
+    checkerboard_blend = default_blank_img.copy()
+    alpha_blend = default_blank_img.copy()
     telemetry_report = "Initializing pipeline..."
     judge_json = {}
     export_geotiff = None
     export_csv = None
     export_json = None
     export_png = None
+    banner_img = default_blank_img.copy()
+    active_badge = "Runtime Mode: Active"
+    checklist_status = "INITIALIZING"
     dossier_path = None
     report_text = "Initializing pipeline..."
     reference_image = None
