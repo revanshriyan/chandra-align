@@ -97,7 +97,12 @@ def _read_grayscale_image(image_file, max_dimension: int = MAX_IMAGE_DIMENSION) 
     elif isinstance(image_file, Image.Image):
         image = np.asarray(image_file)
     else:
-        path = getattr(image_file, "name", image_file)
+        if isinstance(image_file, (str, os.PathLike)):
+            path = os.fspath(image_file)
+        elif isinstance(image_file, dict):
+            path = image_file.get("path") or image_file.get("name")
+        else:
+            path = getattr(image_file, "path", None) or getattr(image_file, "name", image_file)
         if path is None:
             raise ValueError("Input image is missing")
         image = cv2.imread(os.fspath(path), cv2.IMREAD_UNCHANGED)
