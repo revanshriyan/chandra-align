@@ -150,6 +150,28 @@ def create_checkerboard_overlay(img1: np.ndarray, img2: np.ndarray, tile_size: i
     return np.where(use_first[..., None], first_padded, second_padded).astype(np.uint8)
 
 
+def create_interactive_blend(ref_img: np.ndarray, warped_img: np.ndarray, alpha: float = 0.5) -> np.ndarray:
+    """Create an RGB alpha blend suitable for interactive UI previews."""
+    try:
+        weight = float(alpha)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("alpha must be between 0 and 1") from exc
+    if not np.isfinite(weight) or not 0.0 <= weight <= 1.0:
+        raise ValueError("alpha must be between 0 and 1")
+    ref = cv2.cvtColor(_display_bgr_uint8(ref_img), cv2.COLOR_BGR2RGB)
+    warped = cv2.cvtColor(_display_bgr_uint8(warped_img), cv2.COLOR_BGR2RGB)
+    height, width = max(ref.shape[0], warped.shape[0]), max(ref.shape[1], warped.shape[1])
+    if ref.shape[:2] != (height, width):
+        canvas = np.zeros((height, width, 3), dtype=np.uint8)
+        canvas[:ref.shape[0], :ref.shape[1]] = ref
+        ref = canvas
+    if warped.shape[:2] != (height, width):
+        canvas = np.zeros((height, width, 3), dtype=np.uint8)
+        canvas[:warped.shape[0], :warped.shape[1]] = warped
+        warped = canvas
+    return cv2.addWeighted(ref, weight, warped, 1.0 - weight, 0.0)
+
+
 def create_quiver_plot(
     ref_image: np.ndarray,
     deformation_vectors: List[ResidualVector],
@@ -516,6 +538,7 @@ __all__ = [
     "ResidualVector",
     "draw_error_vector_overlay",
     "create_checkerboard_overlay",
+    "create_interactive_blend",
     "create_quiver_plot",
     "create_error_distribution_plot",
     "create_combined_visualization",

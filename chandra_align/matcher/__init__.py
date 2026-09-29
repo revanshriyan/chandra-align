@@ -54,6 +54,12 @@ class RIFT2Matcher:
         kp_a, des_a, kp_b, des_b = self._port(a, b)
         if des_a is None or des_b is None or len(kp_a) < 4 or len(kp_b) < 4:
             return np.zeros((0, 2), np.float32), np.zeros((0, 2), np.float32)
+        from chandra_align.features import select_quadrant_keypoints
+        kp_a, idx_a = select_quadrant_keypoints(kp_a, a.shape, quota_per_quadrant=50)
+        kp_b, idx_b = select_quadrant_keypoints(kp_b, b.shape, quota_per_quadrant=50)
+        des_a, des_b = des_a[idx_a], des_b[idx_b]
+        if len(des_a) < 2 or len(des_b) < 2:
+            return np.zeros((0, 2), np.float32), np.zeros((0, 2), np.float32)
         pts_a, pts_b, _ = _mutual_nn(des_a, des_b, kp_a, kp_b, self.lowes_ratio)
         return pts_a, pts_b
 
@@ -78,6 +84,10 @@ class SIFTMatcher:
         k_b, des_b = self._sift.detectAndCompute(b, None)
         if des_a is None or des_b is None or len(k_a) < 4 or len(k_b) < 4:
             return np.zeros((0, 2), np.float32), np.zeros((0, 2), np.float32)
+        from chandra_align.features import select_quadrant_keypoints
+        k_a, idx_a = select_quadrant_keypoints(k_a, a.shape, quota_per_quadrant=50)
+        k_b, idx_b = select_quadrant_keypoints(k_b, b.shape, quota_per_quadrant=50)
+        des_a, des_b = des_a[idx_a], des_b[idx_b]
         pts_a, pts_b, _ = _mutual_nn(des_a, des_b, k_a, k_b, self.lowes_ratio)
         return pts_a, pts_b
 

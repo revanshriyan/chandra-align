@@ -120,6 +120,51 @@ def detect_shadows(
     return (shadow_mask / 255.0).astype(np.float64)
 
 
+def keypoint_starvation_guard(
+    ref_img, sec_img, shadow_mask_ref=None, shadow_mask_sec=None,
+    preprocessing_triggered=False, min_candidates=30, clahe_clip_limit=3.0,
+):
+    """Re-enable contrast normalization when preprocessing starves SIFT candidates.
+
+    When shadow suppression is enabled or CLAHE was disabled, inspect the
+    unmasked candidate pool. If either image has fewer than ``min_candidates``
+    candidates, CLAHE-normalize both images and refresh the masks.
+    Returns images, masks, and a small diagnostic dictionary.
+    """
+    ref = np.asarray(ref_img)
+    sec = np.asarray(sec_img)
+
+    def count_candidates(image, mask):
+        import cv2
+        values = np.asarray(image)
+        if values.ndim == 3:
+            values = cv2.cvtColor(values, cv2.COLOR_BGR2GRAY)
+        if values.dtype != np.uint8:
+            values = cv2.normalize(values, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        detector = cv2.SIFT_create(nfeatures=1000)
+        valid_mask = None
+        if mask is not None:
+            valid_mask = (np.asarray(mask) < 0.5).astype(np.uint8) * 255
+        return len(detector.detect(values, valid_mask))
+
+    before_ref = count_candidates(ref, shadow_mask_ref)
+    before_sec = count_candidates(sec, shadow_mask_sec)
+    activated = bool(preprocessing_triggered and min(before_ref, before_sec) < int(min_candidates))
+    if activated:
+        ref = apply_clahe(ref, clip_limit=clahe_clip_limit, normalize_range=(0.0, 255.0))
+        sec = apply_clahe(sec, clip_limit=clahe_clip_limit, normalize_range=(0.0, 255.0))
+        if shadow_mask_ref is not None:
+            shadow_mask_ref = detect_shadows(ref, method="otsu")
+            shadow_mask_sec = detect_shadows(sec, method="otsu")
+    after_ref = count_candidates(ref, shadow_mask_ref)
+    after_sec = count_candidates(sec, shadow_mask_sec)
+    return ref, sec, shadow_mask_ref, shadow_mask_sec, {
+        "activated": activated,
+        "candidates_before": [int(before_ref), int(before_sec)],
+        "candidates_after": [int(after_ref), int(after_sec)],
+    }
+
+
 def apply_wallis_filter(
     img: np.ndarray,
     target_mean: float = 128.0,

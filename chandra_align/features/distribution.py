@@ -28,6 +28,60 @@ def bucket_ids(points, image_shape, grid_shape=(8, 8)):
     return y * cols + x
 
 
+def select_quadrant_keypoints(keypoints, image_shape, quota_per_quadrant=50):
+    """Pick the highest-response keypoints independently in each image quadrant.
+
+    Returns ``(selected_keypoints, descriptor_indices)`` so callers can filter
+    descriptors using the exact same stable selection.
+    """
+    quota = int(quota_per_quadrant)
+    if quota <= 0:
+        raise ValueError("quota_per_quadrant must be positive")
+    height, width = map(float, image_shape[:2])
+    if height <= 0 or width <= 0:
+        raise ValueError("image_shape must have positive height and width")
+    selected = []
+    for quadrant in range(4):
+        candidates = []
+        for idx, keypoint in enumerate(keypoints or []):
+            x, y = keypoint.pt
+            q = (2 if y >= height / 2 else 0) + (1 if x >= width / 2 else 0)
+            if q == quadrant:
+                candidates.append(idx)
+        candidates.sort(key=lambda i: float(getattr(keypoints[i], "response", 0.0)), reverse=True)
+        selected.extend(candidates[:quota])
+    indices = np.asarray(sorted(selected), dtype=int)
+    return [keypoints[int(i)] for i in indices], indices
+
+
+def select_quadrant_balanced_matches(points_ref, points_sec, image_shape, quota_per_quadrant=50):
+    """Cap correspondences to the top-quality quota in each reference quadrant."""
+    ref = np.asarray(points_ref, dtype=np.float64).reshape(-1, 2)
+    sec = np.asarray(points_sec, dtype=np.float64).reshape(-1, 2)
+    if len(ref) != len(sec):
+        raise ValueError("reference and secondary points must have equal length")
+    if len(ref) == 0:
+        return ref, sec, np.zeros(0, dtype=int)
+    ids = bucket_ids(ref, image_shape, (2, 2))
+    quota = int(quota_per_quadrant)
+    if quota <= 0:
+        raise ValueError("quota_per_quadrant must be positive")
+    chosen = []
+    for q in range(4):
+        candidates = np.flatnonzero(ids == q)
+        # Deterministic spatial sampling within each quadrant avoids a dense
+        # crater cluster consuming that quadrant's entire quota.
+        if len(candidates) > quota:
+            _, _, local = select_distributed_matches(
+                ref[candidates], sec[candidates], image_shape,
+                grid_shape=(2, 2), max_per_bucket=max(1, quota // 2)
+            )
+            candidates = candidates[local]
+        chosen.extend(candidates[:quota].tolist())
+    indices = np.asarray(sorted(chosen), dtype=int)
+    return ref[indices], sec[indices], indices
+
+
 def select_distributed_matches(
     points_ref,
     points_sec,

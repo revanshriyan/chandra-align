@@ -27,6 +27,7 @@ from chandra_align.preprocessing.general import (
     apply_wallis_adaptive,
     preprocess_pipeline,
     suppress_keypoints_in_shadows,
+    keypoint_starvation_guard,
 )
 from chandra_align.preprocessing.multimodal import (
     gradient_structure,
@@ -52,6 +53,7 @@ __all__ = [
     "apply_wallis_adaptive",
     "preprocess_pipeline",
     "suppress_keypoints_in_shadows",
+    "keypoint_starvation_guard",
     "gradient_structure",
     "gaussian_scale_pyramid",
     "preprocess_multimodal_pair",

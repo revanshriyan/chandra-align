@@ -107,12 +107,57 @@ def format_quadrant_html(quadrant_dict, spatial_entropy):
     )
 
 
+def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad_counts):
+    """Apply the SIH compound quality gate and return its user message and code."""
+    try:
+        rmse_value = float(rmse)
+    except (TypeError, ValueError, OverflowError):
+        rmse_value = float("inf")
+    if not np.isfinite(rmse_value):
+        rmse_value = float("inf")
+    try:
+        entropy_value = float(spatial_entropy)
+    except (TypeError, ValueError, OverflowError):
+        entropy_value = float("-inf")
+    if not np.isfinite(entropy_value):
+        entropy_value = float("-inf")
+    try:
+        inlier_count = max(0, int(inliers))
+        required_inliers = max(0, int(min_inliers))
+    except (TypeError, ValueError, OverflowError):
+        inlier_count, required_inliers = 0, 1
+    counts = quad_counts if isinstance(quad_counts, dict) else {}
+    active_quadrants = sum(
+        1 for key in ("Q1", "Q2", "Q3", "Q4")
+        if _safe_count(counts.get(key, 0).get("inlier_count", 0)
+                        if isinstance(counts.get(key, 0), dict) else counts.get(key, 0)) > 0
+    )
+
+    is_subpixel = rmse_value <= 0.500
+    has_enough_inliers = inlier_count >= required_inliers
+    has_spatial_spread = entropy_value >= 0.750
+    has_quadrant_balance = active_quadrants >= 3
+    if is_subpixel and has_enough_inliers and has_spatial_spread and has_quadrant_balance:
+        return "REGISTRATION ACCEPTED", "SUCCESS"
+    if is_subpixel and (not has_spatial_spread or not has_quadrant_balance):
+        return "REJECTED: Degenerate Single-Quadrant Cluster", "DEGENERATE_FAILURE"
+    return "REJECTED: High Residuals or Insufficient Matches", "ALIGNMENT_FAILURE"
+
+
+def _safe_count(value):
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
 def build_judge_metrics_summary(
     rmse_pixels,
     inlier_count,
     total_correspondences,
     spatial_entropy_score,
     quadrant_metrics,
+    min_inliers=8,
 ):
     """Build the strict, fixed-key JSON summary used by the evaluation UI."""
     try:
@@ -125,9 +170,21 @@ def build_judge_metrics_summary(
         total = 0
     ratio_pct = (100.0 * inliers / total) if total > 0 else 0.0
     quadrants = quadrant_metrics if isinstance(quadrant_metrics, dict) else {}
+    quadrant_counts = [
+        _safe_count(quadrants.get(key, {}).get("inlier_count", 0))
+        for key in ("Q1", "Q2", "Q3", "Q4")
+    ]
+    counts_dict = dict(zip(("Q1", "Q2", "Q3", "Q4"), quadrant_counts))
+    status_message, status_code = validate_registration_gate(
+        rmse_pixels, inliers, min_inliers, spatial_entropy_score, counts_dict
+    )
 
     return {
-        "registration_status": "SUCCESS" if inliers >= 8 else "FAILED",
+        "registration_status": "SUCCESS" if status_code == "SUCCESS" else "FAILED",
+        "active_quadrants_count": sum(count > 0 for count in quadrant_counts),
+        "quadrant_counts": quadrant_counts,
+        "status_message": status_message,
+        "status_code": status_code,
         "global_metrics": {
             "rmse_pixels": _finite_float(rmse_pixels),
             "inlier_count": inliers,
@@ -148,4 +205,5 @@ __all__ = [
     "compute_quadrant_metrics",
     "format_quadrant_html",
     "build_judge_metrics_summary",
+    "validate_registration_gate",
 ]

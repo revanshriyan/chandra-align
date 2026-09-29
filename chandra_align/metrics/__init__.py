@@ -11,6 +11,7 @@ from .quadrant import (
     build_judge_metrics_summary,
     compute_quadrant_metrics,
     format_quadrant_html,
+    validate_registration_gate,
 )
 
 
@@ -115,6 +116,7 @@ __all__ = [
     "compute_quadrant_metrics",
     "format_quadrant_html",
     "build_judge_metrics_summary",
+    "validate_registration_gate",
     "metrics_bundle",
     "metrics_bundle_with_ground",
     "compute_ground_metrics",

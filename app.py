@@ -28,18 +28,23 @@ from PIL import Image
 # Import new modules
 from chandra_align.preprocessing import (
     apply_clahe, detect_shadows, apply_wallis_filter, preprocess_multimodal_pair,
-    preprocess_iirs_raster, resize_to_common_ground_sample
+    preprocess_iirs_raster, resize_to_common_ground_sample, keypoint_starvation_guard
 )
-from chandra_align.features import select_distributed_matches, spatial_distribution_metrics
+from chandra_align.features import (
+    select_distributed_matches, spatial_distribution_metrics,
+    select_quadrant_keypoints, select_quadrant_balanced_matches,
+)
+from chandra_align.alignment import decompose_partial_affine
 from chandra_align.refine import refine_subpixel_ncc
 from chandra_align.metrics import (
     compute_deformation_field, grid_deformation_analysis, compute_ground_metrics,
     get_sensor_pixel_scale, metrics_bundle_with_ground, ResidualVector, GroundMetrics,
     compute_quadrant_metrics, format_quadrant_html, build_judge_metrics_summary,
+    validate_registration_gate,
 )
 from chandra_align.visualization import (
     create_combined_visualization, draw_error_vector_overlay,
-    create_checkerboard_overlay, fig_to_file
+    create_checkerboard_overlay, create_interactive_blend, fig_to_file
 )
 from chandra_align.export import (
     export_gcp_csv, export_homography_json, export_alignment_geotiff,
@@ -283,6 +288,11 @@ def match_pair_hf(
             key_sec, desc_sec = sift.detectAndCompute(secondary_image, None)
             if desc_ref is None or desc_sec is None or len(desc_ref) < 2 or len(desc_sec) < 2:
                 continue
+            key_ref, idx_ref = select_quadrant_keypoints(key_ref, reference_image.shape, 50)
+            key_sec, idx_sec = select_quadrant_keypoints(key_sec, secondary_image.shape, 50)
+            desc_ref, desc_sec = desc_ref[idx_ref], desc_sec[idx_sec]
+            if len(desc_ref) < 2 or len(desc_sec) < 2:
+                continue
             # Brute-force L2 keeps this small, bounded fallback reproducible;
             # randomized FLANN trees caused intermittent OHRC example failures.
             candidates = cv2.BFMatcher(cv2.NORM_L2).knnMatch(desc_sec, desc_ref, k=2)
@@ -390,6 +400,13 @@ def _align_core(
         shadow_mask = detect_shadows(ref_processed, method="otsu")
         shadow_mask_sec = detect_shadows(sec_processed, method="otsu")
         # We'll apply shadow suppression during keypoint filtering
+
+    ref_processed, sec_processed, shadow_mask, shadow_mask_sec, starvation_stats = keypoint_starvation_guard(
+        ref_processed, sec_processed, shadow_mask, shadow_mask_sec,
+        preprocessing_triggered=(enable_shadow_suppression or not enable_clahe),
+        min_candidates=30,
+        clahe_clip_limit=max(float(clahe_clip_limit), 3.0),
+    )
     
     if enable_wallis:
         ref_processed = apply_wallis_filter(ref_processed, target_mean=wallis_target_mean, target_std=wallis_target_std)
@@ -417,6 +434,11 @@ def _align_core(
         pts_ref = pts_ref / ref_match_scale
     if sec_match_scale != 1.0:
         pts_sec = pts_sec / sec_match_scale
+
+    if len(pts_ref):
+        pts_ref, pts_sec, _ = select_quadrant_balanced_matches(
+            pts_ref, pts_sec, ref_original.shape[:2], quota_per_quadrant=50
+        )
     
     # Apply shadow suppression to matched pairs jointly. Filtering each side
     # independently can remove different matches and break correspondence order.
@@ -483,6 +505,11 @@ def _align_core(
                 fallback_ref, fallback_sec = fallback.pts_src, fallback.pts_ref
                 fallback_ref = fallback_ref / ref_match_scale if ref_match_scale != 1.0 else fallback_ref
                 fallback_sec = fallback_sec / sec_match_scale if sec_match_scale != 1.0 else fallback_sec
+                if len(fallback_ref):
+                    fallback_ref, fallback_sec, _ = select_quadrant_balanced_matches(
+                        fallback_ref, fallback_sec, ref_original.shape[:2],
+                        quota_per_quadrant=50,
+                    )
                 if shadow_mask is not None and len(fallback_ref):
                     keep = outside_shadow(fallback_ref, shadow_mask) & outside_shadow(fallback_sec, shadow_mask_sec)
                     fallback_ref, fallback_sec = fallback_ref[keep], fallback_sec[keep]
@@ -553,12 +580,18 @@ def _align_core(
 
     rmse_px = float(np.sqrt(np.mean(residuals_mag ** 2))) if len(residuals_mag) > 0 else 0.0
     mae_px = float(np.mean(residuals_mag)) if len(residuals_mag) > 0 else 0.0
+    affine_telemetry = decompose_partial_affine(affine_matrix)
+    status_message, status_code = validate_registration_gate(
+        rmse_px, inlier_cnt, MIN_REGISTRATION_INLIERS,
+        quadrant_spatial_entropy, quadrant_metrics,
+    )
     judge_metrics = build_judge_metrics_summary(
         rmse_px,
         inlier_cnt,
         len(pts_ref),
         quadrant_spatial_entropy,
         quadrant_metrics,
+        min_inliers=MIN_REGISTRATION_INLIERS,
     )
 
     warped_preview_rgb = cv2.cvtColor(warped_sec, cv2.COLOR_GRAY2RGB)
@@ -584,15 +617,32 @@ def _align_core(
         quadtree_result = evaluate_quadtree_uniformity(inlier_ref, ref_original.shape[:2], depth=4)
         uniformity = distribution["uniformity"]
 
+    engine_lower = engine_name.lower()
+    if "sift" in engine_lower:
+        engine_used = "Fallback (SIFT)"
+    elif "lightglue" in engine_lower or "aliked" in engine_lower:
+        engine_used = "Fallback (LightGlue/ALIKED)"
+    else:
+        engine_used = "Primary (Phase Congruency)"
+
     return {
         "warped_preview_rgb": warped_preview_rgb,
         "checkerboard_rgb": checkerboard_rgb,
         "error_vector_overlay_rgb": error_vector_overlay_rgb,
+        "blend_rgb": create_interactive_blend(ref_original, warped_sec, alpha=0.5),
+        "blend_inputs": (ref_original, warped_sec),
         "error_vector_overlay_bgr": error_vector_overlay_bgr,
         "quadrant_metrics": quadrant_metrics,
         "quadrant_spatial_entropy": quadrant_spatial_entropy,
         "quadrant_metrics_html": quadrant_html,
         "judge_metrics": judge_metrics,
+        "status_message": status_message,
+        "status_code": status_code,
+        "affine_telemetry": affine_telemetry,
+        "transformation_telemetry": affine_telemetry,
+        "engine_used": engine_used,
+        "execution_device": "GPU (ZeroGPU)" if _zerogpu_runtime_enabled() else "CPU",
+        "starvation_guard": starvation_stats,
         "ref_original": ref_original,
         "sec_original": sec_original,
         "warped_sec": warped_sec,
@@ -649,11 +699,11 @@ def process_alignment(
 ):
     """
     Main alignment pipeline - runs on GPU when called from process_wrapper.
-    Returns three preview images, report, judge metrics, four export paths, and dossier path.
+    Returns visual previews, telemetry, judge metrics, and scientific export paths.
     """
     if ref_file is None or sec_file is None:
-        return (None, None, None, "Error: Please provide both Reference and Secondary surface frames.",
-                _failed_judge_metrics_summary(), None, None, None, None, None)
+        return (None, None, None, None, "Error: Please provide both Reference and Secondary surface frames.",
+                _failed_judge_metrics_summary(), "", None, None, None, None, None, None)
 
     try:
         is_iirs_pair = sensor_pair_mode == "Optical <-> Infrared"
@@ -694,8 +744,14 @@ def process_alignment(
         ground_metrics = result["ground_metrics"]
         uniformity = result["uniformity"]
         spatial_entropy = result["spatial_entropy"]
+        quadrant_entropy = result["quadrant_spatial_entropy"]
         refinement_stats = result["refinement_stats"]
         pixel_scale_m = result["pixel_scale_m"]
+        status_message = result["status_message"]
+        status_code = result["status_code"]
+        affine_telemetry = result["affine_telemetry"]
+        active_quadrants = judge_metrics["active_quadrants_count"]
+        quadrant_counts = judge_metrics["quadrant_counts"]
 
         # Build comprehensive report
         inlier_pct = inlier_cnt / max(total_matches, 1) * 100
@@ -703,7 +759,7 @@ def process_alignment(
         mae_m = mae_px * pixel_scale_m
         
         report = (
-            f"✅ REGISTRATION COMPLETE\n"
+            f"{'✅' if status_code == 'SUCCESS' else '❌'} {status_message}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"Matcher Engine: {engine_name}\n"
             f"Registration Transform: 4-DOF Partial Affine (2x3), RANSAC threshold {result['ransac_threshold_px']:.1f} px\n"
@@ -729,6 +785,22 @@ def process_alignment(
             f"DEFORMATION FIELD GRID (8x8):\n"
             f"  Mean Mag: {grid_analysis['mean_magnitude_px']:.4f} px ({grid_analysis['mean_magnitude_m']:.4f} m)\n"
             f"  Max Mag:  {grid_analysis['max_magnitude_px']:.4f} px ({grid_analysis['max_magnitude_m']:.4f} m)\n"
+        )
+        telemetry_report = (
+            "===================================================\n"
+            "PHOTOGRAMMETRIC TELEMETRY REPORT\n"
+            "===================================================\n"
+            f"Registration Status    : {status_message}\n"
+            f"Execution Engine Path  : {result['engine_used']} ({result['execution_device']})\n"
+            f"Recovered Translation  : ΔX = {affine_telemetry['delta_x_px']:.4f} px, ΔY = {affine_telemetry['delta_y_px']:.4f} px\n"
+            f"Recovered Rotation     : θ  = {affine_telemetry['rotation_deg']:.4f}°\n"
+            f"Recovered Uniform Scale: s  = {affine_telemetry['scale_s']:.8f}\n"
+            "\nQUALITY METRICS:\n"
+            f"Global RMSE            : {rmse_px:.4f} px\n"
+            f"Inlier Count / Ratio   : {inlier_cnt} / {total_matches} ({inlier_pct:.2f}%)\n"
+            f"Spatial Entropy        : {quadrant_entropy:.4f} / 2.000\n"
+            f"Quadrant Inliers (Q1-4): {quadrant_counts} (Active: {active_quadrants}/4)\n"
+            "==================================================="
         )
         report += (
             "\n<!--QUADRANT_METRICS_START-->"
@@ -775,6 +847,10 @@ def process_alignment(
         ).tolist()
         transform_payload["homography_matrix"] = np.asarray(H, dtype=np.float64).tolist()
         transform_payload["judge_metrics_summary"] = judge_metrics
+        transform_payload["safety_gate_passed"] = status_code == "SUCCESS"
+        transform_payload["transformation_telemetry"] = affine_telemetry
+        transform_payload["engine_used"] = result["engine_used"]
+        transform_payload["execution_device"] = result["execution_device"]
         with transform_json.open("w", encoding="utf-8") as stream:
             json.dump(transform_payload, stream, indent=2, allow_nan=False)
         
@@ -805,13 +881,17 @@ def process_alignment(
         warped_pil = Image.fromarray(np.asarray(warped_preview_rgb, dtype=np.uint8))
         checkerboard_pil = Image.fromarray(np.asarray(checkerboard_rgb, dtype=np.uint8))
         vector_overlay_pil = Image.fromarray(np.asarray(error_vector_overlay_rgb, dtype=np.uint8))
+        blend_pil = Image.fromarray(np.asarray(result["blend_rgb"], dtype=np.uint8))
         
         return (
             warped_pil,
             checkerboard_pil,
             vector_overlay_pil,
+            blend_pil,
             report,
             judge_metrics,
+            telemetry_report,
+            result["blend_inputs"],
             export_paths.get("gcp_csv"),
             export_paths.get("transform_json"),
             export_paths.get("warped_geotiff"),
@@ -823,14 +903,14 @@ def process_alignment(
         print(traceback.format_exc(), file=sys.stderr, flush=True)
         failure = re.search(r"found\s+(\d+)", str(e), flags=re.IGNORECASE)
         failed_inliers = int(failure.group(1)) if failure else 0
-        return (None, None, None, f"Registration Failed: {str(e)}",
+        return (None, None, None, None, f"Registration Failed: {str(e)}",
                 _failed_judge_metrics_summary(failed_inliers),
-                None, None, None, None, None)
+                "", None, None, None, None, None, None)
     except Exception as e:
         print(traceback.format_exc(), file=sys.stderr, flush=True)
-        return (None, None, None, f"Registration Failed: {str(e)}",
+        return (None, None, None, None, f"Registration Failed: {str(e)}",
                 _failed_judge_metrics_summary(),
-                None, None, None, None, None)
+                "", None, None, None, None, None, None)
 
 
 GPU_EXECUTION_STATUS = "⚡ Execution Mode: ZeroGPU (A10G Accelerated)"
@@ -839,11 +919,18 @@ CPU_FALLBACK_STATUS = "💻 Execution Mode: CPU (Fallback Active - Quota/Worker 
 
 def _append_execution_status(outputs, status: str):
     """Append execution mode and render the UI report without changing output arity."""
-    values = list(outputs) if isinstance(outputs, (tuple, list)) else [None] * 10
-    if len(values) != 10:
-        values = (values + [None] * 10)[:10]
-    report = values[3] if isinstance(values[3], str) else ""
-    values[3] = _format_metric_report(f"{report.rstrip()}\n\n{status}".strip())
+    values = list(outputs) if isinstance(outputs, (tuple, list)) else [None] * 13
+    if len(values) != 13:
+        values = (values + [None] * 13)[:13]
+    report = values[4] if isinstance(values[4], str) else ""
+    values[4] = _format_metric_report(f"{report.rstrip()}\n\n{status}".strip())
+    telemetry = values[6] if isinstance(values[6], str) else ""
+    device = "GPU (ZeroGPU)" if "ZeroGPU" in status else "CPU"
+    telemetry = re.sub(
+        r"(?m)^(Execution Engine Path\s*:\s*.*)\s+\((?:CPU|GPU \(ZeroGPU\))\)$",
+        rf"\1 ({device})", telemetry,
+    )
+    values[6] = telemetry
     return tuple(values)
 
 
@@ -860,7 +947,7 @@ def _format_metric_report(report: str) -> str:
         quadrant_html = quadrant_match.group(1).strip()
         plain_report = (report[:quadrant_match.start()] + report[quadrant_match.end():]).strip()
     escaped_report = html.escape(plain_report)
-    accepted = report.startswith("✅ REGISTRATION COMPLETE")
+    accepted = report.startswith("✅ REGISTRATION ACCEPTED")
     badge_class = "pass-badge" if accepted else "fail-badge"
     badge_text = "REGISTRATION ACCEPTED" if accepted else "REGISTRATION FAILED"
 
@@ -950,13 +1037,23 @@ def process_wrapper(
             print("CPU fallback failed.", file=sys.stderr, flush=True)
             print(traceback.format_exc(), file=sys.stderr, flush=True)
             outputs = (
-                None, None, None, f"Registration Failed: {cpu_error}",
+                None, None, None, None, f"Registration Failed: {cpu_error}",
                 _failed_judge_metrics_summary(),
-                None, None, None, None, None,
+                "", None, None, None, None, None, None,
             )
         return _append_execution_status(outputs, CPU_FALLBACK_STATUS)
     status = GPU_EXECUTION_STATUS if _zerogpu_runtime_enabled() else "💻 Execution Mode: CPU (Local Runtime)"
     return _append_execution_status(outputs, status)
+
+
+def update_interactive_blend(images, alpha):
+    """Rebuild the blend preview from cached registration rasters and slider alpha."""
+    if not isinstance(images, (tuple, list)) or len(images) != 2:
+        return None
+    try:
+        return Image.fromarray(create_interactive_blend(images[0], images[1], alpha=alpha))
+    except (TypeError, ValueError):
+        return None
 
 
 # Build Gradio interface with advanced controls
@@ -1075,6 +1172,16 @@ def build_interface():
                             type="pil",
                             format="png"
                         )
+
+                    with gr.TabItem("Interactive Alpha Blend"):
+                        blend_alpha = gr.Slider(
+                            minimum=0.0, maximum=1.0, value=0.5, step=0.05,
+                            label="Warp Transparency / Swipe Blend",
+                        )
+                        blend_image = gr.Image(
+                            label="Reference / Warped Secondary Alpha Blend",
+                            type="pil", format="png",
+                        )
                     
                     with gr.TabItem("Scientific Dossier (4-Panel)"):
                         dossier_image = gr.Image(
@@ -1088,6 +1195,13 @@ def build_interface():
                     elem_classes=["metric-report"],
                 )
                 metrics_json = gr.JSON(label="Judge Metrics Summary JSON")
+                telemetry_text = gr.Textbox(
+                    label="Photogrammetric Telemetry Report",
+                    lines=15,
+                    interactive=False,
+                    elem_classes=["metric-card"],
+                )
+                blend_inputs_state = gr.State(value=None)
                 
                 # Download buttons
                 gr.Markdown("### 💾 Scientific Export Package")
@@ -1124,10 +1238,16 @@ def build_interface():
                 wallis_mean, wallis_std
             ],
             outputs=[
-                warped_result_image, checkerboard_image, vector_overlay_image,
-                report_text, metrics_json, csv_btn, json_btn,
-                geotiff_btn, png_btn, dossier_image
+                warped_result_image, checkerboard_image, vector_overlay_image, blend_image,
+                report_text, metrics_json, telemetry_text, blend_inputs_state,
+                csv_btn, json_btn, geotiff_btn, png_btn, dossier_image
             ]
+        )
+
+        blend_alpha.change(
+            fn=update_interactive_blend,
+            inputs=[blend_inputs_state, blend_alpha],
+            outputs=[blend_image],
         )
         
         # Sensor change updates pixel scale
@@ -1173,9 +1293,9 @@ def build_interface():
                 wallis_mean, wallis_std
             ],
             outputs=[
-                warped_result_image, checkerboard_image, vector_overlay_image,
-                report_text, metrics_json, csv_btn, json_btn,
-                geotiff_btn, png_btn, dossier_image
+                warped_result_image, checkerboard_image, vector_overlay_image, blend_image,
+                report_text, metrics_json, telemetry_text, blend_inputs_state,
+                csv_btn, json_btn, geotiff_btn, png_btn, dossier_image
             ],
             fn=process_wrapper,
             cache_examples=False,
