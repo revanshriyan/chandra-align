@@ -181,8 +181,8 @@ def generate_synthetic_lunar_pair(ref_path: str, sec_path: str) -> None:
     noise = np.random.normal(0.0, 3.0, sec.shape).astype(np.float32)
     sec = np.clip(sec.astype(np.float32) * 0.95 + noise * 0.05, 0, 255).astype(np.uint8)
 
-    cv2.imwrite(ref_path, ref)
-    cv2.imwrite(sec_path, sec)
+    if not cv2.imwrite(ref_path, ref) or not cv2.imwrite(sec_path, sec):
+        raise OSError("OpenCV could not write the synthetic pitch demo image pair")
 
 
 def ensure_sample_files() -> tuple[str, str]:
@@ -195,9 +195,20 @@ def ensure_sample_files() -> tuple[str, str]:
     ref_path = demo_dir / "sample_ref.png"
     sec_path = demo_dir / "sample_sec.png"
 
-    if not (ref_path.is_file() and sec_path.is_file()):
+    pair_is_readable = (
+        ref_path.is_file()
+        and sec_path.is_file()
+        and cv2.imread(str(ref_path), cv2.IMREAD_UNCHANGED) is not None
+        and cv2.imread(str(sec_path), cv2.IMREAD_UNCHANGED) is not None
+    )
+    if not pair_is_readable:
         generate_synthetic_lunar_pair(str(ref_path), str(sec_path))
-    if not (ref_path.is_file() and sec_path.is_file()):
+    if (
+        not ref_path.is_file()
+        or not sec_path.is_file()
+        or cv2.imread(str(ref_path), cv2.IMREAD_UNCHANGED) is None
+        or cv2.imread(str(sec_path), cv2.IMREAD_UNCHANGED) is None
+    ):
         raise RuntimeError("Could not create the synthetic pitch demo image pair")
 
     return str(ref_path), str(sec_path)
@@ -822,6 +833,42 @@ def _rejected_output_tuple(summary, status_message=None, image_shape=(768, 1024)
     )
 
 
+def _minimal_rejection_output_tuple(status_message, summary=None):
+    """Dependency-light emergency result that always matches the 13 outputs."""
+    blank = np.zeros((512, 512, 3), dtype=np.uint8)
+    preview = Image.fromarray(blank)
+    metrics = summary if isinstance(summary, dict) else _failed_judge_metrics_summary()
+    report = f"REGISTRATION REJECTED: {status_message}"
+    telemetry = (
+        "PHOTOGRAMMETRIC TELEMETRY REPORT\n"
+        "Registration Status : REJECTED\n"
+        "Recovered Transform : N/A — Alignment Rejected\n"
+        f"Reason               : {status_message}"
+    )
+    return (
+        preview, preview, preview, preview,
+        report, metrics, telemetry, (blank, blank),
+        None, None, None, None, None,
+    )
+
+
+def _safe_rejection_output_tuple(summary, status_message, image_shape=(768, 1024), total_pts=0):
+    """Prevent banner/telemetry formatting failures from escaping the callback."""
+    try:
+        outputs = tuple(_rejected_output_tuple(
+            summary, status_message=status_message,
+            image_shape=image_shape, total_pts=total_pts,
+        ))
+        if len(outputs) == 13:
+            return outputs
+        raise ValueError(f"Rejection callback produced {len(outputs)} outputs, expected 13")
+    except Exception:
+        print("Failed to render the normal rejection banner; using a minimal safe result.",
+              file=sys.stderr, flush=True)
+        print(traceback.format_exc(), file=sys.stderr, flush=True)
+        return _minimal_rejection_output_tuple(status_message, summary)
+
+
 def process_alignment(
     ref_file,
     sec_file,
@@ -862,8 +909,10 @@ def process_alignment(
     reference_image = None
 
     if ref_file is None or sec_file is None:
-        return (None, None, None, None, "Error: Please provide both Reference and Secondary surface frames.",
-                _failed_judge_metrics_summary(), "", None, None, None, None, None, None)
+        return _safe_rejection_output_tuple(
+            _failed_judge_metrics_summary(),
+            "Empty input: provide both Reference and Secondary surface frames.",
+        )
 
     try:
         is_iirs_pair = sensor_pair_mode == "Optical <-> Infrared"
@@ -1064,7 +1113,7 @@ def process_alignment(
         failed_inliers = int(failure.group(1)) if failure else 0
         failed_summary = _failed_judge_metrics_summary(failed_inliers)
         image_shape = ref_img.shape[:2] if "ref_img" in locals() else (768, 1024)
-        return _rejected_output_tuple(
+        return _safe_rejection_output_tuple(
             failed_summary, status_message=failed_summary["status_message"],
             image_shape=image_shape,
         )
@@ -1072,7 +1121,7 @@ def process_alignment(
         print(traceback.format_exc(), file=sys.stderr, flush=True)
         failed_summary = _failed_judge_metrics_summary()
         image_shape = ref_img.shape[:2] if "ref_img" in locals() else (768, 1024)
-        return _rejected_output_tuple(
+        return _safe_rejection_output_tuple(
             failed_summary, status_message=f"Registration Failed: {str(e)}",
             image_shape=image_shape,
         )
@@ -1199,29 +1248,48 @@ def process_wrapper(
 ):
     """Catch ZeroGPU scheduling/quota errors and rerun on CPU without UI errors."""
     try:
-        outputs = run_alignment_on_gpu(
-            ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
-            px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s
-        )
-    except Exception:
-        print("ZeroGPU allocation/execution failed; retrying alignment on CPU.", file=sys.stderr, flush=True)
-        print(traceback.format_exc(), file=sys.stderr, flush=True)
         try:
-            outputs = _run_alignment_core(
+            outputs = run_alignment_on_gpu(
                 ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
                 px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s
             )
-        except Exception as cpu_error:
-            print("CPU fallback failed.", file=sys.stderr, flush=True)
+            status = GPU_EXECUTION_STATUS if _zerogpu_runtime_enabled() else "💻 Execution Mode: CPU (Local Runtime)"
+        except Exception:
+            print("ZeroGPU allocation/execution failed; retrying alignment on CPU.", file=sys.stderr, flush=True)
             print(traceback.format_exc(), file=sys.stderr, flush=True)
-            outputs = (
-                None, None, None, None, f"Registration Failed: {cpu_error}",
-                _failed_judge_metrics_summary(),
-                "", None, None, None, None, None, None,
+            try:
+                outputs = _run_alignment_core(
+                    ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
+                    px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s
+                )
+            except Exception as cpu_error:
+                print("CPU fallback failed.", file=sys.stderr, flush=True)
+                print(traceback.format_exc(), file=sys.stderr, flush=True)
+                outputs = _minimal_rejection_output_tuple(
+                    f"Registration callback failed: {cpu_error}", summary={}
+                )
+            status = CPU_FALLBACK_STATUS
+
+        normalized = tuple(_append_execution_status(outputs, status))
+        if len(normalized) != 13:
+            raise ValueError(f"Alignment callback returned {len(normalized)} outputs; expected 13")
+        return normalized
+    except Exception as callback_error:
+        # Last-resort boundary: Gradio callbacks must not leak an exception or
+        # return a shape/type mismatch that can surface as an HTTP 500.
+        print("Unhandled alignment callback error; returning a safe 13-output rejection.",
+              file=sys.stderr, flush=True)
+        print(traceback.format_exc(), file=sys.stderr, flush=True)
+        try:
+            fallback = _minimal_rejection_output_tuple(
+                f"Registration callback failed: {callback_error}", summary={}
             )
-        return _append_execution_status(outputs, CPU_FALLBACK_STATUS)
-    status = GPU_EXECUTION_STATUS if _zerogpu_runtime_enabled() else "💻 Execution Mode: CPU (Local Runtime)"
-    return _append_execution_status(outputs, status)
+            return tuple(fallback) if len(fallback) == 13 else (None,) * 13
+        except Exception:
+            print("Emergency callback fallback construction also failed.",
+                  file=sys.stderr, flush=True)
+            print(traceback.format_exc(), file=sys.stderr, flush=True)
+            return (None,) * 13
 
 
 def update_interactive_blend(images, alpha):
@@ -1486,46 +1554,58 @@ def build_interface():
         gr.Markdown("### 📝 Example Pairs")
         examples_dir = Path(__file__).resolve().parent / "docs" / "assets" / "examples"
         example_specs = (
-            ("nac_reference_ohrc.png", "ohrc_secondary.png", "OHRC",
-             "Optical <-> Optical", "OHRC vs NASA LROC NAC · 2× GSD gap", 3.0),
-            ("nac_reference_tmc2.png", "tmc2_secondary.png", "TMC-2",
-             "Optical <-> Optical", "TMC-2 vs NASA LROC NAC · 10× GSD gap", 3.0),
-            ("nac_reference_iirs.png", "iirs_band125_secondary.png", "IIRS",
-             "Optical <-> Infrared", "IIRS Band 125 (2.802 µm) vs NASA LROC NAC · 160× GSD gap", 4.5),
+            ("nac_reference_ohrc.png", "ohrc_secondary.png", "LROC_NAC", "OHRC",
+             "Optical <-> Optical", "OHRC vs NASA LROC NAC · 2× GSD gap", 0.5, 3.0),
+            ("nac_reference_tmc2.png", "tmc2_secondary.png", "LROC_NAC", "TMC-2",
+             "Optical <-> Optical", "TMC-2 vs NASA LROC NAC · 10× GSD gap", 0.5, 3.0),
+            ("nac_reference_iirs.png", "iirs_band125_secondary.png", "LROC_NAC", "IIRS",
+             "Optical <-> Infrared", "IIRS Band 125 (2.802 µm) vs NASA LROC NAC · 160× GSD gap", 0.5, 4.5),
+            ("synthetic_groundtruth_reference.png", "synthetic_groundtruth_secondary.png",
+             "OHRC", "OHRC", "Optical <-> Optical",
+             "Synthetic Ground Truth · 1:1 GSD", 0.25, 3.0),
         )
         example_rows = []
         example_labels = []
-        for reference_filename, secondary_filename, secondary_sensor, pair_mode, label, clip_limit in example_specs:
+        for (reference_filename, secondary_filename, reference_sensor, secondary_sensor,
+             pair_mode, label, pixel_scale_m, clip_limit) in example_specs:
             reference_path = examples_dir / reference_filename
             secondary_path = examples_dir / secondary_filename
-            for sample_path in (reference_path, secondary_path):
-                if not sample_path.is_file():
-                    raise FileNotFoundError(f"Tracked Gradio example asset is missing: {sample_path}")
+            if not reference_path.is_file() or not secondary_path.is_file():
+                print(
+                    f"Skipping incomplete example {label!r}: "
+                    f"missing {reference_path if not reference_path.is_file() else secondary_path}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                continue
             example_rows.append([
-                str(reference_path), str(secondary_path), "LROC_NAC", secondary_sensor,
-                pair_mode, False, 0.5, True, clip_limit, False, False, 128.0, 50.0
+                str(reference_path), str(secondary_path), reference_sensor, secondary_sensor,
+                pair_mode, False, pixel_scale_m, True, clip_limit, False, False, 128.0, 50.0
             ])
             example_labels.append(label)
-        gr.Examples(
-            examples=example_rows,
-            inputs=[
-                ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
-                sensor_pair_mode, enforce_uniformity, pixel_scale,
-                enable_clahe, clahe_clip, enable_shadow, enable_wallis,
-                wallis_mean, wallis_std
-            ],
-            outputs=[
-                warped_result_image, checkerboard_image, vector_overlay_image, blend_image,
-                report_text, metrics_json, telemetry_text, blend_inputs_state,
-                csv_btn, json_btn, geotiff_btn, png_btn, dossier_image
-            ],
-            fn=process_wrapper,
-            cache_examples=False,
-            examples_per_page=3,
-            run_on_click=True,
-            example_labels=example_labels,
-            label="One-click lunar alignment presets"
-        )
+        if example_rows:
+            gr.Examples(
+                examples=example_rows,
+                inputs=[
+                    ref_file, sec_file, sensor_dropdown, secondary_sensor_dropdown,
+                    sensor_pair_mode, enforce_uniformity, pixel_scale,
+                    enable_clahe, clahe_clip, enable_shadow, enable_wallis,
+                    wallis_mean, wallis_std
+                ],
+                outputs=[
+                    warped_result_image, checkerboard_image, vector_overlay_image, blend_image,
+                    report_text, metrics_json, telemetry_text, blend_inputs_state,
+                    csv_btn, json_btn, geotiff_btn, png_btn, dossier_image
+                ],
+                fn=process_wrapper,
+                cache_examples=False,
+                examples_per_page=3,
+                run_on_click=True,
+                example_labels=example_labels,
+                label="One-click lunar alignment presets"
+            )
+        else:
+            gr.Markdown("No example image pairs are available in this deployment.")
 
         with gr.Accordion("Scientific Foundation & SAC-ISRO Benchmark Alignment", open=False):
             gr.Markdown(
@@ -1548,7 +1628,22 @@ def build_interface():
 
 
 # Build and export
-interface = build_interface()
+try:
+    interface = build_interface()
+except Exception as startup_error:
+    print("CHANDRA-ALIGN interface startup failed.", file=sys.stderr, flush=True)
+    print(traceback.format_exc(), file=sys.stderr, flush=True)
+    with gr.Blocks(title="CHANDRA-ALIGN startup diagnostic") as interface:
+        gr.Markdown("# CHANDRA-ALIGN could not initialize")
+        gr.Markdown(
+            "The service process started, but interface construction failed. "
+            "Check the Space runtime logs for the traceback."
+        )
+        gr.Code(
+            value=f"{type(startup_error).__name__}: {startup_error}",
+            language="text",
+            label="Startup error",
+        )
 
 
 if __name__ == "__main__":
