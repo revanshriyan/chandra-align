@@ -62,6 +62,94 @@ IIRS_MAX_IMAGE_DIMENSION = 12000
 IIRS_MIN_MATCH_LONG_SIDE = 320
 
 
+def _inspect_raster_geometry(file_input):
+    """Retrieve original (width, height, size_mb, name) of an image or raster input."""
+    if file_input is None:
+        return None
+    if isinstance(file_input, np.ndarray):
+        h, w = file_input.shape[:2]
+        size_mb = file_input.nbytes / (1024 * 1024)
+        return (w, h, size_mb, "array input")
+    if isinstance(file_input, Image.Image):
+        w, h = file_input.size
+        size_mb = (w * h * (len(file_input.getbands()) or 1)) / (1024 * 1024)
+        return (w, h, size_mb, "PIL image")
+
+    path = None
+    if isinstance(file_input, (str, os.PathLike)):
+        path = os.fspath(file_input)
+    elif isinstance(file_input, dict):
+        path = file_input.get("path") or file_input.get("name")
+    else:
+        path = getattr(file_input, "path", None) or getattr(file_input, "name", None)
+
+    if not path or not os.path.isfile(str(path)):
+        return None
+
+    path_obj = Path(path)
+    size_mb = 0.0
+    try:
+        size_mb = path_obj.stat().st_size / (1024 * 1024)
+    except OSError:
+        pass
+
+    # Try rasterio first for scientific GeoTIFF/PDS rasters
+    try:
+        import rasterio
+        raster_path = path
+        if path_obj.suffix.lower() == ".img":
+            for label_path in (path_obj.with_suffix(".xml"), Path(os.fspath(path) + ".xml")):
+                if label_path.is_file():
+                    raster_path = os.fspath(label_path)
+                    break
+        with rasterio.open(raster_path) as src:
+            return (int(src.width), int(src.height), size_mb, path_obj.name)
+    except Exception:
+        pass
+
+    # Try PIL Image header
+    try:
+        with Image.open(path) as img:
+            return (int(img.width), int(img.height), size_mb, path_obj.name)
+    except Exception:
+        pass
+
+    # Try OpenCV
+    try:
+        decoded = cv2.imread(os.fspath(path), cv2.IMREAD_UNCHANGED)
+        if decoded is not None and decoded.ndim >= 2:
+            return (int(decoded.shape[1]), int(decoded.shape[0]), size_mb, path_obj.name)
+    except Exception:
+        pass
+
+    return None
+
+
+def get_large_image_notices(ref_file, sec_file, max_dimension: int = MAX_IMAGE_DIMENSION) -> list[str]:
+    """Check if either input exceeds dimension / size thresholds and generate notices."""
+    notices = []
+    for label, file_input in (("Reference", ref_file), ("Secondary", sec_file)):
+        info = _inspect_raster_geometry(file_input)
+        if info is None:
+            continue
+        w, h, size_mb, name = info
+        max_side = max(w, h)
+        if max_side > max_dimension:
+            scale = float(max_dimension) / max_side
+            target_w = max(1, round(w * scale))
+            target_h = max(1, round(h * scale))
+            notices.append(
+                f"Large image detected ({w}×{h}, {size_mb:.1f} MB) — "
+                f"downsampled to {target_w}×{target_h} px for processing; expect extended runtime."
+            )
+        elif size_mb >= 15.0:
+            notices.append(
+                f"Large image file detected ({w}×{h}, {size_mb:.1f} MB) — expect extended runtime."
+            )
+    return notices
+
+
+
 def _estimate_partial_affine_with_threshold(src_points, dst_points, threshold_px):
     """Estimate affine geometry with a threshold-aware and version-safe call."""
     try:
@@ -336,11 +424,11 @@ def match_pair_hf(
         src_pts, dst_pts = primary.match(img1, img2)
         if len(src_pts) >= 4:
             return src_pts, dst_pts, "RIFT2 (Phase Congruency)", diagnostics
-        primary_error = "RIFT2 returned fewer than four correspondences"
-        fallback_reason = "Low Inlier Ratio (< 0.15)"
+        primary_error = f"RIFT2 returned {len(src_pts)} correspondences (< 4 required)"
+        fallback_reason = f"Primary RIFT2 produced insufficient correspondences ({len(src_pts)} < 4)"
     except Exception as exc:
         primary_error = str(exc)
-        fallback_reason = "Execution Exception"
+        fallback_reason = f"Primary RIFT2 execution exception ({type(exc).__name__}: {exc})"
 
     # If the primary cannot produce a geometric candidate at all, make one
     # bounded LightGlue/ALIKED attempt before trying the classical fallback.
@@ -603,11 +691,11 @@ def _align_core(
         )["uniformity"] if inlier_cnt else 0.0
         fallback_reason = None
         if geometry_exception:
-            fallback_reason = "Execution Exception"
+            fallback_reason = "Primary Geometry Estimation Exception"
         elif inlier_ratio < 0.15:
-            fallback_reason = "Low Inlier Ratio (< 0.15)"
+            fallback_reason = f"Low Inlier Ratio ({inlier_ratio:.1%} < 15.0%)"
         elif primary_uniformity < 0.125:
-            fallback_reason = "High Spatial Entropy Deficit"
+            fallback_reason = f"High Spatial Entropy Deficit (uniformity {primary_uniformity:.3f} < 0.125)"
 
         if fallback_reason:
             execution_diagnostics.update(
@@ -730,7 +818,7 @@ def _align_core(
             "status_code": status_code,
             "inlier_cnt": inlier_cnt,
             "total_matches": len(pts_ref),
-            "rmse_px": rmse_px,
+            "rmse_px": None,
             "quadrant_spatial_entropy": quadrant_spatial_entropy,
             "engine_used": engine_used,
             "execution_device": execution_device,
@@ -835,7 +923,7 @@ def _failed_judge_metrics_summary(inlier_count: int = 0, total_correspondences: 
 def format_telemetry_report(
     status, inliers, total_pts, inlier_ratio, spatial_entropy,
     quad_counts, rmse=None, affine_telemetry=None, engine="N/A", device="N/A",
-    status_message=None, active_quadrants=None,
+    status_message=None, active_quadrants=None, notices=None,
 ):
     """Render three-tier checklist; hide transform values for rejected fits."""
     code = str(status).strip().upper()
@@ -847,7 +935,7 @@ def format_telemetry_report(
     active = sum(int(value) > 0 for value in counts) if active_quadrants is None else int(active_quadrants)
     rmse_value = float(rmse) if rmse is not None and math.isfinite(float(rmse)) else float("inf")
     entropy_value = float(spatial_entropy) if math.isfinite(float(spatial_entropy)) else 0.0
-    rmse_pass = rmse_value <= 0.5
+    rmse_pass = (rmse_value <= 0.5) and accepted
     entropy_pass = entropy_value >= 0.75
     quadrant_pass = active >= 3
     # Priority-ordered header: use the caller's message when available;
@@ -874,17 +962,23 @@ def format_telemetry_report(
         "===================================================",
         "PHOTOGRAMMETRIC TELEMETRY REPORT",
         "===================================================",
+    ]
+    if notices:
+        for notice in notices:
+            lines.append(f"[NOTICE] {notice}")
+        lines.append("")
+    lines.extend([
         f"Registration Status   : {status_text}",
         f"Hardware Runtime Mode : {device}",
         "",
         "VALIDATION GATE CHECKLIST:",
-        f"[{check(rmse_pass)}] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: {rmse_value:.4f} px)" if math.isfinite(rmse_value) else "[✗] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: N/A)",
+        f"[{check(rmse_pass)}] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: {rmse_value:.4f} px)" if (accepted and rmse is not None and math.isfinite(rmse_value)) else "[✗] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: N/A)",
         f"[{check(entropy_pass)}] Spatial Spread Score : Entropy >= 0.75 (Measured: {entropy_value:.4f} / 2.00)",
         f"[{check(quadrant_pass)}] Quadrant Distribution: Active Quads >= 3 (Measured: {active} / 4)",
         "",
         f"QUADRANT BREAKDOWN: Q1:{int(counts[0])} | Q2:{int(counts[1])} | Q3:{int(counts[2])} | Q4:{int(counts[3])}",
         "---------------------------------------------------",
-    ]
+    ])
     if not accepted:
         lines.extend([
             "Recovered Transform : N/A — Alignment Rejected",
@@ -908,7 +1002,7 @@ def format_telemetry_report(
     return "\n".join(lines)
 
 
-def _rejected_output_tuple(summary, status_message=None, image_shape=(768, 1024), total_pts=0):
+def _rejected_output_tuple(summary, status_message=None, image_shape=(768, 1024), total_pts=0, notices=None):
     """Build diagnostic image outputs and suppress downloads for rejected fits."""
     metrics = summary if isinstance(summary, dict) else _failed_judge_metrics_summary()
     global_metrics = metrics.get("global_metrics", {})
@@ -922,14 +1016,15 @@ def _rejected_output_tuple(summary, status_message=None, image_shape=(768, 1024)
     banner_bgr = create_rejection_banner(image_shape)
     banner_rgb = cv2.cvtColor(banner_bgr, cv2.COLOR_BGR2RGB)
     banner_pil = Image.fromarray(banner_rgb)
+    notice_text = ("\n".join(f"⚠️ **NOTICE:** {n}" for n in notices) + "\n\n") if notices else ""
     report = (
-        f"❌ {message}\n\n"
+        f"{notice_text}❌ {message}\n\n"
         "REGISTRATION REJECTED: Insufficient Spatial Uniformity\n"
         "Sub-pixel alignment gate prevented degenerate warp execution."
     )
     telemetry = format_telemetry_report(
         metrics.get("status_code", "FAILED"), inliers, total_pts, ratio,
-        entropy, counts, status_message=message,
+        entropy, counts, status_message=message, notices=notices,
     )
     return (
         banner_pil, banner_pil, banner_pil, banner_pil,
@@ -1026,6 +1121,7 @@ def process_alignment(
     try:
         is_iirs_pair = sensor_pair_mode == "Optical <-> Infrared"
         max_image_dimension = IIRS_MAX_IMAGE_DIMENSION if is_iirs_pair else MAX_IMAGE_DIMENSION
+        large_image_notices = get_large_image_notices(ref_file, sec_file, max_image_dimension)
         ref_band = 125 if sensor_name == "IIRS" else None
         sec_band = 125 if secondary_sensor_name == "IIRS" else None
         ref_img = load_lunar_raster(ref_file, max_image_dimension, ref_band)
@@ -1057,6 +1153,7 @@ def process_alignment(
                 status_message=result["status_message"],
                 image_shape=result["ref_original"].shape[:2],
                 total_pts=result["total_matches"],
+                notices=large_image_notices,
             )
 
         warped_preview_rgb = result["warped_preview_rgb"]
@@ -1091,7 +1188,9 @@ def process_alignment(
         rmse_m = rmse_px * pixel_scale_m
         mae_m = mae_px * pixel_scale_m
         
+        notice_block = ("\n".join(f"⚠️ **NOTICE:** {n}" for n in large_image_notices) + "\n\n") if large_image_notices else ""
         report = (
+            f"{notice_block}"
             f"{'✅' if status_code == 'SUCCESS_SUBPIXEL' else '🟠' if status_code == 'COARSE_ADVISORY' else '❌'} {status_message}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"Matcher Engine: {engine_name}\n"
@@ -1125,6 +1224,7 @@ def process_alignment(
             affine_telemetry=affine_telemetry,
             engine=result["engine_used"], device=result["execution_device"],
             status_message=status_message,
+            notices=large_image_notices,
         )
         report += (
             "\n<!--QUADRANT_METRICS_START-->"
@@ -1298,7 +1398,7 @@ def _run_alignment_core(
     )
 
 
-@spaces.GPU(duration=25)
+@spaces.GPU(duration=90)
 def run_alignment_on_gpu(
     ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
     px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s
@@ -1442,6 +1542,14 @@ def _process_alignment_from_ui(
         if "IIRS" in (reference_sensor, secondary_sensor)
         else "Optical <-> Optical"
     )
+
+    try:
+        max_dim = IIRS_MAX_IMAGE_DIMENSION if pair_mode == "Optical <-> Infrared" else MAX_IMAGE_DIMENSION
+        for notice in get_large_image_notices(ref_input, sec_input, max_dim):
+            gr.Info(notice)
+    except Exception:
+        pass
+
     return process_wrapper(
         ref_input,
         sec_input,
@@ -1609,7 +1717,8 @@ def build_interface():
                 warped_result_image, checkerboard_image, vector_overlay_image, blend_image,
                 report_text, metrics_json, telemetry_text, blend_inputs_state,
                 csv_btn, json_btn, geotiff_btn, png_btn, dossier_image, zip_btn
-            ]
+            ],
+            show_progress="minimal",
         )
 
         blend_alpha.change(

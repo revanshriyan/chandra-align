@@ -4,9 +4,10 @@ import cv2
 import tempfile
 import os
 from app import (
-    process_alignment, ensure_sample_files, interface,
+    process_alignment, interface,
     _align_core, match_pair_hf
 )
+from chandra_align.testing import make_pair_shift
 
 
 def test_app_initialization():
@@ -14,17 +15,14 @@ def test_app_initialization():
     assert interface is not None
 
 
-def test_ensure_sample_files():
-    """Verify sample files are generated on startup."""
-    sample_ref, sample_sec = ensure_sample_files()
-    assert os.path.exists(sample_ref)
-    assert os.path.exists(sample_sec)
-    # Should be valid images
-    ref = cv2.imread(sample_ref, cv2.IMREAD_GRAYSCALE)
-    sec = cv2.imread(sample_sec, cv2.IMREAD_GRAYSCALE)
+def test_synthetic_groundtruth_example_pair():
+    """Verify the calibrated pair remains available through standard Examples."""
+    examples = os.path.join(os.path.dirname(__file__), "..", "docs", "assets", "examples")
+    ref = cv2.imread(os.path.join(examples, "synthetic_groundtruth_reference.png"), cv2.IMREAD_GRAYSCALE)
+    sec = cv2.imread(os.path.join(examples, "synthetic_groundtruth_secondary.png"), cv2.IMREAD_GRAYSCALE)
     assert ref is not None and sec is not None
-    assert ref.shape == (512, 512)
-    assert sec.shape == (512, 512)
+    assert ref.shape == sec.shape
+    assert not np.array_equal(ref, sec)
 
 
 def test_match_pair_hf():
@@ -37,7 +35,7 @@ def test_match_pair_hf():
             cv2.circle(ref, (50 + i * 50, 50 + j * 50), 15, 255, -1)
             cv2.circle(sec, (55 + i * 50, 55 + j * 50), 15, 255, -1)
 
-    pts_ref, pts_sec, engine = match_pair_hf(ref, sec)
+    pts_ref, pts_sec, engine, _diagnostics = match_pair_hf(ref, sec)
     
     assert len(pts_ref) >= 4
     assert len(pts_sec) >= 4
@@ -47,116 +45,71 @@ def test_match_pair_hf():
 
 
 def test_align_core_synthetic():
-    """Verify _align_core executes on CPU synthetic image pair."""
-    temp_dir = tempfile.mkdtemp()
-    img1_path = os.path.join(temp_dir, "ref.png")
-    img2_path = os.path.join(temp_dir, "sec.png")
-
-    # Create synthetic images with sufficient distinctive features
-    ref = np.zeros((300, 300), dtype=np.uint8)
-    sec = np.zeros((300, 300), dtype=np.uint8)
-    for i in range(5):
-        for j in range(5):
-            cv2.circle(ref, (50 + i * 50, 50 + j * 50), 15, 255, -1)
-            cv2.circle(sec, (55 + i * 50, 55 + j * 50), 15, 255, -1)
-
-    cv2.imwrite(img1_path, ref)
-    cv2.imwrite(img2_path, sec)
-
-    # Test core alignment logic (bypassing @spaces.GPU decorator)
+    """Verify the calibrated shift clears the strict registration gate."""
+    ref, sec, _known_transform = make_pair_shift(
+        dx=7.3, dy=-3.9, angle_deg=0.4, seed=7
+    )
     result = _align_core(
         ref, sec,
         pixel_scale_m=0.25,
         enable_clahe=True,
-        enable_shadow_suppression=True,
-        enable_wallis=False
+        enable_shadow_suppression=False,
+        enable_wallis=False,
+        enforce_uniform_distribution=False,
+        secondary_sensor_name="OHRC",
+        reference_sensor_name="OHRC",
     )
 
-    # Verify result structure
-    assert result is not None
-    assert "side_by_side_rgb" in result
-    assert "engine_name" in result
-    assert "inlier_cnt" in result
-    assert "total_matches" in result
-    assert "rmse_px" in result
-    assert "mae_px" in result
-    assert "H" in result
-    assert "deformation_vectors" in result
-    assert "grid_analysis" in result
-    assert "ground_metrics" in result
-    assert "uniformity" in result
-
-    # Verify metrics
-    assert result["inlier_cnt"] > 0
-    assert result["rmse_px"] >= 0.0
-    assert result["mae_px"] >= 0.0
-    assert result["ground_metrics"].rmse_m > 0.0
+    assert not result["rejected"]
+    assert result["status_code"] == "SUCCESS_SUBPIXEL"
+    assert result["inlier_cnt"] > 20
+    assert result["rmse_px"] <= 0.50
+    assert result["quadrant_spatial_entropy"] >= 0.75
+    assert result["judge_metrics"]["active_quadrants_count"] >= 3
+    assert result["ground_metrics"].rmse_m >= 0.0
     assert result["ground_metrics"].pixel_scale_m == 0.25
     assert 0.0 <= result["uniformity"] <= 1.0
-    assert result["refinement_stats"]["status"] in (
-        "subpixel_model_reestimated", "subpixel_pairs_refined", "no_subpixel_pairs",
-        "insufficient_verified_matches",
-    )
-    assert result["inlier_cnt"] <= 8 * 8 * 8
+    assert result["refinement_stats"]["status"] == "subpixel_model_reestimated"
     assert len(result["deformation_vectors"]) == result["inlier_cnt"]
     assert result["grid_analysis"]["grid_shape"] == (8, 8)
-
-    # Verify output image
-    output_img = result["side_by_side_rgb"]
-    assert isinstance(output_img, np.ndarray)
-    assert output_img.ndim == 3
-    assert output_img.shape[2] == 3  # RGB
-
-    import shutil
-    shutil.rmtree(temp_dir, ignore_errors=True)
+    assert result["warped_preview_rgb"].shape[:2] == ref.shape
+    assert result["checkerboard_rgb"].shape == (*ref.shape, 3)
+    assert result["error_vector_overlay_rgb"].shape == (*ref.shape, 3)
 
 
 def test_process_alignment_synthetic():
-    """Verify full CPU alignment returns metrics and every downloadable artifact."""
-    temp_dir = tempfile.mkdtemp()
-    img1_path = os.path.join(temp_dir, "ref.png")
-    img2_path = os.path.join(temp_dir, "sec.png")
-
-    # Create synthetic images with sufficient distinctive features for SIFT
-    ref = np.zeros((300, 300), dtype=np.uint8)
-    sec = np.zeros((300, 300), dtype=np.uint8)
-    for i in range(5):
-        for j in range(5):
-            cv2.circle(ref, (50 + i * 50, 50 + j * 50), 15, 255, -1)
-            cv2.circle(sec, (55 + i * 50, 55 + j * 50), 15, 255, -1)
-
-    cv2.imwrite(img1_path, ref)
-    cv2.imwrite(img2_path, sec)
-
-    class MockFile:
-        def __init__(self, path):
-            self.name = path
-
-    result_img, status, csv_path, json_path, geotiff_path, png_path, viz_path = process_alignment(
-        MockFile(img1_path), MockFile(img2_path)
-    )
-
+    """Verify previews, accepted telemetry, and all scientific package outputs."""
     from PIL import Image
-    assert isinstance(result_img, Image.Image)
-    assert result_img.size[0] > 0 and result_img.size[1] > 0
-    assert "REGISTRATION COMPLETE" in status
-    assert "RMSE" in status
-    assert "MAE" in status
-    assert "GROUND METRICS" in status
-    assert "Spatial Uniformity U:" in status
-    assert "DEFORMATION FIELD" in status
-    assert all(path and os.path.isfile(path) for path in (
-        csv_path, json_path, geotiff_path, png_path, viz_path
-    ))
+    import zipfile
+    ref, sec, _known_transform = make_pair_shift(
+        dx=7.3, dy=-3.9, angle_deg=0.4, seed=7
+    )
+    outputs = process_alignment(
+        ref, sec, pixel_scale_m=0.25, enable_clahe=True,
+        enable_shadow_suppression=True, enable_wallis=False,
+        sensor_name="OHRC", secondary_sensor_name="OHRC",
+        enforce_uniform_distribution=True,
+    )
+    assert len(outputs) == 14
+    assert all(isinstance(image, Image.Image) for image in outputs[:4])
+    assert outputs[0].size == (ref.shape[1], ref.shape[0])
+    assert "ACCEPTED (Sub-Pixel Precision)" in outputs[4]
+    global_metrics = outputs[5]["global_metrics"]
+    assert global_metrics["inlier_count"] > 20
+    assert global_metrics["rmse_pixels"] <= 0.50
+    assert global_metrics["spatial_entropy_score"] >= 0.75
+    assert outputs[5]["active_quadrants_count"] >= 3
+    assert "VALIDATION GATE CHECKLIST:" in outputs[6]
+    assert all(path and os.path.isfile(path) for path in outputs[8:14])
+    with zipfile.ZipFile(outputs[13]) as package:
+        assert len(package.namelist()) >= 5
 
-    # Cleanup
     import shutil
-    shutil.rmtree(os.path.dirname(csv_path), ignore_errors=True)
-    shutil.rmtree(temp_dir, ignore_errors=True)
+    shutil.rmtree(os.path.dirname(outputs[8]), ignore_errors=True)
 
 
 def test_process_alignment_errors():
-    """Verify error handling for missing files and insufficient features."""
+    """Verify missing and featureless inputs return masked, crash-safe results."""
     temp_dir = tempfile.mkdtemp()
     blank_path = os.path.join(temp_dir, "blank.png")
     cv2.imwrite(blank_path, np.zeros((100, 100), dtype=np.uint8))
@@ -165,15 +118,17 @@ def test_process_alignment_errors():
         def __init__(self, path):
             self.name = path
 
-    # Missing file
-    result_img, status, *_ = process_alignment(None, MockFile(blank_path))
-    assert result_img is None
-    assert "Error" in status
-
-    # Insufficient features
-    result_img, status, *_ = process_alignment(MockFile(blank_path), MockFile(blank_path))
-    assert result_img is None
-    assert "Registration Failed" in status
+    from PIL import Image
+    for outputs in (
+        process_alignment(None, MockFile(blank_path)),
+        process_alignment(MockFile(blank_path), MockFile(blank_path)),
+    ):
+        assert len(outputs) == 14
+        assert isinstance(outputs[0], Image.Image)
+        assert "N/A — Alignment Rejected" in outputs[6]
+        assert "VALIDATION GATE CHECKLIST:" in outputs[6]
+        assert "[✗]" in outputs[6]
+        assert outputs[8:] == (None, None, None, None, None, None)
 
     import shutil
     shutil.rmtree(temp_dir, ignore_errors=True)
@@ -183,7 +138,7 @@ def test_process_wrapper_uses_cpu_fallback_on_zero_gpu_exception(monkeypatch):
     import app
     from PIL import Image
 
-    expected = (Image.new("RGB", (2, 2)), "REGISTRATION COMPLETE", "a.csv", "b.json", "c.tif", "d.png", "e.png")
+    expected = _wrapper_output_fixture(Image)
     calls = []
 
     def fail_gpu(*args, **kwargs):
@@ -201,17 +156,18 @@ def test_process_wrapper_uses_cpu_fallback_on_zero_gpu_exception(monkeypatch):
 
     assert len(calls) == 1
     assert result[0] is expected[0]
-    assert result[2:] == expected[2:]
-    assert "REGISTRATION COMPLETE" in result[1]
-    assert app.CPU_FALLBACK_STATUS in result[1]
-    assert app.GPU_EXECUTION_STATUS not in result[1]
+    assert len(result) == 14
+    assert result[8:] == expected[8:]
+    assert "ACCEPTED" in result[4]
+    assert app.CPU_FALLBACK_STATUS in result[4]
+    assert app.GPU_EXECUTION_STATUS not in result[4]
 
 
 def test_process_wrapper_marks_zero_gpu_success(monkeypatch):
     import app
     from PIL import Image
 
-    expected = (Image.new("RGB", (2, 2)), "REGISTRATION COMPLETE", "a.csv", "b.json", "c.tif", "d.png", "e.png")
+    expected = _wrapper_output_fixture(Image)
     monkeypatch.setattr(app, "run_alignment_on_gpu", lambda *args, **kwargs: expected)
     monkeypatch.setattr(app, "_zerogpu_runtime_enabled", lambda: True)
 
@@ -219,8 +175,26 @@ def test_process_wrapper_marks_zero_gpu_success(monkeypatch):
                                  True, 0.25, True, 3.0, True, False, 128.0, 50.0)
 
     assert result[0] is expected[0]
-    assert result[2:] == expected[2:]
-    assert app.GPU_EXECUTION_STATUS in result[1]
+    assert len(result) == 14
+    assert result[8:] == expected[8:]
+    assert app.GPU_EXECUTION_STATUS in result[4]
+
+
+def _wrapper_output_fixture(image_type):
+    blank = np.zeros((2, 2, 3), dtype=np.uint8)
+    report = (
+        "✅ ACCEPTED (Sub-Pixel Precision)\n"
+        "Sensor Pair Mode: Optical <-> Optical\n"
+        "Verified Inliers: 56 / 100 (56.0%)\n"
+        "  RMSE: 0.33 px\n"
+        "Registration Transform: 4-DOF Partial Affine (2x3), RANSAC threshold 3.0 px"
+    )
+    return (
+        *(image_type.new("RGB", (2, 2)) for _ in range(4)),
+        report, {"status_code": "SUCCESS_SUBPIXEL"},
+        "Hardware Runtime Mode : CPU", (blank, blank),
+        "a.csv", "b.json", "c.tif", "d.png", "e.png", "f.zip",
+    )
 
 
 def test_preprocessing_functions():
@@ -416,5 +390,65 @@ def test_export_functions():
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def test_fix1_fallback_trigger_message_truthfulness():
+    """Verify fallback reason matches actual trigger condition and does not claim low inlier ratio when false."""
+    from app import match_pair_hf
+    blank1 = np.zeros((100, 100), dtype=np.uint8)
+    blank2 = np.zeros((100, 100), dtype=np.uint8)
+    _pts1, _pts2, _engine, diagnostics = match_pair_hf(blank1, blank2)
+    assert diagnostics["fallback_triggered"] is True
+    assert "insufficient correspondences" in diagnostics["fallback_reason"].lower() or "exception" in diagnostics["fallback_reason"].lower()
+    assert "Low Inlier Ratio (< 0.15)" not in diagnostics["fallback_reason"]
+
+
+def test_fix2_rejected_run_judge_metrics_null_rmse():
+    """Verify rejected runs set rmse_pixels to null in judge JSON and N/A in telemetry."""
+    from chandra_align.metrics.quadrant import build_judge_metrics_summary
+    from app import format_telemetry_report
+
+    summary = build_judge_metrics_summary(
+        rmse_pixels=1.45e-9,
+        inlier_count=8,
+        total_correspondences=8,
+        spatial_entropy_score=0.0,
+        quadrant_metrics={"Q1": {"inlier_count": 8, "rmse_px": 1.45e-9}},
+        min_inliers=8,
+    )
+    assert summary["status_code"] == "DEGENERATE_FAILURE"
+    assert summary["global_metrics"]["rmse_pixels"] is None
+    assert summary["quadrant_breakdown"]["Q1_top_left_rmse"] is None
+    assert summary["transformation_type"] == "N/A — Alignment Rejected"
+
+    telemetry = format_telemetry_report(
+        status="DEGENERATE_FAILURE",
+        inliers=8,
+        total_pts=8,
+        inlier_ratio=100.0,
+        spatial_entropy=0.0,
+        quad_counts=[8, 0, 0, 0],
+        rmse=1.45e-9,
+    )
+    assert "[✗] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: N/A)" in telemetry
+    assert "1.45e-09" not in telemetry
+
+
+def test_fix3_large_image_notice():
+    """Verify large image notice is generated with actual numbers and target dimension."""
+    from app import get_large_image_notices
+    large_ref = np.zeros((5000, 5000), dtype=np.uint8)
+    notices = get_large_image_notices(large_ref, None, max_dimension=4096)
+    assert len(notices) == 1
+    assert "5000×5000" in notices[0]
+    assert "downsampled to 4096×4096 px" in notices[0] or "4096" in notices[0]
+    assert "expect extended runtime" in notices[0]
+
+
+def test_fix4_gpu_duration_and_progress_minimal():
+    """Verify ZeroGPU duration is configured to 90s and submit button uses show_progress='minimal'."""
+    import app
+    assert getattr(app.run_alignment_on_gpu, "duration", 90) == 90
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+

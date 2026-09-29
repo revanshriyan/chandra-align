@@ -209,6 +209,7 @@ def build_judge_metrics_summary(
     status_message, status_code = validate_registration_gate(
         rmse_pixels, inliers, min_inliers, spatial_entropy_score, counts_dict
     )
+    is_accepted = status_code in ("SUCCESS_SUBPIXEL", "COARSE_ADVISORY")
 
     return {
         "registration_status": status_code,
@@ -217,18 +218,18 @@ def build_judge_metrics_summary(
         "status_message": status_message,
         "status_code": status_code,
         "global_metrics": {
-            "rmse_pixels": _finite_float(rmse_pixels),
+            "rmse_pixels": _finite_float(rmse_pixels) if is_accepted else None,
             "inlier_count": inliers,
             "inlier_ratio_pct": _finite_float(ratio_pct),
             "spatial_entropy_score": _finite_float(spatial_entropy_score),
         },
         "quadrant_breakdown": {
-            "Q1_top_left_rmse": _finite_float(quadrants.get("Q1", {}).get("rmse_px", 0.0)),
-            "Q2_top_right_rmse": _finite_float(quadrants.get("Q2", {}).get("rmse_px", 0.0)),
-            "Q3_bottom_left_rmse": _finite_float(quadrants.get("Q3", {}).get("rmse_px", 0.0)),
-            "Q4_bottom_right_rmse": _finite_float(quadrants.get("Q4", {}).get("rmse_px", 0.0)),
+            "Q1_top_left_rmse": _finite_float(quadrants.get("Q1", {}).get("rmse_px", 0.0)) if is_accepted else None,
+            "Q2_top_right_rmse": _finite_float(quadrants.get("Q2", {}).get("rmse_px", 0.0)) if is_accepted else None,
+            "Q3_bottom_left_rmse": _finite_float(quadrants.get("Q3", {}).get("rmse_px", 0.0)) if is_accepted else None,
+            "Q4_bottom_right_rmse": _finite_float(quadrants.get("Q4", {}).get("rmse_px", 0.0)) if is_accepted else None,
         },
-        "transformation_type": "4-DOF Partial Affine + Phase Congruency",
+        "transformation_type": "4-DOF Partial Affine + Phase Congruency" if is_accepted else "N/A — Alignment Rejected",
     }
 
 
