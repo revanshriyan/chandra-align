@@ -145,7 +145,30 @@ def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad
         and active_quadrants >= 2
     ):
         return "COARSE ALIGNMENT (Regional Fit Advisory)", "COARSE_ADVISORY"
-    return "REJECTED (Degenerate Single-Quadrant Cluster)", "DEGENERATE_FAILURE"
+
+    # Keep rejection diagnostics tied to the criterion that actually failed.
+    # A weak fit with broad spatial coverage must never be mislabeled as a
+    # single-quadrant cluster merely because the overall gate rejected it.
+    failures = []
+    if rmse_value > 0.500:
+        failures.append(
+            f"High Residual RMSE ({rmse_value:.4f} px > 0.50 px)"
+        )
+    if not has_enough_inliers:
+        failures.append(
+            f"Insufficient Inlier Yield ({inlier_count} < {required_inliers})"
+        )
+    if active_quadrants < 3:
+        failures.append(
+            f"Degenerate Spatial Cluster ({active_quadrants}/4 Active Quadrants)"
+        )
+    if entropy_value < 0.750:
+        failures.append(
+            f"Low Spatial Distribution (Entropy {entropy_value:.4f} < 0.75)"
+        )
+    if not failures:
+        failures.append("Validation criteria not satisfied")
+    return f"REJECTED ({' | '.join(failures)})", "DEGENERATE_FAILURE"
 
 
 def _safe_count(value):

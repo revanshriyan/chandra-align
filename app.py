@@ -166,49 +166,62 @@ def load_lunar_raster(file_input, max_dimension: int = MAX_IMAGE_DIMENSION, band
         path = os.fspath(path)
         raw = None
 
+        # Preserve the original byte values for ordinary pictures. Re-stretching
+        # an already calibrated uint8 image changes SIFT/RIFT gradients and can
+        # reduce repeatable correspondences on the synthetic ground-truth pair.
+        if Path(path).suffix.lower() in {".png", ".jpg", ".jpeg"}:
+            raw = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+
         # Rasterio understands PDS, ENVI, and scientific GeoTIFF products.
         # Read only one science band (or RGB) and bound the read before scaling.
         try:
-            import rasterio
-            from rasterio.enums import Resampling
+            if raw is None:
+                import rasterio
+                from rasterio.enums import Resampling
 
-            with rasterio.open(path) as src:
-                if src.count < 1 or src.width < 1 or src.height < 1:
-                    return None
-                scale = min(1.0, float(max_dimension) / max(src.height, src.width))
-                out_height = max(1, round(src.height * scale))
-                out_width = max(1, round(src.width * scale))
-                out_shape = (out_height, out_width)
-                if band_index is not None:
-                    selected_band = (
-                        int(band_index) if src.count >= int(band_index)
-                        else max(1, src.count // 2)
-                    )
-                    bands = [selected_band]
-                elif src.count in (3, 4):
-                    bands = [1, 2, 3]
-                elif src.count == 1:
-                    bands = [1]
-                else:
-                    # IIRS is commonly supplied as a 256-band ENVI cube; use
-                    # the specified science band, or the center for other cubes.
-                    bands = [125 if src.count >= 125 else max(1, src.count // 2)]
+                with rasterio.open(path) as src:
+                    if src.count < 1 or src.width < 1 or src.height < 1:
+                        return None
+                    scale = min(1.0, float(max_dimension) / max(src.height, src.width))
+                    out_height = max(1, round(src.height * scale))
+                    out_width = max(1, round(src.width * scale))
+                    out_shape = (out_height, out_width)
+                    if band_index is not None:
+                        selected_band = (
+                            int(band_index) if src.count >= int(band_index)
+                            else max(1, src.count // 2)
+                        )
+                        bands = [selected_band]
+                    elif src.count in (3, 4):
+                        bands = [1, 2, 3]
+                    elif src.count == 1:
+                        bands = [1]
+                    else:
+                        # IIRS is commonly supplied as a 256-band ENVI cube; use
+                        # the specified science band, or the center for other cubes.
+                        bands = [125 if src.count >= 125 else max(1, src.count // 2)]
 
-                if len(bands) == 1:
-                    band = src.read(
-                        bands[0], out_shape=out_shape,
-                        resampling=Resampling.average, masked=True,
-                    )
-                    raw = np.asarray(band.astype(np.float32).filled(np.nan))
-                else:
-                    rgb = src.read(
-                        bands, out_shape=(len(bands), *out_shape),
-                        resampling=Resampling.average, masked=True,
-                    )
-                    rgb = np.asarray(rgb.astype(np.float32).filled(np.nan))
-                    raw = cv2.cvtColor(np.moveaxis(rgb, 0, -1), cv2.COLOR_RGB2GRAY)
-                if src.nodata is not None:
-                    raw[raw == src.nodata] = np.nan
+                    if len(bands) == 1:
+                        band = src.read(
+                            bands[0], out_shape=out_shape,
+                            resampling=Resampling.average, masked=True,
+                        )
+                        if src.dtypes[bands[0] - 1] == "uint8":
+                            raw = np.asarray(band.filled(0))
+                        else:
+                            raw = np.asarray(band.astype(np.float32).filled(np.nan))
+                    else:
+                        rgb = src.read(
+                            bands, out_shape=(len(bands), *out_shape),
+                            resampling=Resampling.average, masked=True,
+                        )
+                        if all(src.dtypes[index - 1] == "uint8" for index in bands):
+                            rgb = np.asarray(rgb.filled(0))
+                        else:
+                            rgb = np.asarray(rgb.astype(np.float32).filled(np.nan))
+                        raw = cv2.cvtColor(np.moveaxis(rgb, 0, -1), cv2.COLOR_RGB2GRAY)
+                    if src.nodata is not None and raw.dtype != np.uint8:
+                        raw[raw == src.nodata] = np.nan
         except Exception:
             raw = None
 
@@ -235,6 +248,10 @@ def load_lunar_raster(file_input, max_dimension: int = MAX_IMAGE_DIMENSION, band
         else:
             return None
 
+    # Keep uint8 inputs byte-for-byte stable after grayscale conversion.
+    # Percentile stretching is for higher-bit-depth / floating rasters.
+    preserve_uint8 = raw.dtype == np.uint8
+
     height, width = raw.shape
     scale = min(1.0, float(max_dimension) / max(height, width))
     if scale < 1.0:
@@ -242,6 +259,8 @@ def load_lunar_raster(file_input, max_dimension: int = MAX_IMAGE_DIMENSION, band
             raw, (max(1, round(width * scale)), max(1, round(height * scale))),
             interpolation=cv2.INTER_AREA,
         )
+    if preserve_uint8:
+        return np.ascontiguousarray(raw)
     raw = raw.astype(np.float32, copy=False)
     valid = np.isfinite(raw)
     if not valid.any():
