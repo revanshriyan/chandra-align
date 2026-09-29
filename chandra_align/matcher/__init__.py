@@ -12,6 +12,7 @@ import os
 import sys
 
 import numpy as np
+from chandra_align.preprocessing.general import ensure_uint8
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _VENDORED_RIFT2 = os.path.join(_ROOT, "vendored", "rift2")
@@ -94,7 +95,10 @@ class SIFTMatcher:
 
 def _to_uint8(img):
     """Percentile-contrast float64 -> uint8 for matchers that expect 8-bit input."""
-    img = np.asarray(img, dtype=np.float64)
+    img = np.asarray(img)
+    if img.ndim == 3:
+        return ensure_uint8(img)
+    img = np.nan_to_num(img.astype(np.float64, copy=False), nan=0.0, posinf=255.0, neginf=0.0)
     lo, hi = np.nanpercentile(img, [1, 99])
     if hi <= lo:
         lo, hi = float(np.nanmin(img)), float(np.nanmax(img))

@@ -27,7 +27,7 @@ from PIL import Image
 
 # Import new modules
 from chandra_align.preprocessing import (
-    apply_clahe, detect_shadows, apply_wallis_filter, preprocess_multimodal_pair,
+    ensure_uint8, apply_clahe, detect_shadows, apply_wallis_filter, preprocess_multimodal_pair,
     preprocess_iirs_raster, resize_to_common_ground_sample, keypoint_starvation_guard
 )
 from chandra_align.features import (
@@ -173,7 +173,8 @@ def generate_synthetic_lunar_pair(ref_path: str, sec_path: str) -> None:
     sec = cv2.warpAffine(ref, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
 
     # Add slight radiometric variation to secondary
-    sec = cv2.addWeighted(sec, 0.95, np.random.normal(0, 3, sec.shape).astype(np.uint8), 0.05, 0)
+    noise = np.random.normal(0.0, 3.0, sec.shape).astype(np.float32)
+    sec = np.clip(sec.astype(np.float32) * 0.95 + noise * 0.05, 0, 255).astype(np.uint8)
 
     cv2.imwrite(ref_path, ref)
     cv2.imwrite(sec_path, sec)
@@ -199,7 +200,7 @@ def match_pair_hf(
     """Run phase-congruency RIFT2 first and disclose any LightGlue/ALIKED handoff."""
     # SIFT and most deep matcher frontends require finite uint8 image arrays.
     def as_uint8(image):
-        image = np.asarray(image)
+        image = ensure_uint8(image)
         if image.ndim != 2 or image.size == 0:
             raise ValueError("Feature matching requires non-empty grayscale images")
         if image.dtype == np.uint8:
@@ -251,7 +252,7 @@ def match_pair_hf(
         sift = cv2.SIFT_create(nfeatures=10000, contrastThreshold=0.005, edgeThreshold=15)
 
         def as_sift_uint8(image):
-            image = np.asarray(image)
+            image = ensure_uint8(image)
             if image.dtype == np.uint8:
                 return np.ascontiguousarray(image)
             image = np.nan_to_num(image.astype(np.float32, copy=False))

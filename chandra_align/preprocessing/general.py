@@ -13,6 +13,32 @@ import cv2
 from typing import Tuple, Optional
 
 
+def ensure_uint8(img: np.ndarray) -> Optional[np.ndarray]:
+    """Return a contiguous, finite, single-channel uint8 image for CV operators."""
+    if img is None:
+        return None
+    image = np.asarray(img)
+    if image.size == 0 or image.ndim not in (2, 3):
+        raise ValueError("Image must be a non-empty grayscale or color array")
+    image = np.nan_to_num(image, nan=0.0, posinf=255.0, neginf=0.0)
+    if image.dtype != np.uint8:
+        maximum = float(np.max(image))
+        if maximum <= 1.0:
+            image = np.clip(image.astype(np.float32) * 255.0, 0.0, 255.0).astype(np.uint8)
+        else:
+            image = np.clip(image, 0.0, 255.0).astype(np.uint8)
+    if image.ndim == 3:
+        if image.shape[2] == 1:
+            image = image[:, :, 0]
+        elif image.shape[2] == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        elif image.shape[2] == 4:
+            image = cv2.cvtColor(image, cv2.COLOR_RGBA2GRAY)
+        else:
+            raise ValueError("Color images must have 1, 3, or 4 channels")
+    return np.ascontiguousarray(image, dtype=np.uint8)
+
+
 def apply_clahe(
     img: np.ndarray,
     clip_limit: float = 3.0,
@@ -32,7 +58,11 @@ def apply_clahe(
     Returns:
         CLAHE-enhanced image as float64 in normalize_range
     """
-    img = np.asarray(img, dtype=np.float64)
+    img = np.asarray(img)
+    if img.ndim == 3:
+        img = ensure_uint8(img).astype(np.float64)
+    else:
+        img = np.asarray(img, dtype=np.float64)
     
     # Handle edge cases
     if img.ndim != 2:
@@ -53,7 +83,7 @@ def apply_clahe(
     if hi <= lo:
         return np.zeros(img.shape, dtype=np.float64)
     
-    img_u8 = np.clip((img - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
+    img_u8 = ensure_uint8(np.clip((img - lo) / (hi - lo) * 255.0, 0, 255))
     
     # Apply CLAHE
     clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
@@ -136,11 +166,7 @@ def keypoint_starvation_guard(
 
     def count_candidates(image, mask):
         import cv2
-        values = np.asarray(image)
-        if values.ndim == 3:
-            values = cv2.cvtColor(values, cv2.COLOR_BGR2GRAY)
-        if values.dtype != np.uint8:
-            values = cv2.normalize(values, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        values = ensure_uint8(image)
         detector = cv2.SIFT_create(nfeatures=1000)
         valid_mask = None
         if mask is not None:
@@ -321,6 +347,7 @@ def suppress_keypoints_in_shadows(
 
 
 __all__ = [
+    "ensure_uint8",
     "apply_clahe",
     "detect_shadows",
     "apply_wallis_filter",

@@ -21,6 +21,7 @@ from chandra_align.preprocessing.iirs import (
 )
 
 from chandra_align.preprocessing.general import (
+    ensure_uint8,
     apply_clahe,
     detect_shadows,
     apply_wallis_filter,
@@ -47,6 +48,7 @@ __all__ = [
     "preprocess_iirs_raster",
     "IIRSPreprocessingResult",
     # General preprocessing
+    "ensure_uint8",
     "apply_clahe",
     "detect_shadows",
     "apply_wallis_filter",

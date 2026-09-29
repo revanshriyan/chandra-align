@@ -6,6 +6,19 @@ import cv2
 
 logger = logging.getLogger(__name__)
 
+
+def _tensor_to_numpy(value):
+    """Move tensor outputs off accelerator memory and sanitize non-finite values."""
+    if hasattr(value, "detach"):
+        value = value.detach()
+    if hasattr(value, "cpu"):
+        value = value.cpu()
+    if hasattr(value, "numpy"):
+        value = value.numpy()
+    return np.nan_to_num(
+        np.asarray(value), nan=0.0, posinf=255.0, neginf=0.0
+    )
+
 # Check optional deep learning framework availability
 HAS_TORCH = False
 try:
@@ -235,9 +248,9 @@ class LightGlueALIKEDMatcher:
                 matches = matcher({"image0": feats_src, "image1": feats_ref})
             
             # Extract matches
-            matches0 = matches["matches"][0].detach().cpu().numpy()
-            kpts0 = feats_src["keypoints"][0].detach().cpu().numpy()
-            kpts1 = feats_ref["keypoints"][0].detach().cpu().numpy()
+            matches0 = _tensor_to_numpy(matches["matches"][0])
+            kpts0 = _tensor_to_numpy(feats_src["keypoints"][0])
+            kpts1 = _tensor_to_numpy(feats_ref["keypoints"][0])
             
             if len(matches0) == 0:
                 return MatchResult(
@@ -382,8 +395,8 @@ class LoFTRMatcher:
                 matches = matcher(data)
             
             # Extract matches
-            mkpts0 = matches["keypoints0"].detach().cpu().numpy()
-            mkpts1 = matches["keypoints1"].detach().cpu().numpy()
+            mkpts0 = _tensor_to_numpy(matches["keypoints0"])
+            mkpts1 = _tensor_to_numpy(matches["keypoints1"])
             
             if len(mkpts0) == 0:
                 return MatchResult(
@@ -405,7 +418,7 @@ class LoFTRMatcher:
             mkpts1[:, 1] -= pad_h1
             
             # Filter by confidence
-            conf = matches["confidence"].detach().cpu().numpy()
+            conf = _tensor_to_numpy(matches["confidence"])
             conf_mask = conf > 0.5
             mkpts0 = mkpts0[conf_mask]
             mkpts1 = mkpts1[conf_mask]
