@@ -47,6 +47,22 @@ Current measured results use the SIFT/RANSAC CPU fallback. RIFT2/LightGlue GPU v
 | Chandrayaan-2 OHRC | Full-resolution PDS4 products, bounded 4096-pixel run | 1.5425 px | 9 | 0.9864 | 3/4 quadrants | **COARSE ADVISORY** |
 | Chandrayaan-2 TMC-2 fore/nadir | Browse-aligned 2048 × 2048 crops | 1.3312 px (~5.95 m at 4.47 m/px) | 9 | 0.9911 | 2/4 quadrants | **COARSE ADVISORY** |
 
+### Example Results
+
+<p align="center">
+	<img src="docs/images/gate-checklist-accepted.png" width="700" alt="Accepted synthetic-pair gate checklist" />
+</p>
+
+Calibrated synthetic pair — RMSE 0.3840 px, 62 inliers, entropy 1.9532, 4/4 quadrants: ACCEPTED (sub-pixel).
+
+The validation gate checks sub-pixel precision, spatial spread, and quadrant support on every run.
+
+<p align="center">
+	<img src="docs/images/gate-checklist-rejected.png" width="700" alt="Rejected-fit gate checklist with unavailable telemetry" />
+</p>
+
+Unreliable fits are rejected, not forced — transform telemetry is masked (N/A) on rejection.
+
 These are results for the listed inputs and tested configurations, not a claim of general scientific accuracy or full-frame georeferencing. The real-pair fits are deliberately not presented as sub-pixel successes.
 
 ## Run Locally
