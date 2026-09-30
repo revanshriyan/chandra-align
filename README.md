@@ -31,7 +31,7 @@ python app.py
 
 ## Live Demo
 
-[revanshriyan-chandra-align.hf.space](https://revanshriyan-chandra-align.hf.space/)
+Demo available on request.
 
 ## License
 
