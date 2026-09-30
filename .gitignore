@@ -1,6 +1,7 @@
 # Bytecode & cache
 __pycache__/
 *.py[cod]
+*.pyc
 *.pyo
 .pytest_cache/
 .coverage
@@ -45,6 +46,12 @@ scratch_*
 outputs/*/
 !outputs/.gitkeep
 
+# Downloaded scientific source data (large, user-managed assets)
+data/raw/
+
+# Generated registration products
+data/processed/
+
 # IDE/OS specific
 .idea/
 .vscode/
@@ -58,3 +65,18 @@ outputs/*/
 .env
 .env.local
 .env.*.local
+
+# Secrets and credentials
+*.pem
+credentials*
+
+# Large scientific data and archives (retrieve source data from ISRO PRADAN)
+/data/**/*.img
+/data/**/*.IMG
+/data/**/*.tif
+/data/**/*.tiff
+*.zip
+
+# Generated run outputs
+/outputs/*
+!/outputs/.gitkeep

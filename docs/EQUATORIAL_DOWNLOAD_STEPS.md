@@ -16,7 +16,7 @@ Follow these steps to acquire the fallback equatorial OHRC dataset from ISDC PRA
    - Confirm sun elevation is between **30.0° and 60.0°** (moderate sun angle, ideal for correspondence).
 5. **Shortlist Candidates**: Record 2–3 candidate Product IDs with their logged sun elevations.
 6. **Add to Cart & Download**: Add the shortlisted candidates to your ISSDC cart and download the `.img` data and `.xml` label files.
-7. **Local File Drop**: Move/extract the downloaded files directly into:
+7. **Local File Drop**: Move/extract the downloaded files into `data/ch2_equatorial/`:
    ```
-   c:\Users\Revan\OneDrive\Desktop\SIH chandra\data\ch2_equatorial\
+   data/ch2_equatorial/
    ```
