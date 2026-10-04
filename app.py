@@ -1283,7 +1283,7 @@ def process_alignment(
             f"Sensor Pair Mode: {result['sensor_pair_mode']}\n"
             f"Verified Inliers: {inlier_cnt} / {total_matches} ({inlier_pct:.1f}%)\n"
             f"Spatial Uniformity U: {uniformity:.4f} (entropy {spatial_entropy:.4f} nats)\n"
-            f"Refined Matches: {refinement_stats.get('refined_pairs', 0)} ({refinement_stats.get('status', 'not run')})\n"
+            f"NCC-Refined Candidates (pre-final RANSAC): {refinement_stats.get('refined_pairs', 0)} ({refinement_stats.get('status', 'not run')})\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"PIXEL METRICS:\n"
             f"  In-sample RMSE (fit residuals): {rmse_in_sample_px:.4f} px\n"
@@ -1704,7 +1704,8 @@ def build_interface():
                 engine_dropdown = gr.Dropdown(
                     choices=["OHRC", "TMC-2", "IIRS", "DF-SAR", "LROC_NAC", "LROC_WAC", "KAGUYA_TC", "Custom"],
                     value="OHRC",
-                    label="Engine Selection / Reference Sensor"
+                    label="Reference Sensor (GSD)",
+                    info="Used to interpret unlabelled inputs and convert pixel errors to ground units; embedded sensor metadata takes precedence."
                 )
 
                 gr.Markdown("### Preprocessing")
@@ -1718,6 +1719,10 @@ def build_interface():
                 chk_wallis = gr.Checkbox(value=False, label="Wallis Filter")
                 
                 btn_submit = gr.Button("Run Registration", variant="primary")
+                gr.Markdown(
+                    "Processing time varies with image size and hardware. Large or full-resolution pairs can take several minutes; "
+                    "the app hides Gradio's unreliable automatic ETA."
+                )
             
             with gr.Column(scale=2):
                 # Output panel
@@ -1811,7 +1816,9 @@ def build_interface():
                 report_text, metrics_json, telemetry_text, blend_inputs_state,
                 csv_btn, json_btn, geotiff_btn, png_btn, dossier_image, zip_btn
             ],
-            show_progress="minimal",
+            # Gradio's runtime-based ETA substantially underestimates some
+            # planetary scenes; the adjacent notice gives a realistic range.
+            show_progress="hidden",
         )
 
         blend_alpha.change(

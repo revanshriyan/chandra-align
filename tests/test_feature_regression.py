@@ -21,6 +21,57 @@ def test_uint8_raster_arrays_keep_their_original_intensity_values():
     np.testing.assert_array_equal(loaded, image)
 
 
+def test_ui_adapter_does_not_assume_tmc2_for_unlabelled_secondary(monkeypatch):
+    import app
+
+    captured = {}
+
+    def capture(*args):
+        captured["args"] = args
+        return "captured"
+
+    monkeypatch.setattr(app, "process_wrapper", capture)
+    result = app._process_alignment_from_ui(
+        "synthetic_reference.png", "synthetic_secondary.png", "OHRC",
+        True, True, False, False,
+    )
+
+    assert result == "captured"
+    assert captured["args"][2:5] == (
+        "OHRC", "OHRC", "Optical <-> Optical",
+    )
+
+
+def test_ui_adapter_infers_sensors_for_native_cross_sensor_examples(monkeypatch):
+    import app
+
+    captured = {}
+    monkeypatch.setattr(app, "process_wrapper", lambda *args: captured.setdefault("args", args))
+    examples = Path(__file__).resolve().parents[1] / "docs" / "assets" / "examples"
+    app._process_alignment_from_ui(
+        str(examples / "nac_reference_iirs.png"),
+        str(examples / "iirs_band125_secondary.png"), "OHRC",
+        True, True, False, False,
+    )
+
+    assert captured["args"][2:5] == (
+        "LROC_NAC", "IIRS", "Optical <-> Infrared",
+    )
+
+
+def test_input_sensor_inference_reads_pds4_sidecar_label(tmp_path):
+    from app import _infer_input_sensor
+
+    raster = tmp_path / "unlabeled.img"
+    raster.touch()
+    raster.with_suffix(".xml").write_text(
+        "<Product_Observational><instrument_id>CH2_OHRC</instrument_id></Product_Observational>",
+        encoding="utf-8",
+    )
+
+    assert _infer_input_sensor(raster, "TMC-2") == "OHRC"
+
+
 def test_calibrated_pair_keeps_subpixel_registration_after_raster_loading():
     reference, secondary, _ = make_pair_shift(
         dx=7.3, dy=-3.9, angle_deg=0.4, seed=7
