@@ -41,6 +41,7 @@ from chandra_align.metrics import (
     compute_quadrant_metrics, format_quadrant_html, build_judge_metrics_summary,
     validate_registration_gate,
 )
+from chandra_align.metrics.reporting import build_confidence_assessment
 from chandra_align.visualization import (
     create_combined_visualization, draw_error_vector_overlay,
     create_checkerboard_overlay, create_interactive_blend, create_rejection_banner,
@@ -877,6 +878,14 @@ def _align_core(
         "rmse_gate_basis": rmse_gate_basis,
         "heldout_check_points": int(heldout_error.get("n_check_points", 0)),
     })
+    confidence_assessment = build_confidence_assessment(
+        status_code=status_code, status_message=status_message, rmse_px=rmse_gate_px,
+        inlier_count=inlier_cnt, correspondence_count=len(pts_ref),
+        entropy=quadrant_spatial_entropy, quadrant_counts=quadrant_metrics,
+        min_inliers=MIN_REGISTRATION_INLIERS,
+        execution_diagnostics=execution_diagnostics,
+    )
+    judge_metrics.update(confidence_assessment)
 
     engine_lower = engine_name.lower()
     if "sift" in engine_lower:
@@ -909,6 +918,9 @@ def _align_core(
             "rmse_gate_px": rmse_gate_px,
             "rmse_gate_basis": rmse_gate_basis,
             "quadrant_spatial_entropy": quadrant_spatial_entropy,
+            "execution_diagnostics": execution_diagnostics,
+            "confidence_assessment": confidence_assessment,
+            **confidence_assessment,
             "engine_used": engine_used,
             "execution_device": execution_device,
             "affine_telemetry": None,
@@ -976,6 +988,8 @@ def _align_core(
         "diff_map": diff_map,
         "engine_name": engine_name,
         "execution_diagnostics": execution_diagnostics,
+        "confidence_assessment": confidence_assessment,
+        **confidence_assessment,
         "inlier_cnt": inlier_cnt,
         "total_matches": len(pts_ref),
         "rmse_px": rmse_px,
@@ -1010,9 +1024,19 @@ def _failed_judge_metrics_summary(inlier_count: int = 0, total_correspondences: 
         key: {"rmse_px": 0.0}
         for key in ("Q1", "Q2", "Q3", "Q4")
     }
-    return build_judge_metrics_summary(
+    summary = build_judge_metrics_summary(
         0.0, inlier_count, total_correspondences, 0.0, empty_quadrants
     )
+    assessment = build_confidence_assessment(
+        status_code=summary.get("status_code", "DEGENERATE_FAILURE"),
+        status_message=summary.get("status_message", "Registration did not produce a fit."),
+        rmse_px=None, inlier_count=inlier_count,
+        correspondence_count=total_correspondences, entropy=0.0,
+        quadrant_counts=empty_quadrants, min_inliers=MIN_REGISTRATION_INLIERS,
+        execution_diagnostics={"primary_engine": "Unavailable", "registration_engine": "Unavailable"},
+    )
+    summary.update(assessment)
+    return summary
 
 
 def format_telemetry_report(
@@ -1020,7 +1044,7 @@ def format_telemetry_report(
     quad_counts, rmse=None, affine_telemetry=None, engine="N/A", device="N/A",
     status_message=None, active_quadrants=None, notices=None,
     rmse_in_sample=None, rmse_heldout=None, heldout_count=0, rmse_gate_basis="held-out",
-    mae_in_sample=None, mae_heldout=None,
+    mae_in_sample=None, mae_heldout=None, confidence_assessment=None,
 ):
     """Render three-tier checklist; hide transform values for rejected fits."""
     code = str(status).strip().upper()
@@ -1079,6 +1103,9 @@ def format_telemetry_report(
         f"[{check(quadrant_pass)}] Quadrant Distribution: Active Quads >= 3 (Measured: {active} / 4)",
         "",
         f"QUADRANT BREAKDOWN: Q1:{int(counts[0])} | Q2:{int(counts[1])} | Q3:{int(counts[2])} | Q4:{int(counts[3])}",
+        f"Confidence score: {float(confidence_assessment.get('confidence_score', 0.0)):.2f}/100 (heuristic evidence index; not probability)" if isinstance(confidence_assessment, dict) else "Confidence score: unavailable",
+        f"Decision reason: {confidence_assessment.get('decision_reason', 'Unavailable')}" if isinstance(confidence_assessment, dict) else "Decision reason: unavailable",
+        f"Fallback path: {' -> '.join(confidence_assessment.get('fallback_path', {}).get('steps', [])) or 'Unavailable'}; triggered={confidence_assessment.get('fallback_path', {}).get('fallback_triggered', False)}; reason={confidence_assessment.get('fallback_path', {}).get('fallback_reason') or 'None'}" if isinstance(confidence_assessment, dict) else "Fallback path: unavailable",
         "---------------------------------------------------",
     ])
     if not accepted:
@@ -1132,7 +1159,7 @@ def _rejected_output_tuple(summary, status_message=None, image_shape=(768, 1024)
                       if isinstance(metrics.get("rmse_heldout_px"), (int, float)) else None),
         heldout_count=metrics.get("heldout_check_points", 0),
         rmse_gate_basis=metrics.get("rmse_gate_basis", "held-out unavailable"),
-        status_message=message, notices=notices,
+        status_message=message, notices=notices, confidence_assessment=metrics,
     )
     return (
         banner_pil, banner_pil, banner_pil, banner_pil,
@@ -1151,7 +1178,10 @@ def _minimal_rejection_output_tuple(status_message, summary=None):
         "PHOTOGRAMMETRIC TELEMETRY REPORT\n"
         "Registration Status : REJECTED\n"
         "Recovered Transform : N/A — Alignment Rejected\n"
-        f"Reason               : {status_message}"
+        f"Reason               : {status_message}\n"
+        f"Confidence score     : {float(metrics.get('confidence_score', 0.0)):.2f}/100 (heuristic, not probability)\n"
+        f"Decision reason      : {metrics.get('decision_reason', status_message)}\n"
+        f"Fallback path        : {' -> '.join(metrics.get('fallback_path', {}).get('steps', [])) or 'Unavailable'}"
     )
     return (
         preview, preview, preview, preview,
@@ -1342,6 +1372,9 @@ def process_alignment(
             f"Primary Engine: {result['execution_diagnostics'].get('primary_engine', 'LightGlue/ALIKED')}\n"
             f"Fallback Triggered: {result['execution_diagnostics'].get('fallback_triggered', False)}\n"
             f"Fallback Reason: {result['execution_diagnostics'].get('fallback_reason') or 'None'}\n"
+            f"Confidence Score: {result['confidence_score']:.2f}/100 (heuristic evidence index; not probability)\n"
+            f"Decision Reason: {result['decision_reason']}\n"
+            f"Fallback Path: {' -> '.join(result['fallback_path'].get('steps', []))}; triggered={result['fallback_path'].get('fallback_triggered', False)}\n"
             f"Sensor Pair Mode: {result['sensor_pair_mode']}\n"
             f"Verified Inliers: {inlier_cnt} / {total_matches} ({inlier_pct:.1f}%)\n"
             f"Spatial Uniformity U: {uniformity:.4f} (entropy {spatial_entropy:.4f} nats)\n"
@@ -1375,6 +1408,7 @@ def process_alignment(
             engine=result["engine_used"], device=result["execution_device"],
             status_message=status_message,
             notices=large_image_notices,
+            confidence_assessment=result["confidence_assessment"],
         )
         report += (
             "\n<!--QUADRANT_METRICS_START-->"
@@ -1434,6 +1468,7 @@ def process_alignment(
         transform_payload["transformation_telemetry"] = affine_telemetry
         transform_payload["engine_used"] = result["engine_used"]
         transform_payload["execution_device"] = result["execution_device"]
+        transform_payload["confidence_assessment"] = result["confidence_assessment"]
         with transform_json.open("w", encoding="utf-8") as stream:
             json.dump(transform_payload, stream, indent=2, allow_nan=False)
         
@@ -1454,7 +1489,8 @@ def process_alignment(
             mae_px=mae_px,
             engine_name=engine_name,
             inlier_count=inlier_cnt,
-            total_matches=total_matches
+            total_matches=total_matches,
+            confidence_assessment=result["confidence_assessment"],
         )
         fig_to_file(fig, str(viz_path), dpi=300)
         export_paths["dossier_png"] = str(viz_path)

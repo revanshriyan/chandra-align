@@ -386,6 +386,10 @@ class RegistrationDossier(BaseModel):
 
     # Details
     fallback_reason: Optional[str] = None
+    confidence_score: float = Field(default=0.0, ge=0.0, le=100.0)
+    confidence_basis: str = ""
+    decision_reason: str = ""
+    fallback_path: dict = Field(default_factory=dict)
     mesh_info: dict = Field(default_factory=dict)
     validation: dict = Field(default_factory=dict)
     quality_flags: list[NotTrustedReason] = Field(default_factory=list)

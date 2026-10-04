@@ -3,20 +3,34 @@
     "pair_id": "ohrc_01",
     "sensor": "OHRC",
     "matcher": "LightGlue_ALIKED",
-    "correspondences": 1280,
-    "rmse_insample": 1.6200099068424816,
-    "rmse_heldout": 1.1578755462318073,
+    "correspondences": 546,
+    "rmse_insample": 1.499676370197882,
+    "rmse_heldout": 1.6742994560250328,
     "n_heldout_points": 3,
     "inliers": 17,
-    "entropy": 1.9927781074599387,
+    "entropy": 1.7921951936824647,
     "quadrant_counts": [
+      1,
+      6,
       4,
-      5,
-      4,
-      4
+      6
     ],
     "verdict": "COARSE_ADVISORY",
-    "runtime_s": 20.222283100010827,
+    "final_engine": "LightGlue/ALIKED",
+    "secondary_fallback": false,
+    "confidence_score": 60.43,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 1.6743 px; 17 inliers; entropy 1.7922; 4/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "LightGlue/ALIKED"
+      ],
+      "primary_engine": "LightGlue/ALIKED",
+      "registration_engine": "LightGlue/ALIKED",
+      "fallback_triggered": false,
+      "fallback_reason": null,
+      "fallback_error": null
+    },
+    "runtime_s": 18.293157200037967,
     "gt_rmse": "",
     "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
   },
@@ -24,125 +38,209 @@
     "pair_id": "ohrc_01",
     "sensor": "OHRC",
     "matcher": "SIFT_RANSAC",
-    "correspondences": 105,
-    "rmse_insample": 1.1672874197140273,
-    "rmse_heldout": 1.4202721183791562,
-    "n_heldout_points": 2,
-    "inliers": 9,
-    "entropy": 1.3516441151533922,
+    "correspondences": 566,
+    "rmse_insample": 1.3817682780244178,
+    "rmse_heldout": 0.8945154505402878,
+    "n_heldout_points": 3,
+    "inliers": 15,
+    "entropy": 1.781937063546704,
     "quadrant_counts": [
-      0,
-      5,
-      3,
-      1
-    ],
-    "verdict": "COARSE_ADVISORY",
-    "runtime_s": 7.3408650000346825,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "ohrc_02",
-    "sensor": "OHRC",
-    "matcher": "LightGlue_ALIKED",
-    "correspondences": 1757,
-    "rmse_insample": 1.5365003833271893,
-    "rmse_heldout": 3.3273706328254073,
-    "n_heldout_points": 2,
-    "inliers": 10,
-    "entropy": 1.7609640474436812,
-    "quadrant_counts": [
-      2,
       1,
       5,
-      2
-    ],
-    "verdict": "DEGENERATE_FAILURE",
-    "runtime_s": 3.1469383999938145,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "ohrc_02",
-    "sensor": "OHRC",
-    "matcher": "SIFT_RANSAC",
-    "correspondences": 148,
-    "rmse_insample": 1.3672758967194243,
-    "rmse_heldout": 1.6817569884741848,
-    "n_heldout_points": 4,
-    "inliers": 21,
-    "entropy": 1.2060026902433665,
-    "quadrant_counts": [
-      2,
-      0,
-      14,
-      5
-    ],
-    "verdict": "COARSE_ADVISORY",
-    "runtime_s": 7.280047999985982,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "ohrc_03",
-    "sensor": "OHRC",
-    "matcher": "LightGlue_ALIKED",
-    "correspondences": 1716,
-    "rmse_insample": 1.9498018169014182,
-    "rmse_heldout": 2.4457334653800724,
-    "n_heldout_points": 5,
-    "inliers": 23,
-    "entropy": 1.7200660483303318,
-    "quadrant_counts": [
-      5,
-      7,
-      1,
-      10
-    ],
-    "verdict": "COARSE_ADVISORY",
-    "runtime_s": 3.197576600010507,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "ohrc_03",
-    "sensor": "OHRC",
-    "matcher": "SIFT_RANSAC",
-    "correspondences": 134,
-    "rmse_insample": 1.6810325378705906,
-    "rmse_heldout": 2.126977346078221,
-    "n_heldout_points": 2,
-    "inliers": 12,
-    "entropy": 1.5,
-    "quadrant_counts": [
       3,
-      3,
-      0,
       6
     ],
     "verdict": "COARSE_ADVISORY",
-    "runtime_s": 7.263037099968642,
+    "final_engine": "SIFT + Brute-Force (RANSAC fallback)",
+    "secondary_fallback": false,
+    "confidence_score": 67.62,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 0.8945 px; 15 inliers; entropy 1.7819; 4/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": false,
+      "fallback_reason": null,
+      "fallback_error": null
+    },
+    "runtime_s": 6.308928099984769,
     "gt_rmse": "",
     "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
   },
   {
-    "pair_id": "ohrc_04",
+    "pair_id": "ohrc_02",
     "sensor": "OHRC",
     "matcher": "LightGlue_ALIKED",
-    "correspondences": 1645,
-    "rmse_insample": 1.745998981879141,
-    "rmse_heldout": 1.416433066242358,
+    "correspondences": 751,
+    "rmse_insample": 1.2885271708925383,
+    "rmse_heldout": 1.172953650827721,
     "n_heldout_points": 3,
-    "inliers": 15,
-    "entropy": 1.5058231002082845,
+    "inliers": 16,
+    "entropy": 1.3663146570363986,
     "quadrant_counts": [
+      2,
       0,
-      3,
-      7,
+      9,
       5
     ],
     "verdict": "COARSE_ADVISORY",
-    "runtime_s": 3.275393099989742,
+    "final_engine": "LightGlue/ALIKED",
+    "secondary_fallback": false,
+    "confidence_score": 60.93,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 1.1730 px; 16 inliers; entropy 1.3663; 3/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "LightGlue/ALIKED"
+      ],
+      "primary_engine": "LightGlue/ALIKED",
+      "registration_engine": "LightGlue/ALIKED",
+      "fallback_triggered": false,
+      "fallback_reason": null,
+      "fallback_error": null
+    },
+    "runtime_s": 2.73496889998205,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "ohrc_02",
+    "sensor": "OHRC",
+    "matcher": "SIFT_RANSAC",
+    "correspondences": 767,
+    "rmse_insample": 1.1985129151855347,
+    "rmse_heldout": 1.14818636146691,
+    "n_heldout_points": 3,
+    "inliers": 13,
+    "entropy": 0.9612366047228759,
+    "quadrant_counts": [
+      0,
+      0,
+      8,
+      5
+    ],
+    "verdict": "COARSE_ADVISORY",
+    "final_engine": "SIFT + Brute-Force (RANSAC fallback)",
+    "secondary_fallback": false,
+    "confidence_score": 56.38,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 1.1482 px; 13 inliers; entropy 0.9612; 2/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": false,
+      "fallback_reason": null,
+      "fallback_error": null
+    },
+    "runtime_s": 6.188675599987619,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "ohrc_03",
+    "sensor": "OHRC",
+    "matcher": "LightGlue_ALIKED",
+    "correspondences": 724,
+    "rmse_insample": 1.327967881234245,
+    "rmse_heldout": 2.6415388928132932,
+    "n_heldout_points": 2,
+    "inliers": 9,
+    "entropy": 0.9864267287308425,
+    "quadrant_counts": [
+      1,
+      0,
+      1,
+      7
+    ],
+    "verdict": "DEGENERATE_FAILURE",
+    "final_engine": "LightGlue_ALIKED",
+    "secondary_fallback": false,
+    "confidence_score": 42.11,
+    "decision_reason": "REJECTED (High Residual RMSE (coarse advisory limit exceeded: 2.6415 px > 2.50 px))",
+    "fallback_path": {
+      "steps": [
+        "LightGlue/ALIKED"
+      ],
+      "primary_engine": "LightGlue/ALIKED",
+      "registration_engine": "LightGlue/ALIKED",
+      "fallback_triggered": false,
+      "fallback_reason": null,
+      "fallback_error": null
+    },
+    "runtime_s": 2.6929963000002317,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "ohrc_03",
+    "sensor": "OHRC",
+    "matcher": "SIFT_RANSAC",
+    "correspondences": 715,
+    "rmse_insample": 1.6290103963248912,
+    "rmse_heldout": 2.1787417591908285,
+    "n_heldout_points": 4,
+    "inliers": 20,
+    "entropy": 1.1883763717345073,
+    "quadrant_counts": [
+      0,
+      12,
+      1,
+      7
+    ],
+    "verdict": "COARSE_ADVISORY",
+    "final_engine": "SIFT + Brute-Force (RANSAC fallback)",
+    "secondary_fallback": false,
+    "confidence_score": 50.1,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 2.1787 px; 20 inliers; entropy 1.1884; 3/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": false,
+      "fallback_reason": null,
+      "fallback_error": null
+    },
+    "runtime_s": 6.357406400027685,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "ohrc_04",
+    "sensor": "OHRC",
+    "matcher": "LightGlue_ALIKED",
+    "correspondences": 708,
+    "rmse_insample": 1.7295039119182383,
+    "rmse_heldout": 1.6593010726412103,
+    "n_heldout_points": 3,
+    "inliers": 16,
+    "entropy": 1.6225562489182659,
+    "quadrant_counts": [
+      3,
+      3,
+      1,
+      9
+    ],
+    "verdict": "COARSE_ADVISORY",
+    "final_engine": "LightGlue/ALIKED",
+    "secondary_fallback": false,
+    "confidence_score": 58.63,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 1.6593 px; 16 inliers; entropy 1.6226; 4/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "LightGlue/ALIKED"
+      ],
+      "primary_engine": "LightGlue/ALIKED",
+      "registration_engine": "LightGlue/ALIKED",
+      "fallback_triggered": false,
+      "fallback_reason": null,
+      "fallback_error": null
+    },
+    "runtime_s": 2.703482199984137,
     "gt_rmse": "",
     "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
   },
@@ -150,20 +248,34 @@
     "pair_id": "ohrc_04",
     "sensor": "OHRC",
     "matcher": "SIFT_RANSAC",
-    "correspondences": 127,
-    "rmse_insample": 1.6783809216782488,
-    "rmse_heldout": 2.6078094840816255,
+    "correspondences": 718,
+    "rmse_insample": 1.8699690801267703,
+    "rmse_heldout": 1.9450333609707522,
     "n_heldout_points": 3,
-    "inliers": 14,
-    "entropy": 0.863120568566631,
+    "inliers": 17,
+    "entropy": 1.468090781663233,
     "quadrant_counts": [
-      0,
-      0,
+      9,
       4,
-      10
+      0,
+      4
     ],
-    "verdict": "DEGENERATE_FAILURE",
-    "runtime_s": 6.924154299951624,
+    "verdict": "COARSE_ADVISORY",
+    "final_engine": "SIFT + Brute-Force (RANSAC fallback)",
+    "secondary_fallback": false,
+    "confidence_score": 54.48,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 1.9450 px; 17 inliers; entropy 1.4681; 3/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": false,
+      "fallback_reason": null,
+      "fallback_error": null
+    },
+    "runtime_s": 6.134434500010684,
     "gt_rmse": "",
     "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
   },
@@ -171,20 +283,35 @@
     "pair_id": "ohrc_05",
     "sensor": "OHRC",
     "matcher": "LightGlue_ALIKED",
-    "correspondences": 1474,
-    "rmse_insample": 1.7383257140213486,
-    "rmse_heldout": 3.109736592521544,
+    "correspondences": 586,
+    "rmse_insample": 1.5256599709343035,
+    "rmse_heldout": 3.097507021708982,
     "n_heldout_points": 2,
-    "inliers": 11,
-    "entropy": 1.9362600275315274,
+    "inliers": 10,
+    "entropy": 0.9709505944546686,
     "quadrant_counts": [
-      4,
-      2,
-      2,
-      3
+      0,
+      6,
+      0,
+      4
     ],
     "verdict": "DEGENERATE_FAILURE",
-    "runtime_s": 3.141374900005758,
+    "final_engine": "LightGlue_ALIKED",
+    "secondary_fallback": true,
+    "confidence_score": 42.21,
+    "decision_reason": "REJECTED (High Residual RMSE (coarse advisory limit exceeded: 3.0975 px > 2.50 px) | Degenerate Spatial Cluster (2/4 Active Quadrants))",
+    "fallback_path": {
+      "steps": [
+        "LightGlue/ALIKED",
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "LightGlue/ALIKED",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (9.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 3.499920300033409,
     "gt_rmse": "",
     "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
   },
@@ -192,251 +319,424 @@
     "pair_id": "ohrc_05",
     "sensor": "OHRC",
     "matcher": "SIFT_RANSAC",
-    "correspondences": 109,
-    "rmse_insample": 1.4669256458982358,
-    "rmse_heldout": 2.0321375006564883,
+    "correspondences": 541,
+    "rmse_insample": 1.5256599709343035,
+    "rmse_heldout": 3.097507021708982,
+    "n_heldout_points": 2,
+    "inliers": 10,
+    "entropy": 0.9709505944546686,
+    "quadrant_counts": [
+      0,
+      6,
+      0,
+      4
+    ],
+    "verdict": "DEGENERATE_FAILURE",
+    "final_engine": "SIFT_RANSAC",
+    "secondary_fallback": true,
+    "confidence_score": 42.21,
+    "decision_reason": "REJECTED (High Residual RMSE (coarse advisory limit exceeded: 3.0975 px > 2.50 px) | Degenerate Spatial Cluster (2/4 Active Quadrants))",
+    "fallback_path": {
+      "steps": [
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (12.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 7.049445599957835,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "ohrc_06",
+    "sensor": "OHRC",
+    "matcher": "LightGlue_ALIKED",
+    "correspondences": 697,
+    "rmse_insample": 1.2668254106928731,
+    "rmse_heldout": 2.2338285747228195,
+    "n_heldout_points": 2,
+    "inliers": 9,
+    "entropy": 1.7527152789797045,
+    "quadrant_counts": [
+      4,
+      1,
+      1,
+      3
+    ],
+    "verdict": "COARSE_ADVISORY",
+    "final_engine": "SIFT + Brute-Force (RANSAC fallback)",
+    "secondary_fallback": true,
+    "confidence_score": 52.44,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 2.2338 px; 9 inliers; entropy 1.7527; 4/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "LightGlue/ALIKED",
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "LightGlue/ALIKED",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (13.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 3.673735999967903,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "ohrc_06",
+    "sensor": "OHRC",
+    "matcher": "SIFT_RANSAC",
+    "correspondences": 614,
+    "rmse_insample": 1.2668254106928731,
+    "rmse_heldout": 2.2338285747228195,
+    "n_heldout_points": 2,
+    "inliers": 9,
+    "entropy": 1.7527152789797045,
+    "quadrant_counts": [
+      4,
+      1,
+      1,
+      3
+    ],
+    "verdict": "COARSE_ADVISORY",
+    "final_engine": "SIFT + Brute-Force (RANSAC fallback)",
+    "secondary_fallback": false,
+    "confidence_score": 52.44,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 2.2338 px; 9 inliers; entropy 1.7527; 4/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": false,
+      "fallback_reason": null,
+      "fallback_error": null
+    },
+    "runtime_s": 6.163572600053158,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "tmc2_01",
+    "sensor": "TMC-2",
+    "matcher": "LightGlue_ALIKED",
+    "correspondences": 519,
+    "rmse_insample": 1.9218567112261127,
+    "rmse_heldout": 3.8294919186404406,
+    "n_heldout_points": 2,
+    "inliers": 10,
+    "entropy": 1.3709505944546687,
+    "quadrant_counts": [
+      2,
+      0,
+      2,
+      6
+    ],
+    "verdict": "DEGENERATE_FAILURE",
+    "final_engine": "LightGlue_ALIKED",
+    "secondary_fallback": true,
+    "confidence_score": 46.21,
+    "decision_reason": "REJECTED (High Residual RMSE (coarse advisory limit exceeded: 3.8295 px > 2.50 px))",
+    "fallback_path": {
+      "steps": [
+        "LightGlue/ALIKED",
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "LightGlue/ALIKED",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (10.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 3.437408300000243,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "tmc2_01",
+    "sensor": "TMC-2",
+    "matcher": "SIFT_RANSAC",
+    "correspondences": 376,
+    "rmse_insample": 1.9218567112261127,
+    "rmse_heldout": 3.8294919186404406,
+    "n_heldout_points": 2,
+    "inliers": 10,
+    "entropy": 1.3709505944546687,
+    "quadrant_counts": [
+      2,
+      0,
+      2,
+      6
+    ],
+    "verdict": "DEGENERATE_FAILURE",
+    "final_engine": "SIFT_RANSAC",
+    "secondary_fallback": true,
+    "confidence_score": 46.21,
+    "decision_reason": "REJECTED (High Residual RMSE (coarse advisory limit exceeded: 3.8295 px > 2.50 px))",
+    "fallback_path": {
+      "steps": [
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (10.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 6.537172699987423,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "tmc2_02",
+    "sensor": "TMC-2",
+    "matcher": "LightGlue_ALIKED",
+    "correspondences": 482,
+    "rmse_insample": 1.157187346635868,
+    "rmse_heldout": 1.3354696460688658,
+    "n_heldout_points": 2,
+    "inliers": 11,
+    "entropy": 1.5394847569315018,
+    "quadrant_counts": [
+      5,
+      0,
+      3,
+      3
+    ],
+    "verdict": "COARSE_ADVISORY",
+    "final_engine": "SIFT + Brute-Force (RANSAC fallback)",
+    "secondary_fallback": true,
+    "confidence_score": 59.79,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 1.3355 px; 11 inliers; entropy 1.5395; 3/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "LightGlue/ALIKED",
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "LightGlue/ALIKED",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (13.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 3.5243813000270166,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "tmc2_02",
+    "sensor": "TMC-2",
+    "matcher": "SIFT_RANSAC",
+    "correspondences": 425,
+    "rmse_insample": 1.157187346635868,
+    "rmse_heldout": 1.3354696460688658,
+    "n_heldout_points": 2,
+    "inliers": 11,
+    "entropy": 1.5394847569315018,
+    "quadrant_counts": [
+      5,
+      0,
+      3,
+      3
+    ],
+    "verdict": "COARSE_ADVISORY",
+    "final_engine": "SIFT + Brute-Force (RANSAC fallback)",
+    "secondary_fallback": true,
+    "confidence_score": 59.79,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 1.3355 px; 11 inliers; entropy 1.5395; 3/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (11.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 6.712341499980539,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "tmc2_03",
+    "sensor": "TMC-2",
+    "matcher": "LightGlue_ALIKED",
+    "correspondences": 613,
+    "rmse_insample": 1.010635909708319,
+    "rmse_heldout": 0.6119143192592883,
+    "n_heldout_points": 1,
+    "inliers": 7,
+    "entropy": 0.9852281360342515,
+    "quadrant_counts": [
+      0,
+      0,
+      3,
+      4
+    ],
+    "verdict": "DEGENERATE_FAILURE",
+    "final_engine": "LightGlue_ALIKED",
+    "secondary_fallback": true,
+    "confidence_score": 56.73,
+    "decision_reason": "REJECTED (High Residual RMSE (sub-pixel limit exceeded: 0.6119 px > 0.50 px) | Insufficient Inlier Yield (7 < 8) | Degenerate Spatial Cluster (2/4 Active Quadrants))",
+    "fallback_path": {
+      "steps": [
+        "LightGlue/ALIKED"
+      ],
+      "primary_engine": "LightGlue/ALIKED",
+      "registration_engine": "LightGlue/ALIKED",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (7.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 3.507642999989912,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "tmc2_03",
+    "sensor": "TMC-2",
+    "matcher": "SIFT_RANSAC",
+    "correspondences": 462,
+    "rmse_insample": 1.1679277089130609,
+    "rmse_heldout": 2.391363287944123,
+    "n_heldout_points": 1,
+    "inliers": 6,
+    "entropy": 0.6500224216483541,
+    "quadrant_counts": [
+      1,
+      5,
+      0,
+      0
+    ],
+    "verdict": "DEGENERATE_FAILURE",
+    "final_engine": "SIFT_RANSAC",
+    "secondary_fallback": true,
+    "confidence_score": 31.59,
+    "decision_reason": "REJECTED (High Residual RMSE (sub-pixel limit exceeded: 2.3914 px > 0.50 px) | Insufficient Inlier Yield (6 < 8) | Degenerate Spatial Cluster (2/4 Active Quadrants) | Low Spatial Distribution (Entropy 0.6500 < 0.75))",
+    "fallback_path": {
+      "steps": [
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (6.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 6.598260200000368,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "tmc2_04",
+    "sensor": "TMC-2",
+    "matcher": "LightGlue_ALIKED",
+    "correspondences": 691,
+    "rmse_insample": 1.0811155393740672,
+    "rmse_heldout": 2.2340553812949424,
+    "n_heldout_points": 2,
+    "inliers": 8,
+    "entropy": 1.4056390622295665,
+    "quadrant_counts": [
+      1,
+      0,
+      3,
+      4
+    ],
+    "verdict": "COARSE_ADVISORY",
+    "final_engine": "SIFT + Brute-Force (RANSAC fallback)",
+    "secondary_fallback": true,
+    "confidence_score": 48.72,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 2.2341 px; 8 inliers; entropy 1.4056; 3/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "LightGlue/ALIKED",
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "LightGlue/ALIKED",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (9.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 3.5739203999983147,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "tmc2_04",
+    "sensor": "TMC-2",
+    "matcher": "SIFT_RANSAC",
+    "correspondences": 530,
+    "rmse_insample": 1.0811155393740672,
+    "rmse_heldout": 2.2340553812949424,
+    "n_heldout_points": 2,
+    "inliers": 8,
+    "entropy": 1.4056390622295665,
+    "quadrant_counts": [
+      1,
+      0,
+      3,
+      4
+    ],
+    "verdict": "COARSE_ADVISORY",
+    "final_engine": "SIFT + Brute-Force (RANSAC fallback)",
+    "secondary_fallback": true,
+    "confidence_score": 48.72,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 2.2341 px; 8 inliers; entropy 1.4056; 3/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (8.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 6.7737587000010535,
+    "gt_rmse": "",
+    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
+  },
+  {
+    "pair_id": "tmc2_05",
+    "sensor": "TMC-2",
+    "matcher": "LightGlue_ALIKED",
+    "correspondences": 678,
+    "rmse_insample": 1.0535332051544015,
+    "rmse_heldout": 1.293246177217951,
     "n_heldout_points": 2,
     "inliers": 8,
     "entropy": 0.954434002924965,
     "quadrant_counts": [
-      0,
-      3,
-      0,
-      5
-    ],
-    "verdict": "COARSE_ADVISORY",
-    "runtime_s": 7.3664504000335,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "ohrc_06",
-    "sensor": "OHRC",
-    "matcher": "LightGlue_ALIKED",
-    "correspondences": 1600,
-    "rmse_insample": 1.6755015280951635,
-    "rmse_heldout": 1.8347627999263623,
-    "n_heldout_points": 3,
-    "inliers": 14,
-    "entropy": 1.7884504573082896,
-    "quadrant_counts": [
-      6,
-      4,
-      1,
-      3
-    ],
-    "verdict": "COARSE_ADVISORY",
-    "runtime_s": 3.318102399993222,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "ohrc_06",
-    "sensor": "OHRC",
-    "matcher": "SIFT_RANSAC",
-    "correspondences": 112,
-    "rmse_insample": 1.0834205656812919,
-    "rmse_heldout": 1.1609516674296456,
-    "n_heldout_points": 2,
-    "inliers": 9,
-    "entropy": 0.9182958340544896,
-    "quadrant_counts": [
-      0,
-      3,
-      0,
-      6
-    ],
-    "verdict": "COARSE_ADVISORY",
-    "runtime_s": 6.909718899987638,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "tmc2_01",
-    "sensor": "TMC-2",
-    "matcher": "LightGlue_ALIKED",
-    "correspondences": 1430,
-    "rmse_insample": 1.873407674547078,
-    "rmse_heldout": 2.5909843424804837,
-    "n_heldout_points": 2,
-    "inliers": 10,
-    "entropy": 1.0,
-    "quadrant_counts": [
-      0,
-      0,
       5,
-      5
-    ],
-    "verdict": "DEGENERATE_FAILURE",
-    "runtime_s": 2.7722580999834463,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "tmc2_01",
-    "sensor": "TMC-2",
-    "matcher": "SIFT_RANSAC",
-    "correspondences": 90,
-    "rmse_insample": 1.1468666378557548,
-    "rmse_heldout": 1.8368825444417543,
-    "n_heldout_points": 2,
-    "inliers": 11,
-    "entropy": 1.0957952550009336,
-    "quadrant_counts": [
-      8,
-      1,
-      0,
-      2
-    ],
-    "verdict": "COARSE_ADVISORY",
-    "runtime_s": 6.814158599998336,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "tmc2_02",
-    "sensor": "TMC-2",
-    "matcher": "LightGlue_ALIKED",
-    "correspondences": 1307,
-    "rmse_insample": 1.7542692642529345,
-    "rmse_heldout": 2.5518823417008187,
-    "n_heldout_points": 2,
-    "inliers": 12,
-    "entropy": 1.384431504340598,
-    "quadrant_counts": [
-      2,
       3,
       0,
-      7
-    ],
-    "verdict": "DEGENERATE_FAILURE",
-    "runtime_s": 2.8958809000323527,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "tmc2_02",
-    "sensor": "TMC-2",
-    "matcher": "SIFT_RANSAC",
-    "correspondences": 75,
-    "rmse_insample": 1.7590710016625182,
-    "rmse_heldout": 1.3648706588752488,
-    "n_heldout_points": 2,
-    "inliers": 12,
-    "entropy": 1.0,
-    "quadrant_counts": [
-      6,
-      0,
-      6,
       0
     ],
     "verdict": "COARSE_ADVISORY",
-    "runtime_s": 6.323796500044409,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "tmc2_03",
-    "sensor": "TMC-2",
-    "matcher": "LightGlue_ALIKED",
-    "correspondences": 1472,
-    "rmse_insample": 1.5048945824667768,
-    "rmse_heldout": 5.908498885005392,
-    "n_heldout_points": 1,
-    "inliers": 7,
-    "entropy": 1.4488156357251847,
-    "quadrant_counts": [
-      3,
-      1,
-      0,
-      3
-    ],
-    "verdict": "DEGENERATE_FAILURE",
-    "runtime_s": 2.889306699973531,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "tmc2_03",
-    "sensor": "TMC-2",
-    "matcher": "SIFT_RANSAC",
-    "correspondences": 91,
-    "rmse_insample": 1.8441069250503952,
-    "rmse_heldout": 3.9755183318531384,
-    "n_heldout_points": 2,
-    "inliers": 10,
-    "entropy": 0.0,
-    "quadrant_counts": [
-      0,
-      0,
-      10,
-      0
-    ],
-    "verdict": "DEGENERATE_FAILURE",
-    "runtime_s": 6.6148378000361845,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "tmc2_04",
-    "sensor": "TMC-2",
-    "matcher": "LightGlue_ALIKED",
-    "correspondences": 1641,
-    "rmse_insample": 1.5161142639677747,
-    "rmse_heldout": 2.455558903426845,
-    "n_heldout_points": 2,
-    "inliers": 8,
-    "entropy": 1.561278124459133,
-    "quadrant_counts": [
-      2,
-      0,
-      3,
-      3
-    ],
-    "verdict": "COARSE_ADVISORY",
-    "runtime_s": 3.104030199989211,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "tmc2_04",
-    "sensor": "TMC-2",
-    "matcher": "SIFT_RANSAC",
-    "correspondences": 92,
-    "rmse_insample": 1.5670436237913932,
-    "rmse_heldout": 3.833934307557956,
-    "n_heldout_points": 2,
-    "inliers": 12,
-    "entropy": 1.3250112108241772,
-    "quadrant_counts": [
-      1,
-      0,
-      5,
-      6
-    ],
-    "verdict": "DEGENERATE_FAILURE",
-    "runtime_s": 6.5472822999581695,
-    "gt_rmse": "",
-    "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
-  },
-  {
-    "pair_id": "tmc2_05",
-    "sensor": "TMC-2",
-    "matcher": "LightGlue_ALIKED",
-    "correspondences": 1563,
-    "rmse_insample": 1.6365131832651454,
-    "rmse_heldout": 1.737045061781727,
-    "n_heldout_points": 2,
-    "inliers": 8,
-    "entropy": 1.0,
-    "quadrant_counts": [
-      0,
-      0,
-      4,
-      4
-    ],
-    "verdict": "COARSE_ADVISORY",
-    "runtime_s": 3.196972600009758,
+    "final_engine": "SIFT + Brute-Force (RANSAC fallback)",
+    "secondary_fallback": true,
+    "confidence_score": 53.61,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 1.2932 px; 8 inliers; entropy 0.9544; 2/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "LightGlue/ALIKED",
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "LightGlue/ALIKED",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (7.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 3.620146500004921,
     "gt_rmse": "",
     "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
   },
@@ -444,20 +744,34 @@
     "pair_id": "tmc2_05",
     "sensor": "TMC-2",
     "matcher": "SIFT_RANSAC",
-    "correspondences": 93,
-    "rmse_insample": 1.4654954441324064,
-    "rmse_heldout": 2.4650434195257636,
+    "correspondences": 598,
+    "rmse_insample": 1.0535332051544015,
+    "rmse_heldout": 1.293246177217951,
     "n_heldout_points": 2,
-    "inliers": 11,
-    "entropy": 0.9456603046006401,
+    "inliers": 8,
+    "entropy": 0.954434002924965,
     "quadrant_counts": [
-      4,
-      7,
+      5,
+      3,
       0,
       0
     ],
     "verdict": "COARSE_ADVISORY",
-    "runtime_s": 6.693805199989583,
+    "final_engine": "SIFT + Brute-Force (RANSAC fallback)",
+    "secondary_fallback": true,
+    "confidence_score": 53.61,
+    "decision_reason": "Coarse advisory: gate returned a regional-fit advisory at RMSE 1.2932 px; 8 inliers; entropy 0.9544; 2/4 active quadrants.",
+    "fallback_path": {
+      "steps": [
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (8.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 6.816146600001957,
     "gt_rmse": "",
     "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
   },
@@ -465,20 +779,35 @@
     "pair_id": "tmc2_06",
     "sensor": "TMC-2",
     "matcher": "LightGlue_ALIKED",
-    "correspondences": 1590,
-    "rmse_insample": 0.8113591204627384,
-    "rmse_heldout": 1.4436224078670346,
+    "correspondences": 745,
+    "rmse_insample": 1.7026371828536138,
+    "rmse_heldout": 3.1203673485646406,
     "n_heldout_points": 2,
     "inliers": 9,
-    "entropy": 1.836591668108979,
+    "entropy": 1.974937501201927,
     "quadrant_counts": [
-      4,
       2,
-      1,
+      3,
+      2,
       2
     ],
-    "verdict": "COARSE_ADVISORY",
-    "runtime_s": 3.102173599996604,
+    "verdict": "DEGENERATE_FAILURE",
+    "final_engine": "LightGlue_ALIKED",
+    "secondary_fallback": true,
+    "confidence_score": 52.0,
+    "decision_reason": "REJECTED (High Residual RMSE (coarse advisory limit exceeded: 3.1204 px > 2.50 px))",
+    "fallback_path": {
+      "steps": [
+        "LightGlue/ALIKED",
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "LightGlue/ALIKED",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (9.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 3.6123818999622017,
     "gt_rmse": "",
     "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
   },
@@ -486,20 +815,34 @@
     "pair_id": "tmc2_06",
     "sensor": "TMC-2",
     "matcher": "SIFT_RANSAC",
-    "correspondences": 91,
-    "rmse_insample": 1.5324179458492797,
-    "rmse_heldout": 1.7803666762502803,
-    "n_heldout_points": 3,
-    "inliers": 15,
-    "entropy": 1.272905595320056,
+    "correspondences": 648,
+    "rmse_insample": 1.7026371828536138,
+    "rmse_heldout": 3.1203673485646406,
+    "n_heldout_points": 2,
+    "inliers": 9,
+    "entropy": 1.974937501201927,
     "quadrant_counts": [
-      6,
-      0,
-      1,
-      8
+      2,
+      3,
+      2,
+      2
     ],
-    "verdict": "COARSE_ADVISORY",
-    "runtime_s": 6.703895899991039,
+    "verdict": "DEGENERATE_FAILURE",
+    "final_engine": "SIFT_RANSAC",
+    "secondary_fallback": true,
+    "confidence_score": 52.0,
+    "decision_reason": "REJECTED (High Residual RMSE (coarse advisory limit exceeded: 3.1204 px > 2.50 px))",
+    "fallback_path": {
+      "steps": [
+        "SIFT + Brute-Force (RANSAC fallback)"
+      ],
+      "primary_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "registration_engine": "SIFT + Brute-Force (RANSAC fallback)",
+      "fallback_triggered": true,
+      "fallback_reason": "Low Inlier Ratio (9.0% < 15.0%)",
+      "fallback_error": null
+    },
+    "runtime_s": 6.708603699982632,
     "gt_rmse": "",
     "notes": "Independent ground truth pending; browse-image crop mapping is approximate."
   }

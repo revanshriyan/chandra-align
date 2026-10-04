@@ -458,6 +458,7 @@ def create_combined_visualization(
     rmse_gate_basis: str = "held-out",
     mae_in_sample_px: Optional[float] = None,
     mae_heldout_px: Optional[float] = None,
+    confidence_assessment: Optional[dict] = None,
 ) -> plt.Figure:
     """
     Create a 4-panel scientific verification dossier:
@@ -497,6 +498,15 @@ def create_combined_visualization(
         f"Gate RMSE: {rmse_px:.4f} px ({rmse_gate_basis}) | {mae_in_sample_text} | {mae_heldout_text}",
         fontsize=14, fontweight='bold', color='#ffffff', y=0.96
     )
+    if isinstance(confidence_assessment, dict):
+        fallback = confidence_assessment.get("fallback_path", {})
+        steps = " -> ".join(fallback.get("steps", [])) or "Unavailable"
+        footer = (
+            f"Confidence: {float(confidence_assessment.get('confidence_score', 0.0)):.2f}/100 "
+            f"(heuristic, not probability) | {confidence_assessment.get('decision_reason', 'No decision reason')}\n"
+            f"Fallback path: {steps}; triggered={fallback.get('fallback_triggered', False)}"
+        )
+        fig.text(0.5, 0.015, footer, ha="center", va="bottom", color="#c9d1d9", fontsize=9)
     
     # Panel 1: Side-by-side (Reference | Aligned Secondary | Delta)
     ax1 = fig.add_subplot(gs[0, 0])

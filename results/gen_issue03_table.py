@@ -14,6 +14,7 @@ FIELDS = [
     "pair_id", "sensor", "terrain", "matcher", "correspondences",
     "rmse_insample", "rmse_heldout", "n_heldout_points", "inliers",
     "entropy", "quadrants", "verdict", "runtime_s", "gt_rmse", "notes",
+    "confidence_score", "decision_reason", "fallback_path",
 ]
 
 
@@ -42,6 +43,9 @@ def main() -> None:
                 "quadrants": f"{active}/4 ({','.join(str(int(v)) for v in counts)})",
                 "verdict": run["verdict"], "runtime_s": f"{float(run['runtime_s']):.4f}",
                 "gt_rmse": run["gt_rmse"], "notes": run["notes"],
+                "confidence_score": f"{float(run.get('confidence_score', 0.0)):.2f}",
+                "decision_reason": run.get("decision_reason", ""),
+                "fallback_path": json.dumps(run.get("fallback_path", {}), sort_keys=True),
             }
             writer.writerow(row)
     print(f"Wrote {len(runs)} rows to {OUTPUT}")

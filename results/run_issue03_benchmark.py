@@ -150,6 +150,9 @@ def run_one(pair: dict, matcher_name: str, ref: np.ndarray, src: np.ndarray,
             "verdict": result.get("status_code", result.get("status_message", "UNKNOWN")),
             "final_engine": result.get("engine_name", matcher_name),
             "secondary_fallback": bool(result.get("execution_diagnostics", {}).get("fallback_triggered", False)),
+            "confidence_score": result.get("confidence_score", 0.0),
+            "decision_reason": result.get("decision_reason", result.get("status_message", "Unknown")),
+            "fallback_path": result.get("fallback_path", {}),
             "runtime_s": wall, "gt_rmse": "",
             "notes": state["error"] if state["error"] else "Independent ground truth pending; browse-image crop mapping is approximate.",
         }
@@ -163,6 +166,13 @@ def run_one(pair: dict, matcher_name: str, ref: np.ndarray, src: np.ndarray,
             "entropy": 0.0, "quadrant_counts": [0, 0, 0, 0],
             "verdict": "REJECTED", "runtime_s": time.perf_counter() - started,
             "final_engine": "", "secondary_fallback": False,
+            "confidence_score": 0.0,
+            "decision_reason": state["error"] or f"{type(exc).__name__}: {exc}",
+            "fallback_path": {
+                "steps": [matcher_name], "primary_engine": matcher_name,
+                "registration_engine": matcher_name, "fallback_triggered": False,
+                "fallback_reason": None, "fallback_error": state["error"] or str(exc),
+            },
             "gt_rmse": "", "notes": f"{state['error'] or type(exc).__name__ + ': ' + str(exc)}",
         }
     finally:
