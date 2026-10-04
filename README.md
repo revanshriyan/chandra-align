@@ -65,6 +65,18 @@ LightGlue/ALIKED on the calibrated synthetic pair — RMSE 0.3695 px, 43 inliers
 
 RIFT2 produced 0 correspondences on the same input — rejected with transform telemetry masked (N/A). The failed primary is reported, not hidden.
 
+<p align="center">
+	<img src="docs/images/viz-lightglue-synthetic-checkerboard.png" width="700" alt="LightGlue/ALIKED calibrated synthetic registration checkerboard with inlier points" />
+</p>
+
+LightGlue/ALIKED, calibrated synthetic pair — checkerboard blend of the accepted registration (RMSE 0.3695 px, 43 inliers, 4/4 quadrants). Measured on RTX 5070.
+
+<p align="center">
+	<img src="docs/images/viz-lightglue-ohrc-overlay.png" width="700" alt="LightGlue/ALIKED OHRC reference raster with 34 inlier points across four quadrants" />
+</p>
+
+LightGlue/ALIKED, OHRC pair — 34 inliers across all four quadrants at 1.7961 px: COARSE advisory, not sub-pixel. Measured on RTX 5070.
+
 ## Run Locally
 
 Requires Python 3.10 or newer. Full-resolution Chandrayaan-2 source imagery is not included; obtain products and their labels through ISRO PRADAN.
