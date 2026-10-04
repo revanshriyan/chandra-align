@@ -551,6 +551,7 @@ def _align_core(
     secondary_sensor_name: str | None = None,
     reference_sensor_name: str = "OHRC",
     max_image_dimension: int = MAX_IMAGE_DIMENSION,
+    matching_mode: str = "single_scale",
 ) -> dict:
     """
     Core alignment logic - runs on GPU when called from process_alignment.
@@ -632,9 +633,18 @@ def _align_core(
     except ValueError:
         match_ref, match_sec = ref_processed, sec_processed
         ref_match_scale = sec_match_scale = 1.0
-    pts_ref, pts_sec, engine_name, execution_diagnostics = match_pair_hf(
-        match_ref, match_sec, ransac_threshold_px
-    )
+    if matching_mode == "coarse_to_fine":
+        from chandra_align.matching.coarse_to_fine import coarse_to_fine_match
+        pts_ref, pts_sec, engine_name, execution_diagnostics = coarse_to_fine_match(
+            match_ref, match_sec, match_pair_hf,
+            ransac_threshold_px=ransac_threshold_px,
+        )
+    elif matching_mode == "single_scale":
+        pts_ref, pts_sec, engine_name, execution_diagnostics = match_pair_hf(
+            match_ref, match_sec, ransac_threshold_px
+        )
+    else:
+        raise ValueError("matching_mode must be 'single_scale' or 'coarse_to_fine'")
     if ref_match_scale != 1.0:
         pts_ref = pts_ref / ref_match_scale
     if sec_match_scale != 1.0:
@@ -1158,7 +1168,8 @@ def process_alignment(
     sensor_name: str = "OHRC",
     secondary_sensor_name: str | None = None,
     sensor_pair_mode: str = "Optical <-> Optical",
-    enforce_uniform_distribution: bool = True
+    enforce_uniform_distribution: bool = True,
+    matching_mode: str = "single_scale",
 ):
     """
     Main alignment pipeline - runs on GPU when called from process_wrapper.
@@ -1220,7 +1231,8 @@ def process_alignment(
             sensor_pair_mode=sensor_pair_mode,
             secondary_sensor_name=secondary_sensor_name,
             reference_sensor_name=sensor_name,
-            max_image_dimension=max_image_dimension
+            max_image_dimension=max_image_dimension,
+            matching_mode=matching_mode,
         )
 
         if result.get("rejected"):

@@ -1,0 +1,57 @@
+{
+  "input": [
+    "ch2_ohr_nrp_20240425T1209509264_d_img_d18",
+    "ch2_ohr_nrp_20240425T1406019344_d_img_d18"
+  ],
+  "roi": [
+    2000,
+    10000,
+    8192,
+    8192
+  ],
+  "tile_size": 2048,
+  "overlap": 256,
+  "measurements": {
+    "eager": {
+      "verdict": "COARSE_ADVISORY",
+      "rmse_heldout": 1.7908117325734372,
+      "rmse_insample": 1.730881421095253,
+      "inliers": 9,
+      "load_path": "one 8192x8192 pair read then resized to 4096 max dimension",
+      "runtime_s": 33.2505154000246,
+      "mode": "eager",
+      "peak_rss_bytes": 5372407808
+    },
+    "tiled": {
+      "verdict": "DEGENERATE_FAILURE",
+      "gate": "REJECTED (High Residual RMSE (sub-pixel limit exceeded: 2.0806 px > 0.50 px) | Degenerate Spatial Cluster (2/4 Active Quadrants) | Low Spatial Distribution (Entropy 0.4561 < 0.75))",
+      "tiles": 25,
+      "correspondences": 29009,
+      "inliers": 1042,
+      "rmse_insample": 1.9684888124465942,
+      "rmse_heldout": 2.080626895140265,
+      "n_heldout_points": 208,
+      "entropy": 0.4560867406732163,
+      "quadrants": "2/4 (0,942,0,100)",
+      "affine": [
+        [
+          1.0152733290351819,
+          0.02271653982777146,
+          -1232.4632451564228
+        ],
+        [
+          -0.02271653982777146,
+          1.0152733290351819,
+          -1408.0577560624026
+        ]
+      ],
+      "execution": "native-resolution windowed tiles",
+      "ground_truth_rmse": null,
+      "runtime_s": 49.581452600017656,
+      "mode": "tiled",
+      "peak_rss_bytes": 2602688512
+    }
+  },
+  "peak_rss_reduction_fraction": 0.5155452443270665,
+  "notes": "Peak working set recorded inside each worker with Windows process counters; this is process RSS, not GPU VRAM. Ground-truth RMSE not available."
+}
