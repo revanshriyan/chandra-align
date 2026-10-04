@@ -19,9 +19,9 @@ CHANDRA-ALIGN registers lunar imagery across sensor, illumination, and scale dif
 ## How It Works
 
 1. **Preprocessing** prepares image data for cross-sensor matching while respecting bounded image-size limits.
-2. **RIFT2 primary matching** finds candidate correspondences using illumination-tolerant features.
-3. **LightGlue/ALIKED deep matching** provides learned feature matching where the configured runtime supports it.
-4. **SIFT + Brute-Force RANSAC CPU fallback** estimates a robust transform when the primary/deep matching path is unavailable or does not yield a usable fit.
+2. **RIFT2 (non-functional, under investigation; not the primary matcher):** the Sept. 30 CPU audit and issue #1 RTX 5070 GPU validation returned 0–1 correspondences per pair, with no valid fits. See [`results/table_issue01_gpu_validation.csv`](results/table_issue01_gpu_validation.csv).
+3. **LightGlue/ALIKED GPU matching** is the validated deep-learning path: synthetic sub-pixel ACCEPT at 0.3695 px / 43 inliers; competitive real-pair results at 1.7961 px (OHRC) and 1.5558 px (TMC-2).
+4. **SIFT + Brute-Force RANSAC CPU fallback** estimates the transform as the validated CPU fallback.
 5. **Sub-pixel refinement** attempts NCC/parabolic refinement of the RANSAC estimate. If too few correspondences survive refinement, the pipeline retains the RANSAC model rather than promoting an unsupported refined fit.
 6. **Fail-safe spatial validation gate** classifies the result as **ACCEPT**, **COARSE ADVISORY**, or **REJECT** before export.
 
@@ -50,6 +50,20 @@ The matcher measurements below are recorded in [`results/table_issue01_gpu_valid
 | TMC2_fore_nadir | RIFT2 | 0 | N/A | 0 | 0.0000 | 0/4 (0,0,0,0) | REJECTED: Only 0 correspondences | 78.0995 |
 | TMC2_fore_nadir | LightGlue_ALIKED | 1537 | 1.5558 | 13 | 1.6692 | 4/4 (2,3,1,7) | COARSE ALIGNMENT (Regional Fit Advisory) | 3.1617 |
 | TMC2_fore_nadir | SIFT_RANSAC | 106 | 2.2259 | 24 | 1.7296 | 4/4 (4,6,2,12) | COARSE ALIGNMENT (Regional Fit Advisory) | 7.1537 |
+
+### Example Results
+
+<p align="center">
+	<img src="docs/images/gate-checklist-accepted.png" width="700" alt="LightGlue/ALIKED accepted synthetic-pair checklist" />
+</p>
+
+LightGlue/ALIKED on the calibrated synthetic pair — RMSE 0.3695 px, 43 inliers, entropy 1.9988, 4/4 quadrants: ACCEPTED (sub-pixel), measured on RTX 5070.
+
+<p align="center">
+	<img src="docs/images/gate-checklist-rejected.png" width="700" alt="RIFT2 rejected synthetic-pair checklist" />
+</p>
+
+RIFT2 produced 0 correspondences on the same input — rejected with transform telemetry masked (N/A). The failed primary is reported, not hidden.
 
 ## Run Locally
 
