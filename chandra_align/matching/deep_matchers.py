@@ -1,4 +1,5 @@
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Dict, Any
 import numpy as np
@@ -246,6 +247,26 @@ class LightGlueALIKEDMatcher:
             with torch.no_grad():
                 feats_src = extractor.extract(src_tensor)
                 feats_ref = extractor.extract(ref_tensor)
+
+                # Enforce spatial coverage during ALIKED detection selection,
+                # before LightGlue sees the features. Set CHANDRA_GRID_BUCKETING=0
+                # to reproduce the old unbucketed ALIKED baseline.
+                if os.environ.get("CHANDRA_GRID_BUCKETING", "1").strip().lower() not in {"0", "false", "no", "off"}:
+                    from chandra_align.features import grid_feature_indices
+                    for feats, image_shape in ((feats_src, src_tensor.shape[-2:]),
+                                               (feats_ref, ref_tensor.shape[-2:])):
+                        keypoints = feats["keypoints"]
+                        scores = feats.get("keypoint_scores", feats.get("scores"))
+                        point_array = _tensor_to_numpy(keypoints[0])
+                        score_array = (_tensor_to_numpy(scores[0]) if scores is not None
+                                       else np.ones(len(point_array), dtype=np.float32))
+                        keep = grid_feature_indices(point_array, score_array, image_shape,
+                                                    quota_per_cell=64, grid_shape=(4, 4))
+                        keep_tensor = torch.as_tensor(keep, dtype=torch.long, device=keypoints.device)
+                        for key, value in list(feats.items()):
+                            if (torch.is_tensor(value) and value.ndim >= 2
+                                    and value.shape[0] == 1 and value.shape[1] == len(point_array)):
+                                feats[key] = value.index_select(1, keep_tensor)
                 
                 # Match
                 matches = matcher({"image0": feats_src, "image1": feats_ref})

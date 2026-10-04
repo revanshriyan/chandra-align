@@ -148,6 +148,8 @@ def run_one(pair: dict, matcher_name: str, ref: np.ndarray, src: np.ndarray,
             "entropy": float(result.get("quadrant_spatial_entropy", 0.0)),
             "quadrant_counts": counts,
             "verdict": result.get("status_code", result.get("status_message", "UNKNOWN")),
+            "final_engine": result.get("engine_name", matcher_name),
+            "secondary_fallback": bool(result.get("execution_diagnostics", {}).get("fallback_triggered", False)),
             "runtime_s": wall, "gt_rmse": "",
             "notes": state["error"] if state["error"] else "Independent ground truth pending; browse-image crop mapping is approximate.",
         }
@@ -160,6 +162,7 @@ def run_one(pair: dict, matcher_name: str, ref: np.ndarray, src: np.ndarray,
             "rmse_heldout": "", "n_heldout_points": 0, "inliers": 0,
             "entropy": 0.0, "quadrant_counts": [0, 0, 0, 0],
             "verdict": "REJECTED", "runtime_s": time.perf_counter() - started,
+            "final_engine": "", "secondary_fallback": False,
             "gt_rmse": "", "notes": f"{state['error'] or type(exc).__name__ + ': ' + str(exc)}",
         }
     finally:

@@ -31,7 +31,7 @@ from chandra_align.preprocessing import (
 )
 from chandra_align.features import (
     select_distributed_matches, spatial_distribution_metrics,
-    select_quadrant_keypoints, select_quadrant_balanced_matches,
+    select_quadrant_keypoints, select_quadrant_balanced_matches, select_detector_keypoints,
 )
 from chandra_align.alignment import decompose_partial_affine
 from chandra_align.refine import refine_subpixel_ncc
@@ -499,8 +499,8 @@ def match_pair_hf(
             key_sec, desc_sec = sift.detectAndCompute(secondary_image, None)
             if desc_ref is None or desc_sec is None or len(desc_ref) < 2 or len(desc_sec) < 2:
                 continue
-            key_ref, idx_ref = select_quadrant_keypoints(key_ref, reference_image.shape, 50)
-            key_sec, idx_sec = select_quadrant_keypoints(key_sec, secondary_image.shape, 50)
+            key_ref, idx_ref = select_detector_keypoints(key_ref, reference_image.shape, 64)
+            key_sec, idx_sec = select_detector_keypoints(key_sec, secondary_image.shape, 64)
             desc_ref, desc_sec = desc_ref[idx_ref], desc_sec[idx_sec]
             if len(desc_ref) < 2 or len(desc_sec) < 2:
                 continue
@@ -552,8 +552,8 @@ def _match_sift_ransac(ref_image, sec_image, threshold_px):
     key_sec, desc_sec = sift.detectAndCompute(sec_image, None)
     if desc_ref is None or desc_sec is None or len(desc_ref) < 2 or len(desc_sec) < 2:
         return np.empty((0, 2), np.float32), np.empty((0, 2), np.float32), None
-    key_ref, idx_ref = select_quadrant_keypoints(key_ref, ref_image.shape, 50)
-    key_sec, idx_sec = select_quadrant_keypoints(key_sec, sec_image.shape, 50)
+    key_ref, idx_ref = select_detector_keypoints(key_ref, ref_image.shape, 64)
+    key_sec, idx_sec = select_detector_keypoints(key_sec, sec_image.shape, 64)
     desc_ref, desc_sec = desc_ref[idx_ref], desc_sec[idx_sec]
     candidates = cv2.BFMatcher(cv2.NORM_L2).knnMatch(desc_sec, desc_ref, k=2)
     best = None

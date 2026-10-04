@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import numpy as np
 
 
@@ -52,6 +53,65 @@ def select_quadrant_keypoints(keypoints, image_shape, quota_per_quadrant=50):
         selected.extend(candidates[:quota])
     indices = np.asarray(sorted(selected), dtype=int)
     return [keypoints[int(i)] for i in indices], indices
+
+
+def select_grid_keypoints(keypoints, image_shape, quota_per_cell=64, grid_shape=(4, 4)):
+    """Select response-ranked keypoints independently within each grid cell.
+
+    This deterministic per-cell top-k quota prevents a dense cluster consuming
+    the full image budget. Original indices are returned to keep descriptors
+    aligned. Ties resolve by detector order.
+    """
+    rows, cols = _grid_shape(grid_shape)
+    quota = int(quota_per_cell)
+    if quota <= 0:
+        raise ValueError("quota_per_cell must be positive")
+    points = np.asarray([kp.pt for kp in (keypoints or [])], dtype=np.float64).reshape(-1, 2)
+    if len(points) == 0:
+        return [], np.zeros(0, dtype=int)
+    ids = bucket_ids(points, image_shape, (rows, cols))
+    responses = np.asarray([float(getattr(kp, "response", 0.0)) for kp in keypoints], dtype=np.float64)
+    chosen = []
+    for cell in range(rows * cols):
+        candidates = np.flatnonzero(ids == cell)
+        if not len(candidates):
+            continue
+        order = candidates[np.argsort(-responses[candidates], kind="stable")]
+        chosen.extend(order[:quota].tolist())
+    indices = np.asarray(sorted(chosen), dtype=int)
+    return [keypoints[int(i)] for i in indices], indices
+
+
+def select_detector_keypoints(keypoints, image_shape, quota_per_cell=64):
+    """Select detections using the current 4x4 mode or the recorded 2x2 baseline."""
+    enabled = os.environ.get("CHANDRA_GRID_BUCKETING", "1").strip().lower()
+    if enabled in {"0", "false", "no", "off"}:
+        return select_quadrant_keypoints(keypoints, image_shape, quota_per_quadrant=50)
+    return select_grid_keypoints(keypoints, image_shape, quota_per_cell=quota_per_cell)
+
+
+def grid_feature_indices(points, scores, image_shape, quota_per_cell=64, grid_shape=(4, 4)):
+    """Return stable feature indices selected by per-cell top-k quotas."""
+    rows, cols = _grid_shape(grid_shape)
+    quota = int(quota_per_cell)
+    if quota <= 0:
+        raise ValueError("quota_per_cell must be positive")
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    quality = np.asarray(scores, dtype=np.float64).reshape(-1)
+    if len(pts) != len(quality):
+        raise ValueError("scores must have one value per point")
+    if len(pts) == 0:
+        return np.zeros(0, dtype=int)
+    ids = bucket_ids(pts, image_shape, (rows, cols))
+    quality = np.nan_to_num(quality, nan=-np.inf, posinf=np.finfo(float).max, neginf=-np.inf)
+    chosen = []
+    for cell in range(rows * cols):
+        candidates = np.flatnonzero(ids == cell)
+        if not len(candidates):
+            continue
+        order = candidates[np.argsort(-quality[candidates], kind="stable")]
+        chosen.extend(order[:quota].tolist())
+    return np.asarray(sorted(chosen), dtype=int)
 
 
 def select_quadrant_balanced_matches(points_ref, points_sec, image_shape, quota_per_quadrant=50):
