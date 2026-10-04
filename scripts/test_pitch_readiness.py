@@ -14,6 +14,7 @@ import py_compile
 import re
 import sys
 import traceback
+import unittest
 from pathlib import Path
 
 import numpy as np
@@ -30,7 +31,10 @@ RESULTS: list[tuple[str, str, str]] = []
 def record(name: str, metric: str, check) -> None:
     try:
         detail = check()
-        RESULTS.append((name, "PASS", str(detail if detail is not None else metric)))
+        text = str(detail if detail is not None else metric)
+        RESULTS.append((name, "SKIP" if text.startswith("SKIP:") else "PASS", text))
+    except unittest.SkipTest as exc:
+        RESULTS.append((name, "SKIP", str(exc)))
     except Exception as exc:  # report all cases before returning a failure code
         RESULTS.append((name, "FAIL", f"{type(exc).__name__}: {exc}"))
 
@@ -102,7 +106,7 @@ def test_callback_arity() -> str:
             "status_code": "FAILED", "status_message": "REJECTED"
         },
         "_safe_rejection_output_tuple": lambda summary, status_message=None, **_kwargs: tuple(
-            [None, None, None, None, status_message, summary, "", None, None, None, None, None, None]
+            [None, None, None, None, status_message, summary, "", None, None, None, None, None, None, None]
         ),
         "_read_grayscale_image": lambda *_args: (_ for _ in ()).throw(ValueError("bad image")),
     }
@@ -110,9 +114,9 @@ def test_callback_arity() -> str:
     with contextlib.redirect_stderr(io.StringIO()):
         missing = callback(None, None)
         invalid = callback("bad-reference.png", "bad-secondary.png")
-    assert len(missing) == 13, len(missing)
-    assert len(invalid) == 13, len(invalid)
-    return "missing and invalid inputs both return 13 outputs without UnboundLocalError"
+    assert len(missing) == 14, len(missing)
+    assert len(invalid) == 14, len(invalid)
+    return "missing and invalid inputs both return 14 outputs without UnboundLocalError"
 
 
 def test_safe_rejection_arity() -> str:
@@ -128,9 +132,9 @@ def test_safe_rejection_arity() -> str:
     helper = execute_function("_safe_rejection_output_tuple", namespace)
     with contextlib.redirect_stderr(io.StringIO()):
         outputs = helper({}, "Rejected in headless test")
-    assert len(outputs) == 13, len(outputs)
+    assert len(outputs) == 14, len(outputs)
     assert "N/A" in outputs[6]
-    return "banner failure fallback returns 13 safe values and masked telemetry"
+    return "banner failure fallback returns 14 safe values and masked telemetry"
 
 
 def test_wrapper_catches_gpu_cpu_and_append_errors() -> str:
@@ -146,7 +150,7 @@ def test_wrapper_catches_gpu_cpu_and_append_errors() -> str:
 
     def emergency(message, summary=None):
         calls.append("fallback")
-        return (message, summary) + (None,) * 11
+        return (message, summary) + (None,) * 12
 
     namespace = {
         "sys": sys,
@@ -164,7 +168,7 @@ def test_wrapper_catches_gpu_cpu_and_append_errors() -> str:
     wrapper = execute_function("process_wrapper", namespace)
     with contextlib.redirect_stderr(io.StringIO()):
         result = wrapper(*([None] * 13))
-    assert len(result) == 13, len(result)
+    assert len(result) == 14, len(result)
     assert calls == ["gpu", "cpu", "fallback", "fallback"], calls
     return "GPU, CPU, and output formatting exceptions are contained at the Gradio boundary"
 
@@ -179,6 +183,17 @@ def test_assets_and_examples() -> str:
     paths = [ROOT / "docs" / "assets" / "examples" / name for name in names]
     for path in paths:
         assert path.is_file(), f"missing example asset: {path}"
+    pointer_paths = []
+    for path in paths:
+        with path.open("rb") as stream:
+            if stream.read(128).startswith(b"version https://git-lfs.github.com/spec/v1"):
+                pointer_paths.append(path.name)
+    if pointer_paths:
+        raise unittest.SkipTest(
+            "git-lfs assets are pointers (" + ", ".join(pointer_paths)
+            + "); run `git lfs pull` to inspect images"
+        )
+    for path in paths:
         with Image.open(path) as image:
             image.verify()
     with Image.open(paths[-2]) as reference, Image.open(paths[-1]) as secondary:
@@ -186,9 +201,9 @@ def test_assets_and_examples() -> str:
         sec_array = np.asarray(secondary.convert("L"))
     assert ref_array.shape == sec_array.shape
     assert not np.array_equal(ref_array, sec_array), "synthetic pair must be distinct"
-    assert "Synthetic Ground Truth · 1:1 GSD" in APP_SOURCE
+    assert all(name in APP_SOURCE for name in names)
     assert "cache_examples=False" in APP_SOURCE
-    assert "examples_per_page=3" in APP_SOURCE
+    assert "examples_per_page=4" in APP_SOURCE
     assert "interface.launch(ssr_mode=False)" in APP_SOURCE
     return "8 tracked-format assets valid; synthetic pair distinct; Examples caching disabled"
 
@@ -200,10 +215,10 @@ def test_fixed_contract_and_primary_ratio() -> str:
         if isinstance(ret, ast.Return) and isinstance(ret.value, ast.Tuple)
     ]
     assert tuple_returns, "no tuple return paths found"
-    assert all(len(ret.value.elts) == 13 for ret in tuple_returns)
+    assert all(len(ret.value.elts) == 14 for ret in tuple_returns)
     assert "for ratio in (0.75, 0.80, 0.85)" in APP_SOURCE
     assert re.search(r"first\.distance\s*<\s*ratio\s*\*\s*second\.distance", APP_SOURCE)
-    return f"{len(tuple_returns)} literal tuple path(s) have 13 values; Lowe ratio 0.75"
+    return f"{len(tuple_returns)} literal tuple path(s) have 14 values; Lowe ratio 0.75"
 
 
 def test_warp_is_initialized_before_visualization() -> str:
@@ -245,11 +260,11 @@ def test_compile() -> str:
 def main() -> int:
     checks = (
         ("String/path image decoding", "image path dtypes", test_path_inputs),
-        ("Callback exception arity", "13 outputs", test_callback_arity),
-        ("Rejection fallback arity", "13 outputs", test_safe_rejection_arity),
-        ("Gradio callback master guard", "13 outputs", test_wrapper_catches_gpu_cpu_and_append_errors),
+        ("Callback exception arity", "14 outputs", test_callback_arity),
+        ("Rejection fallback arity", "14 outputs", test_safe_rejection_arity),
+        ("Gradio callback master guard", "14 outputs", test_wrapper_catches_gpu_cpu_and_append_errors),
         ("Native example assets", "8 valid PNGs", test_assets_and_examples),
-        ("Tuple and ratio contract", "13 tuple / 0.75 ratio", test_fixed_contract_and_primary_ratio),
+        ("Tuple and ratio contract", "14 tuple / 0.75 ratio", test_fixed_contract_and_primary_ratio),
         ("Warped raster initialization order", "assign before read", test_warp_is_initialized_before_visualization),
         ("Python compilation", "5 modules", test_compile),
     )
@@ -259,8 +274,9 @@ def main() -> int:
     print("-" * 100)
     for name, status, detail in RESULTS:
         print(f"{name} | {status} | {detail}")
-    failed = sum(status != "PASS" for _name, status, _detail in RESULTS)
-    print(f"\n{len(RESULTS) - failed}/{len(RESULTS)} checks passed")
+    failed = sum(status == "FAIL" for _name, status, _detail in RESULTS)
+    skipped = sum(status == "SKIP" for _name, status, _detail in RESULTS)
+    print(f"\n{len(RESULTS) - failed - skipped} passed, {skipped} skipped, {failed} failed")
     return 1 if failed else 0
 
 

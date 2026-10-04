@@ -14,6 +14,7 @@ import py_compile
 import re
 import sys
 import traceback
+import unittest
 from pathlib import Path
 
 import numpy as np
@@ -30,7 +31,10 @@ RESULTS: list[tuple[str, str, str]] = []
 def record(name: str, metric: str, check) -> None:
     try:
         detail = check()
-        RESULTS.append((name, "PASS", str(detail if detail is not None else metric)))
+        text = str(detail if detail is not None else metric)
+        RESULTS.append((name, "SKIP" if text.startswith("SKIP:") else "PASS", text))
+    except unittest.SkipTest as exc:
+        RESULTS.append((name, "SKIP", str(exc)))
     except Exception as exc:  # report all cases before returning a failure code
         RESULTS.append((name, "FAIL", f"{type(exc).__name__}: {exc}"))
 
@@ -179,6 +183,17 @@ def test_assets_and_examples() -> str:
     paths = [ROOT / "docs" / "assets" / "examples" / name for name in names]
     for path in paths:
         assert path.is_file(), f"missing example asset: {path}"
+    pointer_paths = []
+    for path in paths:
+        with path.open("rb") as stream:
+            if stream.read(128).startswith(b"version https://git-lfs.github.com/spec/v1"):
+                pointer_paths.append(path.name)
+    if pointer_paths:
+        raise unittest.SkipTest(
+            "git-lfs assets are pointers (" + ", ".join(pointer_paths)
+            + "); run `git lfs pull` to inspect images"
+        )
+    for path in paths:
         with Image.open(path) as image:
             image.verify()
     with Image.open(paths[-2]) as reference, Image.open(paths[-1]) as secondary:
@@ -260,8 +275,9 @@ def main() -> int:
     print("-" * 100)
     for name, status, detail in RESULTS:
         print(f"{name} | {status} | {detail}")
-    failed = sum(status != "PASS" for _name, status, _detail in RESULTS)
-    print(f"\n{len(RESULTS) - failed}/{len(RESULTS)} checks passed")
+    failed = sum(status == "FAIL" for _name, status, _detail in RESULTS)
+    skipped = sum(status == "SKIP" for _name, status, _detail in RESULTS)
+    print(f"\n{len(RESULTS) - failed - skipped} passed, {skipped} skipped, {failed} failed")
     return 1 if failed else 0
 
 

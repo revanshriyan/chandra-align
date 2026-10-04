@@ -219,6 +219,7 @@ def _read_grayscale_image(image_file, max_dimension: int = MAX_IMAGE_DIMENSION) 
         image = np.nan_to_num(image)
     if image.dtype != np.uint8:
         finite = image.astype(np.float32, copy=False)
+        # Direct file inputs use a 1st-to-99th percentile display stretch.
         lo, hi = np.percentile(finite, [1, 99]) if finite.size else (0, 0)
         if hi <= lo:
             image = np.zeros(image.shape, dtype=np.uint8)
@@ -356,7 +357,7 @@ def load_lunar_raster(file_input, max_dimension: int = MAX_IMAGE_DIMENSION, band
             return None
 
     # Keep uint8 inputs byte-for-byte stable after grayscale conversion.
-    # Percentile stretching is for higher-bit-depth / floating rasters.
+    # Higher-bit-depth / floating rasters use a 2nd-to-98th percentile stretch.
     preserve_uint8 = raw.dtype == np.uint8
 
     height, width = raw.shape
@@ -412,10 +413,10 @@ def match_pair_hf(
     sift_input1, sift_input2 = as_numpy(img1), as_numpy(img2)
     img1, img2 = as_uint8(sift_input1), as_uint8(sift_input2)
     diagnostics = {
-        "primary_engine": "Phase Congruency + Quad-Tree",
+        "primary_engine": "RIFT2 (Phase Congruency)",
         "fallback_triggered": False,
         "fallback_reason": None,
-        "registration_engine": "Phase Congruency + Quad-Tree",
+        "registration_engine": "RIFT2 (Phase Congruency)",
     }
     # RIFT2 computes phase-congruency features and is the deterministic primary.
     try:
@@ -733,7 +734,7 @@ def _align_core(
                             inlier_cnt = int(inliers.sum())
                             engine_name = f"LightGlue/ALIKED ({fallback.matcher_name})"
                             execution_diagnostics["registration_engine"] = engine_name
-                if execution_diagnostics["registration_engine"] == "Phase Congruency + Quad-Tree":
+                if execution_diagnostics["registration_engine"] == "RIFT2 (Phase Congruency)":
                     execution_diagnostics["fallback_error"] = fallback.error_msg or "Fallback did not yield a valid partial affine with at least eight inliers"
             except Exception as exc:
                 execution_diagnostics["fallback_error"] = str(exc)
@@ -833,7 +834,7 @@ def _align_core(
     elif "lightglue" in engine_lower or "aliked" in engine_lower:
         engine_used = "Fallback (LightGlue/ALIKED)"
     else:
-        engine_used = "Primary (Phase Congruency)"
+        engine_used = "Primary (RIFT2 phase congruency)"
     execution_device = "GPU (ZeroGPU)" if _zerogpu_runtime_enabled() else "CPU"
 
     if status_code == "DEGENERATE_FAILURE":
@@ -1251,7 +1252,7 @@ def process_alignment(
             f"Matcher Engine: {engine_name}\n"
             f"Registration Transform: 4-DOF Partial Affine (2x3), RANSAC threshold {result['ransac_threshold_px']:.1f} px\n"
             f"Registration Matrix Engine: {result['execution_diagnostics'].get('registration_engine', engine_name)}\n"
-            f"Primary Engine: {result['execution_diagnostics'].get('primary_engine', 'Phase Congruency + Quad-Tree')}\n"
+            f"Primary Engine: {result['execution_diagnostics'].get('primary_engine', 'RIFT2 (Phase Congruency)')}\n"
             f"Fallback Triggered: {result['execution_diagnostics'].get('fallback_triggered', False)}\n"
             f"Fallback Reason: {result['execution_diagnostics'].get('fallback_reason') or 'None'}\n"
             f"Sensor Pair Mode: {result['sensor_pair_mode']}\n"

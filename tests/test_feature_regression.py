@@ -1,6 +1,10 @@
 import numpy as np
 import shutil
 from pathlib import Path
+import pytest
+
+pytest.importorskip("gradio", reason="application tests require the pinned Gradio runtime")
+pytest.importorskip("multipart", reason="application tests require python-multipart")
 
 from app import load_lunar_raster, process_alignment
 from chandra_align.metrics.quadrant import validate_registration_gate

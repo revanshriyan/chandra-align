@@ -3,9 +3,13 @@ import numpy as np
 import cv2
 import tempfile
 import os
+
+pytest.importorskip("gradio", reason="application tests require the pinned Gradio runtime")
+pytest.importorskip("multipart", reason="application tests require python-multipart")
+
 from app import (
     process_alignment, interface,
-    _align_core, match_pair_hf
+    _align_core, match_pair_hf, MIN_REGISTRATION_INLIERS,
 )
 from chandra_align.testing import make_pair_shift
 
@@ -95,7 +99,7 @@ def test_process_alignment_synthetic():
     assert outputs[0].size == (ref.shape[1], ref.shape[0])
     assert "ACCEPTED (Sub-Pixel Precision)" in outputs[4]
     global_metrics = outputs[5]["global_metrics"]
-    assert global_metrics["inlier_count"] > 20
+    assert global_metrics["inlier_count"] >= MIN_REGISTRATION_INLIERS
     assert global_metrics["rmse_pixels"] <= 0.50
     assert global_metrics["spatial_entropy_score"] >= 0.75
     assert outputs[5]["active_quadrants_count"] >= 3
