@@ -451,7 +451,11 @@ def create_combined_visualization(
     mae_px: float = 0.0,
     engine_name: str = "Unknown",
     inlier_count: int = 0,
-    total_matches: int = 0
+    total_matches: int = 0,
+    rmse_in_sample_px: Optional[float] = None,
+    rmse_heldout_px: Optional[float] = None,
+    heldout_count: int = 0,
+    rmse_gate_basis: str = "held-out",
 ) -> plt.Figure:
     """
     Create a 4-panel scientific verification dossier:
@@ -467,11 +471,20 @@ def create_combined_visualization(
     inlier_pct = (inlier_count / max(total_matches, 1)) * 100
     rmse_m = rmse_px * pixel_scale_m
     mae_m = mae_px * pixel_scale_m
+    in_sample_text = (
+        f"In-sample RMSE: {rmse_in_sample_px:.4f} px"
+        if rmse_in_sample_px is not None else "In-sample RMSE: N/A"
+    )
+    heldout_text = (
+        f"Held-out RMSE ({heldout_count} checks): {rmse_heldout_px:.4f} px"
+        if rmse_heldout_px is not None else "Held-out RMSE: UNAVAILABLE"
+    )
     
     fig.suptitle(
         f"CHANDRA-ALIGN | Photogrammetric Verification Dossier\n"
         f"Engine: {engine_name} | Inliers: {inlier_count} / {total_matches} ({inlier_pct:.1f}%) | "
-        f"RMSE: {rmse_px:.4f} px ({rmse_m:.4f} m) | MAE: {mae_px:.4f} px ({mae_m:.4f} m)",
+        f"{in_sample_text} | {heldout_text}\n"
+        f"Gate RMSE: {rmse_px:.4f} px ({rmse_gate_basis}) | MAE: {mae_px:.4f} px ({mae_m:.4f} m)",
         fontsize=14, fontweight='bold', color='#ffffff', y=0.96
     )
     

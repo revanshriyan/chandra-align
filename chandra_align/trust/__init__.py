@@ -42,18 +42,21 @@ def evaluate(M, pts_a, pts_b, holdout_fraction=0.2):
     fit-set RMSE out of this function.
     """
     fit_a, fit_b, hold_a, hold_b = split_fit_holdout(pts_a, pts_b, holdout_fraction)
-    M_refit = M
-    if len(fit_a) >= 3:
-        import cv2
-        M_refit, _ = cv2.estimateAffinePartial2D(
-            fit_a.astype(np.float32), fit_b.astype(np.float32),
-            method=cv2.RANSAC, ransacReprojThreshold=3.0)
-        if M_refit is None:
-            M_refit = M
-    if len(hold_a) == 0:
-        return M_refit, {"held_out": False, "n_check_points": 0,
-                         "rmse_x_px": "UNMEASURED", "rmse_y_px": "UNMEASURED",
-                         "rmse_px": "UNMEASURED", "rmse_m": "UNMEASURED"}
+    unmeasured = {
+        "held_out": False, "n_check_points": int(len(hold_a)),
+        "rmse_x_px": "UNMEASURED", "rmse_y_px": "UNMEASURED",
+        "rmse_px": "UNMEASURED", "rmse_m": "UNMEASURED",
+    }
+    if len(hold_a) == 0 or len(fit_a) < 3:
+        return None, unmeasured
+    import cv2
+    M_refit, _ = cv2.estimateAffinePartial2D(
+        fit_a.astype(np.float32), fit_b.astype(np.float32),
+        method=cv2.RANSAC, ransacReprojThreshold=3.0)
+    if M_refit is None:
+        # Never score held-out points with M: it may have been fit using all
+        # original correspondences, including these check points.
+        return None, unmeasured
     return M_refit, rmse_heldout(M_refit, hold_a, hold_b)
 
 

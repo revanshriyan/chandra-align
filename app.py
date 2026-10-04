@@ -780,7 +780,31 @@ def _align_core(
     )
     quadrant_html = format_quadrant_html(quadrant_metrics, quadrant_spatial_entropy)
 
-    rmse_px = float(np.sqrt(np.mean(residuals_mag ** 2))) if len(residuals_mag) > 0 else 0.0
+    rmse_in_sample_px = float(np.sqrt(np.mean(residuals_mag ** 2))) if len(residuals_mag) > 0 else 0.0
+    from chandra_align.trust import evaluate as evaluate_heldout_rmse
+    heldout_error = None
+    heldout_error_label = None
+    try:
+        # evaluate() creates disjoint fit/check subsets and calls rmse_heldout(),
+        # whose empty-check-set guard prevents in-sample substitution.
+        _, heldout_error = evaluate_heldout_rmse(
+            affine_matrix, inlier_sec, inlier_ref
+        )
+        if heldout_error.get("held_out") is not True or not isinstance(heldout_error.get("rmse_px"), (int, float)):
+            heldout_error_label = "held-out unavailable"
+        elif not math.isfinite(float(heldout_error["rmse_px"])):
+            heldout_error_label = "held-out unavailable"
+    except (ValueError, cv2.error, FloatingPointError, TypeError) as exc:
+        heldout_error_label = f"held-out unavailable ({exc})"
+    if heldout_error_label:
+        rmse_heldout_px = None
+        rmse_gate_px = rmse_in_sample_px
+        rmse_gate_basis = f"in-sample fallback; {heldout_error_label}"
+    else:
+        rmse_heldout_px = float(heldout_error["rmse_px"])
+        rmse_gate_px = rmse_heldout_px
+        rmse_gate_basis = "held-out"
+    rmse_px = rmse_gate_px
     mae_px = float(np.mean(residuals_mag)) if len(residuals_mag) > 0 else 0.0
     affine_telemetry = decompose_partial_affine(affine_matrix)
     status_message, status_code = validate_registration_gate(
@@ -795,6 +819,13 @@ def _align_core(
         quadrant_metrics,
         min_inliers=MIN_REGISTRATION_INLIERS,
     )
+    judge_metrics.update({
+        "rmse_in_sample_px": rmse_in_sample_px,
+        "rmse_heldout_px": rmse_heldout_px if rmse_heldout_px is not None else "UNMEASURED",
+        "rmse_gate_px": rmse_gate_px,
+        "rmse_gate_basis": rmse_gate_basis,
+        "heldout_check_points": int(heldout_error.get("n_check_points", 0)),
+    })
 
     engine_lower = engine_name.lower()
     if "sift" in engine_lower:
@@ -819,6 +850,11 @@ def _align_core(
             "inlier_cnt": inlier_cnt,
             "total_matches": len(pts_ref),
             "rmse_px": None,
+            "rmse_in_sample_px": rmse_in_sample_px,
+            "rmse_heldout_px": rmse_heldout_px,
+            "heldout_error": heldout_error,
+            "rmse_gate_px": rmse_gate_px,
+            "rmse_gate_basis": rmse_gate_basis,
             "quadrant_spatial_entropy": quadrant_spatial_entropy,
             "engine_used": engine_used,
             "execution_device": execution_device,
@@ -890,6 +926,10 @@ def _align_core(
         "inlier_cnt": inlier_cnt,
         "total_matches": len(pts_ref),
         "rmse_px": rmse_px,
+        "rmse_in_sample_px": rmse_in_sample_px,
+        "rmse_heldout_px": rmse_heldout_px,
+        "heldout_error": heldout_error,
+        "rmse_gate_basis": rmse_gate_basis,
         "mae_px": mae_px,
         "H": H,
         "affine_matrix": affine_matrix,
@@ -924,6 +964,7 @@ def format_telemetry_report(
     status, inliers, total_pts, inlier_ratio, spatial_entropy,
     quad_counts, rmse=None, affine_telemetry=None, engine="N/A", device="N/A",
     status_message=None, active_quadrants=None, notices=None,
+    rmse_in_sample=None, rmse_heldout=None, heldout_count=0, rmse_gate_basis="held-out",
 ):
     """Render three-tier checklist; hide transform values for rejected fits."""
     code = str(status).strip().upper()
@@ -972,6 +1013,9 @@ def format_telemetry_report(
         f"Hardware Runtime Mode : {device}",
         "",
         "VALIDATION GATE CHECKLIST:",
+        f"In-sample RMSE (fit residuals): {rmse_in_sample:.4f} px" if rmse_in_sample is not None else "In-sample RMSE (fit residuals): N/A",
+        f"Held-out RMSE ({int(heldout_count)} check points): {rmse_heldout:.4f} px" if rmse_heldout is not None else "Held-out RMSE: UNAVAILABLE",
+        f"Gate RMSE: {rmse_value:.4f} px ({rmse_gate_basis})" if rmse is not None and math.isfinite(rmse_value) else f"Gate RMSE: N/A ({rmse_gate_basis})",
         f"[{check(rmse_pass)}] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: {rmse_value:.4f} px)" if (accepted and rmse is not None and math.isfinite(rmse_value)) else "[✗] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: N/A)",
         f"[{check(entropy_pass)}] Spatial Spread Score : Entropy >= 0.75 (Measured: {entropy_value:.4f} / 2.00)",
         f"[{check(quadrant_pass)}] Quadrant Distribution: Active Quads >= 3 (Measured: {active} / 4)",
@@ -1024,7 +1068,13 @@ def _rejected_output_tuple(summary, status_message=None, image_shape=(768, 1024)
     )
     telemetry = format_telemetry_report(
         metrics.get("status_code", "FAILED"), inliers, total_pts, ratio,
-        entropy, counts, status_message=message, notices=notices,
+        entropy, counts, rmse=metrics.get("rmse_gate_px"),
+        rmse_in_sample=metrics.get("rmse_in_sample_px"),
+        rmse_heldout=(metrics.get("rmse_heldout_px")
+                      if isinstance(metrics.get("rmse_heldout_px"), (int, float)) else None),
+        heldout_count=metrics.get("heldout_check_points", 0),
+        rmse_gate_basis=metrics.get("rmse_gate_basis", "held-out unavailable"),
+        status_message=message, notices=notices,
     )
     return (
         banner_pil, banner_pil, banner_pil, banner_pil,
@@ -1167,6 +1217,11 @@ def process_alignment(
         inlier_cnt = result["inlier_cnt"]
         total_matches = result["total_matches"]
         rmse_px = result["rmse_px"]
+        rmse_in_sample_px = result["rmse_in_sample_px"]
+        rmse_heldout_px = result["rmse_heldout_px"]
+        heldout_error = result["heldout_error"] or {}
+        rmse_gate_basis = result["rmse_gate_basis"]
+        heldout_rmse_display = f"{rmse_heldout_px:.4f} px" if rmse_heldout_px is not None else "UNAVAILABLE"
         mae_px = result["mae_px"]
         H = result["H"]
         deformation_vectors = result["deformation_vectors"]
@@ -1205,7 +1260,9 @@ def process_alignment(
             f"Refined Matches: {refinement_stats.get('refined_pairs', 0)} ({refinement_stats.get('status', 'not run')})\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"PIXEL METRICS:\n"
-            f"  RMSE: {rmse_px:.4f} px\n"
+            f"  In-sample RMSE (fit residuals): {rmse_in_sample_px:.4f} px\n"
+            f"  Held-out RMSE ({heldout_error.get('n_check_points', 0)} check points): {heldout_rmse_display}\n"
+            f"  Gate RMSE: {rmse_px:.4f} px ({rmse_gate_basis})\n"
             f"  MAE:  {mae_px:.4f} px\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"GROUND METRICS (at {pixel_scale_m} m/px):\n"
@@ -1221,6 +1278,9 @@ def process_alignment(
         telemetry_report = format_telemetry_report(
             status_code, inlier_cnt, total_matches, inlier_pct,
             quadrant_entropy, quadrant_counts, rmse=rmse_px,
+            rmse_in_sample=rmse_in_sample_px, rmse_heldout=rmse_heldout_px,
+            heldout_count=heldout_error.get("n_check_points", 0),
+            rmse_gate_basis=rmse_gate_basis,
             affine_telemetry=affine_telemetry,
             engine=result["engine_used"], device=result["execution_device"],
             status_message=status_message,
@@ -1241,6 +1301,9 @@ def process_alignment(
             deformation_vectors, H,
             {
                 "rmse_px": rmse_px,
+                "rmse_in_sample_px": rmse_in_sample_px,
+                "rmse_heldout_px": rmse_heldout_px if rmse_heldout_px is not None else "UNMEASURED",
+                "rmse_gate_basis": rmse_gate_basis,
                 "mae_px": mae_px,
                 "std_px": ground_metrics.std_px,
                 "rmse_m": rmse_m,
@@ -1287,6 +1350,10 @@ def process_alignment(
             grid_shape=(8, 8),
             pixel_scale_m=pixel_scale_m,
             rmse_px=rmse_px,
+            rmse_in_sample_px=rmse_in_sample_px,
+            rmse_heldout_px=rmse_heldout_px,
+            heldout_count=heldout_error.get("n_check_points", 0),
+            rmse_gate_basis=rmse_gate_basis,
             mae_px=mae_px,
             engine_name=engine_name,
             inlier_count=inlier_cnt,

@@ -68,3 +68,61 @@ def test_circularity_guard_never_reports_fit_set_rmse():
     M = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
     M_ref, rm = evaluate(M, pa, pa)
     assert rm["rmse_px"] == "UNMEASURED"
+
+
+def test_heldout_rmse_is_reported_separately_from_fit_residuals():
+    """The evaluator computes held-out error from check points disjoint from fit points."""
+    from chandra_align.metrics import rmse_heldout
+
+    fit_a = np.array([[0, 0], [10, 0], [0, 10], [10, 10]], dtype=float)
+    fit_b = fit_a + np.array([2.0, -3.0])
+    hold_a = np.array([[20, 20], [30, 40]], dtype=float)
+    hold_b = hold_a + np.array([2.25, -2.0])
+    matrix = np.array([[1.0, 0.0, 2.0], [0.0, 1.0, -3.0]])
+    held = rmse_heldout(matrix, hold_a, hold_b)
+
+    assert held["held_out"] is True
+    assert held["n_check_points"] == len(hold_a)
+    assert held["rmse_px"] == np.sqrt(0.25**2 + 1.0**2)
+    assert not any(np.array_equal(point, fit) for point in hold_a for fit in fit_a)
+
+
+def test_heldout_rmse_is_explicit_in_gate_telemetry_and_dossier():
+    from app import format_telemetry_report
+    from chandra_align.visualization import create_combined_visualization
+
+    telemetry = format_telemetry_report(
+        status="SUCCESS_SUBPIXEL", inliers=20, total_pts=25,
+        inlier_ratio=80.0, spatial_entropy=1.4, quad_counts=[5, 5, 5, 5],
+        rmse=0.42, rmse_in_sample=0.31, rmse_heldout=0.42,
+        heldout_count=4, rmse_gate_basis="held-out",
+    )
+    assert "In-sample RMSE (fit residuals): 0.3100 px" in telemetry
+    assert "Held-out RMSE (4 check points): 0.4200 px" in telemetry
+    assert "Gate RMSE: 0.4200 px (held-out)" in telemetry
+    assert "Measured: 0.4200 px" in telemetry
+
+    image = np.zeros((32, 32), dtype=np.uint8)
+    fig = create_combined_visualization(
+        image, image, image, [], rmse_px=0.42,
+        rmse_in_sample_px=0.31, rmse_heldout_px=0.42,
+        heldout_count=4, rmse_gate_basis="held-out",
+    )
+    try:
+        title = fig._suptitle.get_text()
+        assert "In-sample RMSE: 0.3100 px" in title
+        assert "Held-out RMSE (4 checks): 0.4200 px" in title
+        assert "Gate RMSE: 0.4200 px (held-out)" in title
+    finally:
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+
+    fallback_telemetry = format_telemetry_report(
+        status="SUCCESS_SUBPIXEL", inliers=4, total_pts=4,
+        inlier_ratio=100.0, spatial_entropy=1.2, quad_counts=[1, 1, 1, 1],
+        rmse=0.31, rmse_in_sample=0.31, rmse_heldout=None,
+        heldout_count=0,
+        rmse_gate_basis="in-sample fallback; held-out unavailable",
+    )
+    assert "Held-out RMSE: UNAVAILABLE" in fallback_telemetry
+    assert "Gate RMSE: 0.3100 px (in-sample fallback; held-out unavailable)" in fallback_telemetry

@@ -150,9 +150,13 @@ def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad
     # A weak fit with broad spatial coverage must never be mislabeled as a
     # single-quadrant cluster merely because the overall gate rejected it.
     failures = []
-    if rmse_value > 0.500:
+    if rmse_value > 2.500:
         failures.append(
-            f"High Residual RMSE ({rmse_value:.4f} px > 0.50 px)"
+            f"High Residual RMSE (coarse advisory limit exceeded: {rmse_value:.4f} px > 2.50 px)"
+        )
+    elif rmse_value > 0.500:
+        failures.append(
+            f"High Residual RMSE (sub-pixel limit exceeded: {rmse_value:.4f} px > 0.50 px)"
         )
     if not has_enough_inliers:
         failures.append(
