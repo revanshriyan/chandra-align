@@ -1,0 +1,4 @@
+pair,route_before,runtime_before_s,verdict_before,route_after,runtime_after_s,verdict_after,rmse_in_sample_after_px,rmse_heldout_after_px,mae_in_sample_after_px,mae_heldout_after_px,inliers_after,notes
+synthetic_gentle,RIFT2→LightGlue→SIFT,41.8795,SUCCESS_SUBPIXEL,LightGlue→SIFT (RIFT2 opt-in off),21.0010,SUCCESS_SUBPIXEL,0.3700,0.3801,0.3442,0.3425,44,Same issue01 loader and arrays; first post-change LightGlue model initialization included; CUDA synchronized around run
+OHRC_pair,RIFT2→LightGlue→SIFT,41.0940,COARSE_ADVISORY,LightGlue→SIFT (RIFT2 opt-in off),1.8320,COARSE_ADVISORY,1.7963,1.5380,1.5624,1.3161,34,Same issue01 loader and arrays; CUDA synchronized around run
+TMC2_fore_nadir,RIFT2→LightGlue→SIFT,73.1588,DEGENERATE_FAILURE,LightGlue→SIFT (RIFT2 opt-in off),4.0006,DEGENERATE_FAILURE,2.2259,2.5693,2.0560,2.2509,24,Same issue01 loader and arrays; CUDA synchronized around run

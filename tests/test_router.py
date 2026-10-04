@@ -21,11 +21,11 @@ class TestRouter(unittest.TestCase):
         self.assertAlmostEqual(compute_azimuth_delta(45.0, 225.0), 180.0)
 
     def test_rule1_swir_cross_modal(self):
-        """Rule 1: SWIR source triggers RIFT2_PHASE_CONGRUENCY primary."""
+        """SWIR inputs route to the validated LightGlue primary."""
         source = SensorMeta("OHRC", "SWIR", 0.25, 45.0, 30.0)
         ref = SensorMeta("NAC", "PANCHROMATIC", 0.5, 45.0, 30.0)
         decision = evaluate_route(source, ref)
-        self.assertEqual(decision.primary_strategy, MatcherStrategy.RIFT2_PHASE_CONGRUENCY)
+        self.assertEqual(decision.primary_strategy, MatcherStrategy.LIGHTGLUE_ALIKED)
         self.assertEqual(decision.fallback_strategy, MatcherStrategy.MUTUAL_INFORMATION)
         self.assertIn("Cross-modal", decision.routing_reason)
 
@@ -34,16 +34,16 @@ class TestRouter(unittest.TestCase):
         source = SensorMeta("OHRC", "PANCHROMATIC", 0.25, 45.0, 30.0)
         ref = SensorMeta("NAC", "SWIR", 0.5, 45.0, 30.0)
         decision = evaluate_route(source, ref)
-        self.assertEqual(decision.primary_strategy, MatcherStrategy.RIFT2_PHASE_CONGRUENCY)
+        self.assertEqual(decision.primary_strategy, MatcherStrategy.LIGHTGLUE_ALIKED)
         self.assertEqual(decision.fallback_strategy, MatcherStrategy.MUTUAL_INFORMATION)
 
     def test_rule2_high_azimuth_shift(self):
-        """Rule 2: Azimuth delta >= 60° triggers RIFT2 primary."""
+        """High azimuth shift keeps LightGlue primary and SIFT fallback."""
         source = SensorMeta("OHRC", "PANCHROMATIC", 0.25, 0.0, 30.0)
         ref = SensorMeta("NAC", "PANCHROMATIC", 0.5, 90.0, 30.0)  # 90° delta
         decision = evaluate_route(source, ref)
-        self.assertEqual(decision.primary_strategy, MatcherStrategy.RIFT2_PHASE_CONGRUENCY)
-        self.assertEqual(decision.fallback_strategy, MatcherStrategy.LIGHTGLUE_ALIKED)
+        self.assertEqual(decision.primary_strategy, MatcherStrategy.LIGHTGLUE_ALIKED)
+        self.assertEqual(decision.fallback_strategy, MatcherStrategy.SIFT_RANSAC)
         self.assertGreaterEqual(decision.delta_azimuth_deg, 60.0)
         self.assertIn("High solar azimuth shift", decision.routing_reason)
 
@@ -61,7 +61,7 @@ class TestRouter(unittest.TestCase):
         ref = SensorMeta("NAC", "PANCHROMATIC", 0.5, 130.0, 30.0)  # 80° delta (wraparound)
         decision = evaluate_route(source, ref)
         self.assertGreaterEqual(decision.delta_azimuth_deg, 60.0)
-        self.assertEqual(decision.primary_strategy, MatcherStrategy.RIFT2_PHASE_CONGRUENCY)
+        self.assertEqual(decision.primary_strategy, MatcherStrategy.LIGHTGLUE_ALIKED)
 
     def test_rule3_standard_optical(self):
         """Rule 3: Standard regime (low azimuth, same modality) -> LIGHTGLUE_ALIKED."""
@@ -69,8 +69,16 @@ class TestRouter(unittest.TestCase):
         ref = SensorMeta("NAC", "PANCHROMATIC", 0.5, 50.0, 32.0)  # Small deltas
         decision = evaluate_route(source, ref)
         self.assertEqual(decision.primary_strategy, MatcherStrategy.LIGHTGLUE_ALIKED)
-        self.assertEqual(decision.fallback_strategy, MatcherStrategy.RIFT2_PHASE_CONGRUENCY)
+        self.assertEqual(decision.fallback_strategy, MatcherStrategy.SIFT_RANSAC)
         self.assertIn("Standard optical", decision.routing_reason)
+
+    def test_default_optical_route_never_selects_rift2(self):
+        source = SensorMeta("OHRC", "PANCHROMATIC", 0.25, 10.0, 30.0)
+        reference = SensorMeta("TMC-2", "PANCHROMATIC", 4.47, 12.0, 31.0)
+        decision = evaluate_route(source, reference)
+        self.assertEqual(decision.primary_strategy, MatcherStrategy.LIGHTGLUE_ALIKED)
+        self.assertEqual(decision.fallback_strategy, MatcherStrategy.SIFT_RANSAC)
+        self.assertNotEqual(decision.primary_strategy, MatcherStrategy.RIFT2_PHASE_CONGRUENCY)
 
     def test_rule4_scale_resampling_needed(self):
         """Rule 4: Scale ratio > 4.0 or < 0.25 triggers pre-resampling flag."""

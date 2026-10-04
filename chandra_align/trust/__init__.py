@@ -46,6 +46,7 @@ def evaluate(M, pts_a, pts_b, holdout_fraction=0.2):
         "held_out": False, "n_check_points": int(len(hold_a)),
         "rmse_x_px": "UNMEASURED", "rmse_y_px": "UNMEASURED",
         "rmse_px": "UNMEASURED", "rmse_m": "UNMEASURED",
+        "mae_px": "UNMEASURED", "mae_m": "UNMEASURED",
     }
     if len(hold_a) == 0 or len(fit_a) < 3:
         return None, unmeasured

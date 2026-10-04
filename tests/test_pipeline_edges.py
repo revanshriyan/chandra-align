@@ -567,8 +567,8 @@ class TestIntegration:
 class TestExtremeSolarIllumination:
     """Tests for feature extraction under extreme illumination changes."""
     
-    def test_rift2_extreme_illumination(self):
-        """RIFT2 should be robust to extreme illumination changes."""
+    def test_rift2_remains_explicitly_callable_for_opt_in_evaluation(self):
+        """The non-default RIFT2 wrapper remains manually callable for research."""
         from chandra_align.testing import make_pair_illumination
         from chandra_align.matcher import RIFT2Matcher
         
@@ -579,8 +579,7 @@ class TestExtremeSolarIllumination:
         matcher = RIFT2Matcher(npt=4000, lowes_ratio=0.75)
         pts_a, pts_b = matcher.match(ref, mov)
         
-        # RIFT2 should still find matches even with extreme illumination
-        # May be 0 on synthetic but should not crash
+        # No correspondence-yield claim is made for this non-functional matcher.
         assert pts_a.shape[1] == 2 if pts_a.shape[0] > 0 else True
         assert pts_b.shape[1] == 2 if pts_b.shape[0] > 0 else True
     

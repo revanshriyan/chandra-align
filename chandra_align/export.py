@@ -188,12 +188,18 @@ def export_homography_json(
         "spatial_uniformity": float(uniformity_score) if uniformity_score is not None else "UNMEASURED",
         "metrics_px": {
             "rmse_px": metrics.get("rmse_px", "UNMEASURED"),
+            "rmse_in_sample_px": metrics.get("rmse_in_sample_px", "UNMEASURED"),
+            "rmse_heldout_px": metrics.get("rmse_heldout_px", "UNMEASURED"),
             "mae_px": metrics.get("mae_px", "UNMEASURED"),
+            "mae_in_sample_px": metrics.get("mae_in_sample_px", "UNMEASURED"),
+            "mae_heldout_px": metrics.get("mae_heldout_px", "UNMEASURED"),
             "std_px": metrics.get("std_px", "UNMEASURED")
         },
         "metrics_m": {
             "rmse_m": metrics.get("rmse_m", "UNMEASURED"),
             "mae_m": metrics.get("mae_m", "UNMEASURED"),
+            "mae_in_sample_m": metrics.get("mae_in_sample_m", "UNMEASURED"),
+            "mae_heldout_m": metrics.get("mae_heldout_m", "UNMEASURED"),
             "std_m": metrics.get("std_m", "UNMEASURED")
         }
     }

@@ -21,13 +21,13 @@ photometry:
   ref_emission_deg: 0.0         # reference emission angle for normalization
 
 matcher:
-  tier1: "rift2"              # always run RIFT2 first (phase congruency, CPU, 0 GB VRAM)
+  tier1: "lightglue_aliked"   # validated GPU matcher; RIFT2 is explicit opt-in only
   tier1_inlier_ratio_floor: 0.15
   tier1_uniformity_floor: 0.125   # occupied-cell fraction floor in a 4x4 grid = 2/16
   grid: [4, 4]
   tier2_escalation:
     trigger: "or"             # escalate if inlier_ratio < floor OR uniformity < floor
-    matcher: "lightglue_aliked"   # LightGlue + ALIKED (PyTorch CPU/GPU, Apache-2.0 / BSD-3)
+    matcher: "sift"               # SIFT/RANSAC CPU fallback if the primary is unavailable
     max_keypoints: 4096
     min_inlier_ratio: 0.10
     min_inlier_pairs: 4

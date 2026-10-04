@@ -42,5 +42,5 @@ def test_subpixel_rmse_after_refine(shifted_pair):
     assert rm["held_out"] and rm["n_check_points"] >= 1
     # Synthetic known-shift target is ≤ 0.3 px after refinement (project file §7).
     # With SIFT on our synthetic fixtures the held-out RMSE is ~0.55 px.
-    # The target is aspirational; real data with RIFT2 is expected to reach ≤ 0.3 px.
+    # The target is aspirational; this check measures the current LightGlue/SIFT default cascade.
     assert rm["rmse_px"] < 1.0, f"held-out RMSE {rm['rmse_px']:.3f} px - pipeline runs but synthetic target not met"

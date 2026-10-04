@@ -53,6 +53,7 @@ class NotTrustedReason(str, Enum):
 
 class MatcherTier(str, Enum):
     TIER1_RIFT2 = "rift2"
+    TIER1_LIGHTGLUE_ALIKED = "lightglue_aliked"
     TIER2_LIGHTGLUE_ALIKED = "lightglue_aliked"
     TIER2_LIGHTGLUE_DISK = "lightglue_disk"
     TIER2_SIFT = "sift"  # synthetic fallback
@@ -76,7 +77,7 @@ class PipelineStatus(str, Enum):
 # ============================================================================
 
 class RMSEMetrics(BaseModel):
-    """Sub-pixel RMSE metrics with held-out validation."""
+    """Sub-pixel RMSE and mean absolute error with held-out validation."""
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     held_out: bool = Field(..., description="Whether RMSE computed on held-out check points")
@@ -85,11 +86,13 @@ class RMSEMetrics(BaseModel):
     rmse_y_px: UnmeasuredFloat = Field(default=UNMEASURED, description="RMSE in Y direction (pixels)")
     rmse_px: UnmeasuredFloat = Field(default=UNMEASURED, description="Total RMSE (pixels)")
     rmse_m: UnmeasuredFloat = Field(default=UNMEASURED, description="RMSE in ground meters (RMSE_px * GSD)")
+    mae_px: UnmeasuredFloat = Field(default=UNMEASURED, description="Mean Euclidean reprojection residual (pixels)")
+    mae_m: UnmeasuredFloat = Field(default=UNMEASURED, description="Mean absolute reprojection residual (meters)")
     confidence_interval_95: Optional[tuple[float, float]] = Field(
         default=None, description="95% CI from bootstrap if available"
     )
 
-    @field_validator("rmse_x_px", "rmse_y_px", "rmse_px", "rmse_m", mode="before")
+    @field_validator("rmse_x_px", "rmse_y_px", "rmse_px", "rmse_m", "mae_px", "mae_m", mode="before")
     @classmethod
     def normalize_unmeasured(cls, v: Any) -> UnmeasuredFloat:
         if v is None or v == "UNMEASURED":
@@ -135,7 +138,7 @@ class MetricsBundle(BaseModel):
     quality_flags: list[NotTrustedReason] = Field(default_factory=list)
 
     # Pipeline execution
-    matcher_tier_used: MatcherTier = MatcherTier.TIER1_RIFT2
+    matcher_tier_used: MatcherTier = MatcherTier.TIER1_LIGHTGLUE_ALIKED
     escalated_to_tier2: bool = False
     transformation_mode: TransformationMode = TransformationMode.PIECEWISE_AFFINE
     approximation_flag: bool = Field(default=True, description="Geometry-from-metadata mode")
@@ -266,7 +269,7 @@ class PhotometryConfig(BaseModel):
 class MatcherConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    tier1_method: MatcherTier = MatcherTier.TIER1_RIFT2
+    tier1_method: MatcherTier = MatcherTier.TIER1_LIGHTGLUE_ALIKED
     tier2_method: MatcherTier = MatcherTier.TIER2_LIGHTGLUE_ALIKED
     inlier_ratio_floor: float = Field(default=0.15, ge=0.0, le=1.0)
     uniformity_floor: float = Field(default=0.125, ge=0.0, le=1.0)
@@ -368,6 +371,12 @@ class RegistrationDossier(BaseModel):
     rmse_meters: UnmeasuredFloat = UNMEASURED
     rmse_x_pixels: UnmeasuredFloat = UNMEASURED
     rmse_y_pixels: UnmeasuredFloat = UNMEASURED
+    rmse_in_sample_pixels: UnmeasuredFloat = UNMEASURED
+    rmse_heldout_pixels: UnmeasuredFloat = UNMEASURED
+    mae_in_sample_pixels: UnmeasuredFloat = UNMEASURED
+    mae_heldout_pixels: UnmeasuredFloat = UNMEASURED
+    mae_in_sample_meters: UnmeasuredFloat = UNMEASURED
+    mae_heldout_meters: UnmeasuredFloat = UNMEASURED
 
     # Trust
     trust_flag: TrustFlag
@@ -381,7 +390,11 @@ class RegistrationDossier(BaseModel):
     validation: dict = Field(default_factory=dict)
     quality_flags: list[NotTrustedReason] = Field(default_factory=list)
 
-    @field_validator("matrix_condition_number", "rmse_pixels", "rmse_meters", "rmse_x_pixels", "rmse_y_pixels", mode="before")
+    @field_validator(
+        "matrix_condition_number", "rmse_pixels", "rmse_meters", "rmse_x_pixels", "rmse_y_pixels",
+        "rmse_in_sample_pixels", "rmse_heldout_pixels", "mae_in_sample_pixels", "mae_heldout_pixels",
+        "mae_in_sample_meters", "mae_heldout_meters", mode="before"
+    )
     @classmethod
     def normalize_unmeasured(cls, v: Any) -> UnmeasuredFloat:
         if v is None or v == "UNMEASURED":
@@ -408,7 +421,7 @@ class BenchmarkRow(BaseModel):
     rmse_px: UnmeasuredFloat = UNMEASURED
     rmse_m: UnmeasuredFloat = UNMEASURED
     trust_status: TrustFlag = TrustFlag.NOT_TRUSTED
-    matcher_used: MatcherTier = MatcherTier.TIER1_RIFT2
+    matcher_used: MatcherTier = MatcherTier.TIER1_LIGHTGLUE_ALIKED
     transformation_mode: TransformationMode = TransformationMode.PIECEWISE_AFFINE
     condition_number: UnmeasuredFloat = UNMEASURED
     runtime_seconds: float = 0.0

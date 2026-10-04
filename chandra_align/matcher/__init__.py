@@ -1,9 +1,8 @@
-"""Stage 2 — two-tier matcher cascade.
+"""Default LightGlue→SIFT matcher cascade.
 
-Tier 1: RIFT2 (phase congruency, CPU, vendored port) — always.
-Tier 2: LightGlue + ALIKED — escalation only, when Tier-1 inlier ratio or uniformity
-falls below the config floors. Tier 2 replaces the matcher, never the stage order:
-verification and refinement still happen in Stage 3 after matching.
+RIFT2 is permitted only with an explicit ``rift2_opt_in: true`` setting because
+its measured output is non-functional and its redistribution license is unclear.
+Verification and refinement still happen after matching.
 SuperPoint = disclosed research-license fallback. RoMa/EfficientLoFTR = offline
 benchmarking only, never wired here.
 """
@@ -137,14 +136,23 @@ def _mutual_nn(des_a, des_b, kp_a, kp_b, lowes_ratio=0.75):
 
 
 def make_matcher(cfg_matcher: dict, tier: str):
-    """Factory from a modality profile's `matcher` block. tier: 'tier1' or 'tier2'."""
-    if tier == "tier1":
-        matcher_name = cfg_matcher.get("tier1_matcher", "rift2")
-        if matcher_name == "sift":
+    """Create configured primary/fallback matchers; RIFT2 requires explicit opt-in."""
+    def configured(name):
+        if name == "sift":
             return SIFTMatcher()
-        return RIFT2Matcher()
+        if name in ("lightglue", "lightglue_aliked"):
+            return LightGlueMatcher(cfg_matcher)
+        if name == "rift2" and cfg_matcher.get("rift2_opt_in") is True:
+            return RIFT2Matcher()
+        if name == "rift2":
+            raise ValueError("RIFT2 is disabled unless matcher.rift2_opt_in is explicitly true")
+        raise ValueError(f"unknown matcher configured: {name!r}")
+
+    if tier == "tier1":
+        return configured(cfg_matcher.get("tier1", cfg_matcher.get("tier1_matcher", "lightglue_aliked")))
     if tier == "tier2":
-        return LightGlueMatcher(cfg_matcher)
+        escalation = cfg_matcher.get("tier2_escalation", {})
+        return configured(escalation.get("matcher", "sift"))
     raise ValueError(f"unknown matcher tier: {tier!r}")
 
 
@@ -205,7 +213,7 @@ class LightGlueMatcher:
 
 
 def run_cascade(img_a, img_b, cfg_matcher: dict, uniformity_score=None):
-    """Two-tier cascade: Tier-1 RIFT2 always; escalate to Tier-2 if floors unmet.
+    """Run the default LightGlue→SIFT cascade; explicit RIFT2 opt-in is isolated.
 
     Returns (pts_a, pts_b, matcher_name, escalated: bool).
     """
@@ -228,7 +236,7 @@ def run_cascade(img_a, img_b, cfg_matcher: dict, uniformity_score=None):
         if need:
             esc_cfg = dict(cfg_matcher)
             try:
-                t2 = LightGlueMatcher(esc_cfg)
+                t2 = make_matcher(esc_cfg, "tier2")
                 pa2, pb2 = t2.match(img_a, img_b)
                 min_pairs = int(floors.get("min_inlier_pairs", 4))
                 if pa2.shape[0] >= min_pairs:

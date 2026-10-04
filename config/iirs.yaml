@@ -24,13 +24,13 @@ photometry:
     fallback_band_index: 80
 
 matcher:
-  tier1: "rift2"
+  tier1: "lightglue_aliked"
   tier1_inlier_ratio_floor: 0.10   # lower for spectral data
   tier1_uniformity_floor: 0.125
   grid: [4, 4]
   tier2_escalation:
     trigger: "or"
-    matcher: "lightglue_aliked"
+    matcher: "sift"
     max_keypoints: 2048
     min_inlier_ratio: 0.08
 

@@ -15,13 +15,13 @@ photometry:
   geometry_mode: "from_metadata"
 
 matcher:
-  tier1: "rift2"
+  tier1: "lightglue_aliked"
   tier1_inlier_ratio_floor: 0.15
   tier1_uniformity_floor: 0.125
   grid: [4, 4]
   tier2_escalation:
     trigger: "or"
-    matcher: "lightglue_aliked"
+    matcher: "sift"
     max_keypoints: 4096
     min_inlier_ratio: 0.10
 

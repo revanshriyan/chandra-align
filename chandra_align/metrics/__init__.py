@@ -47,6 +47,7 @@ def rmse_heldout(M, pts_hold_a, pts_hold_b, gsd_m=1.0):
     res = pred - pb
     rx = float(np.sqrt((res[:, 0] ** 2).mean()))
     ry = float(np.sqrt((res[:, 1] ** 2).mean()))
+    magnitude = np.linalg.norm(res, axis=1)
     rt = float(np.sqrt((res ** 2).sum(axis=1).mean()))
     return {
         "held_out": True,
@@ -55,6 +56,8 @@ def rmse_heldout(M, pts_hold_a, pts_hold_b, gsd_m=1.0):
         "rmse_y_px": ry,
         "rmse_px": rt,
         "rmse_m": rt * float(gsd_m),
+        "mae_px": float(magnitude.mean()),
+        "mae_m": float(magnitude.mean()) * float(gsd_m),
     }
 
 

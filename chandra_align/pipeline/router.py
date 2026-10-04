@@ -5,6 +5,7 @@ from typing import Optional
 
 class MatcherStrategy(str, Enum):
     LIGHTGLUE_ALIKED = "LIGHTGLUE_ALIKED"
+    SIFT_RANSAC = "SIFT_RANSAC"
     RIFT2_PHASE_CONGRUENCY = "RIFT2_PHASE_CONGRUENCY"
     CHAINED_TRANSFORM = "CHAINED_TRANSFORM"
     MUTUAL_INFORMATION = "MUTUAL_INFORMATION"
@@ -74,10 +75,10 @@ def evaluate_route(source_meta: SensorMeta, ref_meta: SensorMeta) -> RoutingDeci
             routing_reason="SAR/Radar cross-modal payload detected."
         )
 
-    # Rule 1: SWIR / Hyperspectral Cross-Modal
+    # Rule 1: SWIR / Hyperspectral Cross-Modal; RIFT2 is opt-in only.
     if source_meta.sensor_type == "SWIR" or ref_meta.sensor_type == "SWIR":
         return RoutingDecision(
-            primary_strategy=MatcherStrategy.RIFT2_PHASE_CONGRUENCY,
+            primary_strategy=MatcherStrategy.LIGHTGLUE_ALIKED,
             fallback_strategy=MatcherStrategy.MUTUAL_INFORMATION,
             delta_azimuth_deg=delta_az,
             delta_incidence_deg=delta_inc,
@@ -87,11 +88,12 @@ def evaluate_route(source_meta: SensorMeta, ref_meta: SensorMeta) -> RoutingDeci
             routing_reason="Cross-modal SWIR/Panchromatic payload detected."
         )
 
-    # Rule 2: Illumination Shift (Azimuth >= 60 deg)
+    # Rule 2: Illumination Shift (Azimuth >= 60 deg). The validated default
+    # remains LightGlue, with SIFT as the classical fallback.
     if delta_az >= 60.0:
         return RoutingDecision(
-            primary_strategy=MatcherStrategy.RIFT2_PHASE_CONGRUENCY,
-            fallback_strategy=MatcherStrategy.LIGHTGLUE_ALIKED,
+            primary_strategy=MatcherStrategy.LIGHTGLUE_ALIKED,
+            fallback_strategy=MatcherStrategy.SIFT_RANSAC,
             delta_azimuth_deg=delta_az,
             delta_incidence_deg=delta_inc,
             scale_ratio=scale_ratio,
@@ -103,7 +105,7 @@ def evaluate_route(source_meta: SensorMeta, ref_meta: SensorMeta) -> RoutingDeci
     # Rule 3 & 4: Standard / Scale-adapted Regime
     return RoutingDecision(
         primary_strategy=MatcherStrategy.LIGHTGLUE_ALIKED,
-        fallback_strategy=MatcherStrategy.RIFT2_PHASE_CONGRUENCY,
+        fallback_strategy=MatcherStrategy.SIFT_RANSAC,
         delta_azimuth_deg=delta_az,
         delta_incidence_deg=delta_inc,
         scale_ratio=scale_ratio,

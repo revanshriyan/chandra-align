@@ -48,6 +48,62 @@ def test_match_pair_hf():
     assert len(engine) > 0
 
 
+def test_default_matcher_never_attempts_rift2(monkeypatch):
+    import chandra_align.matcher as matcher_module
+    import chandra_align.matching.deep_matchers as deep_module
+
+    monkeypatch.delenv("CHANDRA_ENABLE_RIFT2", raising=False)
+
+    class FakeResult:
+        status = "OK"
+        matcher_name = "ALIKED"
+        error_msg = None
+        pts_src = np.array([[1, 1], [2, 2], [3, 3], [4, 4]], dtype=np.float32)
+        pts_ref = pts_src + 1
+
+    class FakeChain:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def match(self, *args, **kwargs):
+            return FakeResult()
+
+    def forbidden_rift(*args, **kwargs):
+        raise AssertionError("RIFT2 must not be imported or instantiated by default")
+
+    monkeypatch.setattr(deep_module, "DeepMatcherChain", FakeChain)
+    monkeypatch.setattr(deep_module, "LightGlueALIKEDMatcher", lambda **kwargs: object())
+    monkeypatch.setattr(matcher_module, "RIFT2Matcher", forbidden_rift, raising=False)
+    ref = np.arange(64 * 64, dtype=np.uint8).reshape(64, 64)
+    pts_ref, pts_src, engine, diagnostics = match_pair_hf(ref, ref)
+    assert len(pts_ref) == len(pts_src) == 4
+    assert "LightGlue/ALIKED" in engine
+    assert diagnostics["primary_engine"] == "LightGlue/ALIKED"
+    assert diagnostics["rift2_opt_in"] is False
+
+
+def test_registration_dossier_has_separate_in_sample_and_heldout_mae():
+    from src.exporters.dossier import create_dossier
+
+    dossier = create_dossier(
+        run_id="mae-check", product_info={}, reference_info={}, match_points=[],
+        metrics={
+            "rmse": {"held_out": True, "n_check_points": 4, "rmse_px": 0.4, "mae_px": 0.3},
+            "rmse_in_sample_px": 0.5, "rmse_heldout_px": 0.4,
+            "mae_in_sample_px": 0.35, "mae_heldout_px": 0.3,
+            "inliers": {},
+        },
+        transform_info={"matcher": "LightGlue/ALIKED", "matrix": [[1, 0, 0], [0, 1, 0]]},
+        gsd_product=1.0, gsd_reference=2.0,
+    )
+    assert dossier.rmse_in_sample_pixels == 0.5
+    assert dossier.rmse_heldout_pixels == 0.4
+    assert dossier.mae_in_sample_pixels == 0.35
+    assert dossier.mae_heldout_pixels == 0.3
+    assert dossier.mae_in_sample_meters == 0.7
+    assert dossier.mae_heldout_meters == 0.6
+
+
 def test_align_core_synthetic():
     """Verify the calibrated shift clears the strict registration gate."""
     ref, sec, _known_transform = make_pair_shift(
@@ -67,6 +123,10 @@ def test_align_core_synthetic():
     assert not result["rejected"]
     assert result["status_code"] == "SUCCESS_SUBPIXEL"
     assert result["inlier_cnt"] > 20
+    assert result["mae_in_sample_px"] >= 0
+    assert result["mae_heldout_px"] >= 0
+    assert result["rmse_in_sample_px"] >= 0
+    assert result["rmse_heldout_px"] >= 0
     assert result["rmse_px"] <= 0.50
     assert result["quadrant_spatial_entropy"] >= 0.75
     assert result["judge_metrics"]["active_quadrants_count"] >= 3

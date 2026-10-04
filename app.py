@@ -386,7 +386,7 @@ def load_lunar_raster(file_input, max_dimension: int = MAX_IMAGE_DIMENSION, band
 def match_pair_hf(
     img1: np.ndarray, img2: np.ndarray, ransac_threshold_px: float = 3.0
 ) -> tuple[np.ndarray, np.ndarray, str, dict]:
-    """Run phase-congruency RIFT2 first and disclose any LightGlue/ALIKED handoff."""
+    """Run LightGlue/ALIKED, then SIFT; RIFT2 runs only with explicit opt-in."""
     def as_numpy(image):
         # Gradio/ZeroGPU callers can hand a tensor-backed image to the matcher.
         # Detach and move it to host memory before NumPy/OpenCV conversion.
@@ -413,27 +413,12 @@ def match_pair_hf(
     sift_input1, sift_input2 = as_numpy(img1), as_numpy(img2)
     img1, img2 = as_uint8(sift_input1), as_uint8(sift_input2)
     diagnostics = {
-        "primary_engine": "RIFT2 (Phase Congruency)",
+        "primary_engine": "LightGlue/ALIKED",
         "fallback_triggered": False,
         "fallback_reason": None,
-        "registration_engine": "RIFT2 (Phase Congruency)",
+        "registration_engine": "LightGlue/ALIKED",
+        "rift2_opt_in": os.environ.get("CHANDRA_ENABLE_RIFT2", "").strip().lower() in {"1", "true", "yes", "on"},
     }
-    # RIFT2 computes phase-congruency features and is the deterministic primary.
-    try:
-        from chandra_align.matcher import RIFT2Matcher
-        primary = RIFT2Matcher(npt=2048)
-        src_pts, dst_pts = primary.match(img1, img2)
-        if len(src_pts) >= 4:
-            return src_pts, dst_pts, "RIFT2 (Phase Congruency)", diagnostics
-        primary_error = f"RIFT2 returned {len(src_pts)} correspondences (< 4 required)"
-        fallback_reason = f"Primary RIFT2 produced insufficient correspondences ({len(src_pts)} < 4)"
-    except Exception as exc:
-        primary_error = str(exc)
-        fallback_reason = f"Primary RIFT2 execution exception ({type(exc).__name__}: {exc})"
-
-    # If the primary cannot produce a geometric candidate at all, make one
-    # bounded LightGlue/ALIKED attempt before trying the classical fallback.
-    diagnostics.update(fallback_triggered=True, fallback_reason=fallback_reason)
     try:
         from chandra_align.matching.deep_matchers import DeepMatcherChain, LightGlueALIKEDMatcher
         result = DeepMatcherChain(matchers=[LightGlueALIKEDMatcher(max_keypoints=2048)]).match(
@@ -442,10 +427,33 @@ def match_pair_hf(
         if len(result.pts_src) >= 4:
             diagnostics["registration_engine"] = f"LightGlue/ALIKED ({result.matcher_name})"
             return result.pts_src, result.pts_ref, diagnostics["registration_engine"], diagnostics
-        diagnostics["fallback_error"] = result.error_msg or "LightGlue/ALIKED returned fewer than four correspondences"
+        lightglue_error = result.error_msg or "LightGlue/ALIKED returned fewer than four correspondences"
     except Exception as exc:
-        diagnostics["fallback_error"] = str(exc)
+        lightglue_error = f"{type(exc).__name__}: {exc}"
 
+    diagnostics.update(
+        fallback_triggered=True,
+        fallback_reason=f"LightGlue/ALIKED insufficient correspondences or exception: {lightglue_error}",
+        fallback_error=lightglue_error,
+    )
+
+    # RIFT2 remains callable only by explicit operator opt-in. Its license is
+    # unresolved and its measured correspondence yield is non-functional.
+    rift2_error = "not attempted (opt-in disabled)"
+    if diagnostics["rift2_opt_in"]:
+        try:
+            from chandra_align.matcher import RIFT2Matcher
+            src_pts, dst_pts = RIFT2Matcher(npt=2048).match(img1, img2)
+            if len(src_pts) >= 4:
+                diagnostics["registration_engine"] = "RIFT2 (Phase Congruency; opt-in)"
+                return src_pts, dst_pts, diagnostics["registration_engine"], diagnostics
+            rift2_error = f"RIFT2 returned {len(src_pts)} correspondences (< 4 required)"
+        except Exception as exc:
+            rift2_error = f"{type(exc).__name__}: {exc}"
+        diagnostics["rift2_error"] = rift2_error
+        diagnostics["fallback_reason"] += "; opt-in RIFT2 did not produce a candidate"
+
+    # Validated CPU fallback. RIFT2 is not attempted unless an operator opted in.
     # Keep live Spaces useful when optional deep-matcher weights/dependencies
     # are unavailable. SIFT is bounded, and candidate fits are RANSAC-verified.
     diagnostics["deep_fallback_error"] = diagnostics.get("fallback_error")
@@ -532,8 +540,37 @@ def match_pair_hf(
         diagnostics["sift_error"] = "No SIFT candidate reached eight partial-affine RANSAC inliers"
     except Exception as exc:
         diagnostics["sift_error"] = str(exc)
-    diagnostics["primary_error"] = primary_error
+    diagnostics["lightglue_error"] = lightglue_error
     return np.empty((0, 2), np.float32), np.empty((0, 2), np.float32), "Failed", diagnostics
+
+
+def _match_sift_ransac(ref_image, sec_image, threshold_px):
+    """Run the CPU SIFT fallback after a weak LightGlue geometric candidate."""
+    ref_image, sec_image = ensure_uint8(ref_image), ensure_uint8(sec_image)
+    sift = cv2.SIFT_create(nfeatures=10000, contrastThreshold=0.005, edgeThreshold=15)
+    key_ref, desc_ref = sift.detectAndCompute(ref_image, None)
+    key_sec, desc_sec = sift.detectAndCompute(sec_image, None)
+    if desc_ref is None or desc_sec is None or len(desc_ref) < 2 or len(desc_sec) < 2:
+        return np.empty((0, 2), np.float32), np.empty((0, 2), np.float32), None
+    key_ref, idx_ref = select_quadrant_keypoints(key_ref, ref_image.shape, 50)
+    key_sec, idx_sec = select_quadrant_keypoints(key_sec, sec_image.shape, 50)
+    desc_ref, desc_sec = desc_ref[idx_ref], desc_sec[idx_sec]
+    candidates = cv2.BFMatcher(cv2.NORM_L2).knnMatch(desc_sec, desc_ref, k=2)
+    best = None
+    for ratio in (0.75, 0.80, 0.85):
+        good = [first for pair in candidates if len(pair) == 2
+                for first, second in [pair] if first.distance < ratio * second.distance]
+        if len(good) < MIN_REGISTRATION_INLIERS:
+            continue
+        points_sec = np.float32([key_sec[item.queryIdx].pt for item in good])
+        points_ref = np.float32([key_ref[item.trainIdx].pt for item in good])
+        matrix, mask = _estimate_partial_affine_with_threshold(points_sec, points_ref, threshold_px)
+        count = int(mask.sum()) if mask is not None else 0
+        if matrix is not None and count >= MIN_REGISTRATION_INLIERS and (best is None or count > best[0]):
+            best = (count, points_ref, points_sec)
+    if best is None:
+        return np.empty((0, 2), np.float32), np.empty((0, 2), np.float32), None
+    return best[1], best[2], best[0]
 
 
 def _align_core(
@@ -694,7 +731,7 @@ def _align_core(
     inlier_cnt = int(inliers.sum())
 
     # Escalate only when the primary geometric solution is weak. The fallback
-    # is bounded to one LightGlue/ALIKED pass with at most 2048 keypoints.
+    # is the distinct CPU SIFT/RANSAC path, rather than retrying LightGlue.
     if not execution_diagnostics["fallback_triggered"]:
         inlier_ratio = inlier_cnt / max(len(pts_ref), 1)
         primary_uniformity = spatial_distribution_metrics(
@@ -713,11 +750,9 @@ def _align_core(
                 fallback_triggered=True, fallback_reason=fallback_reason
             )
             try:
-                from chandra_align.matching.deep_matchers import DeepMatcherChain, LightGlueALIKEDMatcher
-                fallback = DeepMatcherChain(
-                    matchers=[LightGlueALIKEDMatcher(max_keypoints=2048)]
-                ).match(match_ref, match_sec, min_matches=4)
-                fallback_ref, fallback_sec = fallback.pts_src, fallback.pts_ref
+                fallback_ref, fallback_sec, fallback_inlier_count = _match_sift_ransac(
+                    match_ref, match_sec, ransac_threshold_px
+                )
                 fallback_ref = fallback_ref / ref_match_scale if ref_match_scale != 1.0 else fallback_ref
                 fallback_sec = fallback_sec / sec_match_scale if sec_match_scale != 1.0 else fallback_sec
                 if len(fallback_ref):
@@ -733,7 +768,7 @@ def _align_core(
                         fallback_ref, fallback_sec, ref_original.shape[:2],
                         grid_shape=(8, 8), max_per_bucket=8
                     )
-                if len(fallback_ref) >= 3:
+                if len(fallback_ref) >= 3 and fallback_inlier_count is not None:
                     fallback_affine, fallback_inliers = _estimate_partial_affine_with_threshold(
                         fallback_sec, fallback_ref, ransac_threshold_px
                     )
@@ -742,10 +777,10 @@ def _align_core(
                             pts_ref, pts_sec = fallback_ref, fallback_sec
                             affine_matrix, inliers = fallback_affine, fallback_inliers
                             inlier_cnt = int(inliers.sum())
-                            engine_name = f"LightGlue/ALIKED ({fallback.matcher_name})"
+                            engine_name = "SIFT + Brute-Force (RANSAC fallback)"
                             execution_diagnostics["registration_engine"] = engine_name
-                if execution_diagnostics["registration_engine"] == "RIFT2 (Phase Congruency)":
-                    execution_diagnostics["fallback_error"] = fallback.error_msg or "Fallback did not yield a valid partial affine with at least eight inliers"
+                if execution_diagnostics["registration_engine"] != engine_name:
+                    execution_diagnostics["fallback_error"] = "SIFT/RANSAC did not yield a valid partial affine with the required inlier count"
             except Exception as exc:
                 execution_diagnostics["fallback_error"] = str(exc)
 
@@ -792,6 +827,7 @@ def _align_core(
     quadrant_html = format_quadrant_html(quadrant_metrics, quadrant_spatial_entropy)
 
     rmse_in_sample_px = float(np.sqrt(np.mean(residuals_mag ** 2))) if len(residuals_mag) > 0 else 0.0
+    mae_in_sample_px = float(np.mean(residuals_mag)) if len(residuals_mag) > 0 else 0.0
     from chandra_align.trust import evaluate as evaluate_heldout_rmse
     heldout_error = None
     heldout_error_label = None
@@ -809,14 +845,16 @@ def _align_core(
         heldout_error_label = f"held-out unavailable ({exc})"
     if heldout_error_label:
         rmse_heldout_px = None
+        mae_heldout_px = None
         rmse_gate_px = rmse_in_sample_px
         rmse_gate_basis = f"in-sample fallback; {heldout_error_label}"
     else:
         rmse_heldout_px = float(heldout_error["rmse_px"])
+        mae_heldout_px = float(heldout_error["mae_px"])
         rmse_gate_px = rmse_heldout_px
         rmse_gate_basis = "held-out"
     rmse_px = rmse_gate_px
-    mae_px = float(np.mean(residuals_mag)) if len(residuals_mag) > 0 else 0.0
+    mae_px = mae_in_sample_px
     affine_telemetry = decompose_partial_affine(affine_matrix)
     status_message, status_code = validate_registration_gate(
         rmse_px, inlier_cnt, MIN_REGISTRATION_INLIERS,
@@ -833,6 +871,8 @@ def _align_core(
     judge_metrics.update({
         "rmse_in_sample_px": rmse_in_sample_px,
         "rmse_heldout_px": rmse_heldout_px if rmse_heldout_px is not None else "UNMEASURED",
+        "mae_in_sample_px": mae_in_sample_px,
+        "mae_heldout_px": mae_heldout_px if mae_heldout_px is not None else "UNMEASURED",
         "rmse_gate_px": rmse_gate_px,
         "rmse_gate_basis": rmse_gate_basis,
         "heldout_check_points": int(heldout_error.get("n_check_points", 0)),
@@ -842,9 +882,9 @@ def _align_core(
     if "sift" in engine_lower:
         engine_used = "Fallback (SIFT)"
     elif "lightglue" in engine_lower or "aliked" in engine_lower:
-        engine_used = "Fallback (LightGlue/ALIKED)"
+        engine_used = "Primary (LightGlue/ALIKED)"
     else:
-        engine_used = "Primary (RIFT2 phase congruency)"
+        engine_used = "Opt-in (RIFT2 phase congruency)"
     execution_device = "GPU (ZeroGPU)" if _zerogpu_runtime_enabled() else "CPU"
 
     if status_code == "DEGENERATE_FAILURE":
@@ -863,6 +903,8 @@ def _align_core(
             "rmse_px": None,
             "rmse_in_sample_px": rmse_in_sample_px,
             "rmse_heldout_px": rmse_heldout_px,
+            "mae_in_sample_px": mae_in_sample_px,
+            "mae_heldout_px": mae_heldout_px,
             "heldout_error": heldout_error,
             "rmse_gate_px": rmse_gate_px,
             "rmse_gate_basis": rmse_gate_basis,
@@ -939,6 +981,8 @@ def _align_core(
         "rmse_px": rmse_px,
         "rmse_in_sample_px": rmse_in_sample_px,
         "rmse_heldout_px": rmse_heldout_px,
+        "mae_in_sample_px": mae_in_sample_px,
+        "mae_heldout_px": mae_heldout_px,
         "heldout_error": heldout_error,
         "rmse_gate_basis": rmse_gate_basis,
         "mae_px": mae_px,
@@ -976,6 +1020,7 @@ def format_telemetry_report(
     quad_counts, rmse=None, affine_telemetry=None, engine="N/A", device="N/A",
     status_message=None, active_quadrants=None, notices=None,
     rmse_in_sample=None, rmse_heldout=None, heldout_count=0, rmse_gate_basis="held-out",
+    mae_in_sample=None, mae_heldout=None,
 ):
     """Render three-tier checklist; hide transform values for rejected fits."""
     code = str(status).strip().upper()
@@ -1026,6 +1071,8 @@ def format_telemetry_report(
         "VALIDATION GATE CHECKLIST:",
         f"In-sample RMSE (fit residuals): {rmse_in_sample:.4f} px" if rmse_in_sample is not None else "In-sample RMSE (fit residuals): N/A",
         f"Held-out RMSE ({int(heldout_count)} check points): {rmse_heldout:.4f} px" if rmse_heldout is not None else "Held-out RMSE: UNAVAILABLE",
+        f"In-sample MAE (fit residuals): {mae_in_sample:.4f} px" if mae_in_sample is not None else "In-sample MAE (fit residuals): N/A",
+        f"Held-out MAE ({int(heldout_count)} check points): {mae_heldout:.4f} px" if mae_heldout is not None else "Held-out MAE: UNAVAILABLE",
         f"Gate RMSE: {rmse_value:.4f} px ({rmse_gate_basis})" if rmse is not None and math.isfinite(rmse_value) else f"Gate RMSE: N/A ({rmse_gate_basis})",
         f"[{check(rmse_pass)}] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: {rmse_value:.4f} px)" if (accepted and rmse is not None and math.isfinite(rmse_value)) else "[✗] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: N/A)",
         f"[{check(entropy_pass)}] Spatial Spread Score : Entropy >= 0.75 (Measured: {entropy_value:.4f} / 2.00)",
@@ -1261,6 +1308,8 @@ def process_alignment(
         rmse_gate_basis = result["rmse_gate_basis"]
         heldout_rmse_display = f"{rmse_heldout_px:.4f} px" if rmse_heldout_px is not None else "UNAVAILABLE"
         mae_px = result["mae_px"]
+        mae_in_sample_px = result["mae_in_sample_px"]
+        mae_heldout_px = result["mae_heldout_px"]
         H = result["H"]
         deformation_vectors = result["deformation_vectors"]
         grid_analysis = result["grid_analysis"]
@@ -1280,6 +1329,7 @@ def process_alignment(
         inlier_pct = inlier_cnt / max(total_matches, 1) * 100
         rmse_m = rmse_px * pixel_scale_m
         mae_m = mae_px * pixel_scale_m
+        heldout_mae_display = f"{mae_heldout_px:.4f} px" if mae_heldout_px is not None else "UNAVAILABLE"
         
         notice_block = ("\n".join(f"⚠️ **NOTICE:** {n}" for n in large_image_notices) + "\n\n") if large_image_notices else ""
         report = (
@@ -1289,7 +1339,7 @@ def process_alignment(
             f"Matcher Engine: {engine_name}\n"
             f"Registration Transform: 4-DOF Partial Affine (2x3), RANSAC threshold {result['ransac_threshold_px']:.1f} px\n"
             f"Registration Matrix Engine: {result['execution_diagnostics'].get('registration_engine', engine_name)}\n"
-            f"Primary Engine: {result['execution_diagnostics'].get('primary_engine', 'RIFT2 (Phase Congruency)')}\n"
+            f"Primary Engine: {result['execution_diagnostics'].get('primary_engine', 'LightGlue/ALIKED')}\n"
             f"Fallback Triggered: {result['execution_diagnostics'].get('fallback_triggered', False)}\n"
             f"Fallback Reason: {result['execution_diagnostics'].get('fallback_reason') or 'None'}\n"
             f"Sensor Pair Mode: {result['sensor_pair_mode']}\n"
@@ -1300,8 +1350,9 @@ def process_alignment(
             f"PIXEL METRICS:\n"
             f"  In-sample RMSE (fit residuals): {rmse_in_sample_px:.4f} px\n"
             f"  Held-out RMSE ({heldout_error.get('n_check_points', 0)} check points): {heldout_rmse_display}\n"
+            f"  In-sample MAE (fit residuals): {mae_in_sample_px:.4f} px\n"
+            f"  Held-out MAE ({heldout_error.get('n_check_points', 0)} check points): {heldout_mae_display}\n"
             f"  Gate RMSE: {rmse_px:.4f} px ({rmse_gate_basis})\n"
-            f"  MAE:  {mae_px:.4f} px\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"GROUND METRICS (at {pixel_scale_m} m/px):\n"
             f"  RMSE: {rmse_m:.4f} m\n"
@@ -1317,6 +1368,7 @@ def process_alignment(
             status_code, inlier_cnt, total_matches, inlier_pct,
             quadrant_entropy, quadrant_counts, rmse=rmse_px,
             rmse_in_sample=rmse_in_sample_px, rmse_heldout=rmse_heldout_px,
+            mae_in_sample=mae_in_sample_px, mae_heldout=mae_heldout_px,
             heldout_count=heldout_error.get("n_check_points", 0),
             rmse_gate_basis=rmse_gate_basis,
             affine_telemetry=affine_telemetry,
@@ -1341,6 +1393,11 @@ def process_alignment(
                 "rmse_px": rmse_px,
                 "rmse_in_sample_px": rmse_in_sample_px,
                 "rmse_heldout_px": rmse_heldout_px if rmse_heldout_px is not None else "UNMEASURED",
+                "mae_in_sample_px": mae_in_sample_px,
+                "mae_heldout_px": mae_heldout_px if mae_heldout_px is not None else "UNMEASURED",
+                "mae_in_sample_m": mae_in_sample_px * pixel_scale_m,
+                "mae_heldout_m": mae_heldout_px * pixel_scale_m if mae_heldout_px is not None else "UNMEASURED",
+                "mae_gate_basis": "in-sample and held-out diagnostics; MAE is not a gate criterion",
                 "rmse_gate_basis": rmse_gate_basis,
                 "mae_px": mae_px,
                 "std_px": ground_metrics.std_px,
@@ -1390,6 +1447,8 @@ def process_alignment(
             rmse_px=rmse_px,
             rmse_in_sample_px=rmse_in_sample_px,
             rmse_heldout_px=rmse_heldout_px,
+            mae_in_sample_px=mae_in_sample_px,
+            mae_heldout_px=mae_heldout_px,
             heldout_count=heldout_error.get("n_check_points", 0),
             rmse_gate_basis=rmse_gate_basis,
             mae_px=mae_px,
@@ -1873,12 +1932,12 @@ def build_interface():
                 "traditional and learned matchers across lunar sensor pairs and reports that "
                 "illumination and modality differences can degrade classical matching, while "
                 "learned matching improves robustness in difficult polar/cross-modal cases.\n\n"
-                "**CHANDRA-ALIGN implementation:** RIFT2 phase-congruency features are the "
-                "deterministic, bit-exact primary matcher, with quad-tree distribution checks and geometric verification. "
-                "A single bounded LightGlue/ALIKED escalation is attempted when the primary "
-                "solution has a low inlier ratio, poor spatial coverage, or cannot execute. "
-                "The report records the primary engine, whether escalation was attempted, its "
-                "trigger, and which engine supplied the accepted registration matrix."
+                "**CHANDRA-ALIGN implementation:** LightGlue/ALIKED is the default matcher, "
+                "with SIFT + RANSAC as the CPU fallback when learned matching is unavailable "
+                "or its geometric fit is weak. RIFT2 is non-functional in current validation "
+                "and is attempted only when the operator explicitly sets "
+                "`CHANDRA_ENABLE_RIFT2=1`. The report records matcher selection, fallback "
+                "reason, in-sample and held-out RMSE/MAE, and gate telemetry."
             )
     
     return interface

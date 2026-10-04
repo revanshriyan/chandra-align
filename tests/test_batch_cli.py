@@ -104,7 +104,7 @@ class TestBatchCLI:
         from chandra_align.pipeline.router import RoutingDecision, MatcherStrategy
         mock_evaluate.return_value = RoutingDecision(
             primary_strategy=MatcherStrategy.LIGHTGLUE_ALIKED,
-            fallback_strategy=MatcherStrategy.RIFT2_PHASE_CONGRUENCY,
+            fallback_strategy=MatcherStrategy.SIFT_RANSAC,
             delta_azimuth_deg=0.0,
             delta_incidence_deg=0.0,
             scale_ratio=1.0,
@@ -219,7 +219,7 @@ class TestBatchCLI:
                 pair_id="img3_VS_img4",
                 source_pds4="img3.xml",
                 ref_pds4="img4.xml",
-                primary_strategy="RIFT2_PHASE_CONGRUENCY",
+                primary_strategy="LIGHTGLUE_ALIKED",
                 delta_azimuth_deg=110.0,
                 scale_ratio=0.5,
                 status="SUCCESS",

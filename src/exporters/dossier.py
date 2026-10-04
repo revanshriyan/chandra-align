@@ -57,10 +57,17 @@ def create_dossier(
         RegistrationDossier Pydantic model instance
     """
     # Physical RMSE conversion
-    rmse_pixels = metrics.get('rmse', {}).get('rmse_px', UNMEASURED)
+    rmse_metrics = metrics.get('rmse', {})
+    if not isinstance(rmse_metrics, dict):
+        rmse_metrics = {}
+    rmse_pixels = rmse_metrics.get('rmse_px', metrics.get('rmse_heldout_px', UNMEASURED))
     rmse_meters = UNMEASURED
     if rmse_pixels is not UNMEASURED and isinstance(rmse_pixels, (int, float)):
         rmse_meters = rmse_pixels * gsd_reference
+    mae_heldout = rmse_metrics.get('mae_px', metrics.get('mae_heldout_px', UNMEASURED))
+    mae_heldout_meters = UNMEASURED
+    if mae_heldout is not UNMEASURED and isinstance(mae_heldout, (int, float)):
+        mae_heldout_meters = mae_heldout * gsd_reference
 
     # Compute GSD ratio
     gsd_ratio = gsd_product / gsd_reference if gsd_reference > 0 else UNMEASURED
@@ -131,8 +138,15 @@ def create_dossier(
         matrix_stable=transform_info.get('matrix_stable', False),
         rmse_pixels=rmse_pixels,
         rmse_meters=rmse_meters,
-        rmse_x_pixels=metrics.get('rmse', {}).get('rmse_x_px', UNMEASURED),
-        rmse_y_pixels=metrics.get('rmse', {}).get('rmse_y_px', UNMEASURED),
+        rmse_x_pixels=rmse_metrics.get('rmse_x_px', UNMEASURED),
+        rmse_y_pixels=rmse_metrics.get('rmse_y_px', UNMEASURED),
+        rmse_in_sample_pixels=metrics.get('rmse_in_sample_px', UNMEASURED),
+        rmse_heldout_pixels=metrics.get('rmse_heldout_px', rmse_pixels),
+        mae_in_sample_pixels=metrics.get('mae_in_sample_px', UNMEASURED),
+        mae_heldout_pixels=mae_heldout,
+        mae_in_sample_meters=(metrics.get('mae_in_sample_px') * gsd_reference
+                              if isinstance(metrics.get('mae_in_sample_px'), (int, float)) else UNMEASURED),
+        mae_heldout_meters=mae_heldout_meters,
         trust_flag=_parse_trust_flag(metrics.get('trust_flag')),
         calibration_status=_parse_calibration_status(metrics.get('calibration_status')),
         approximation_flag=metrics.get('approximation_flag', True),
@@ -149,7 +163,7 @@ def create_dossier(
 def _parse_matcher_tier(matcher: Optional[str]) -> MatcherTier:
     """Parse matcher string to MatcherTier enum."""
     if not matcher:
-        return MatcherTier.TIER1_RIFT2
+        return MatcherTier.TIER1_LIGHTGLUE_ALIKED
     matcher_lower = matcher.lower()
     if 'lightglue' in matcher_lower and 'aliked' in matcher_lower:
         return MatcherTier.TIER2_LIGHTGLUE_ALIKED
@@ -159,7 +173,7 @@ def _parse_matcher_tier(matcher: Optional[str]) -> MatcherTier:
         return MatcherTier.TIER2_SIFT
     elif 'rift2' in matcher_lower:
         return MatcherTier.TIER1_RIFT2
-    return MatcherTier.TIER1_RIFT2
+    return MatcherTier.TIER1_LIGHTGLUE_ALIKED
 
 
 def _parse_transformation_mode(mode: Optional[str]) -> TransformationMode:

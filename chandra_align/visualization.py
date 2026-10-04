@@ -456,6 +456,8 @@ def create_combined_visualization(
     rmse_heldout_px: Optional[float] = None,
     heldout_count: int = 0,
     rmse_gate_basis: str = "held-out",
+    mae_in_sample_px: Optional[float] = None,
+    mae_heldout_px: Optional[float] = None,
 ) -> plt.Figure:
     """
     Create a 4-panel scientific verification dossier:
@@ -479,12 +481,20 @@ def create_combined_visualization(
         f"Held-out RMSE ({heldout_count} checks): {rmse_heldout_px:.4f} px"
         if rmse_heldout_px is not None else "Held-out RMSE: UNAVAILABLE"
     )
+    mae_in_sample_text = (
+        f"In-sample MAE: {mae_in_sample_px:.4f} px"
+        if mae_in_sample_px is not None else f"In-sample MAE: {mae_px:.4f} px"
+    )
+    mae_heldout_text = (
+        f"Held-out MAE: {mae_heldout_px:.4f} px"
+        if mae_heldout_px is not None else "Held-out MAE: UNAVAILABLE"
+    )
     
     fig.suptitle(
         f"CHANDRA-ALIGN | Photogrammetric Verification Dossier\n"
         f"Engine: {engine_name} | Inliers: {inlier_count} / {total_matches} ({inlier_pct:.1f}%) | "
         f"{in_sample_text} | {heldout_text}\n"
-        f"Gate RMSE: {rmse_px:.4f} px ({rmse_gate_basis}) | MAE: {mae_px:.4f} px ({mae_m:.4f} m)",
+        f"Gate RMSE: {rmse_px:.4f} px ({rmse_gate_basis}) | {mae_in_sample_text} | {mae_heldout_text}",
         fontsize=14, fontweight='bold', color='#ffffff', y=0.96
     )
     

@@ -84,6 +84,8 @@ def test_heldout_rmse_is_reported_separately_from_fit_residuals():
     assert held["held_out"] is True
     assert held["n_check_points"] == len(hold_a)
     assert held["rmse_px"] == np.sqrt(0.25**2 + 1.0**2)
+    assert held["mae_px"] == np.sqrt(0.25**2 + 1.0**2)
+    assert held["mae_m"] == held["mae_px"]
     assert not any(np.array_equal(point, fit) for point in hold_a for fit in fit_a)
 
 
@@ -95,10 +97,13 @@ def test_heldout_rmse_is_explicit_in_gate_telemetry_and_dossier():
         status="SUCCESS_SUBPIXEL", inliers=20, total_pts=25,
         inlier_ratio=80.0, spatial_entropy=1.4, quad_counts=[5, 5, 5, 5],
         rmse=0.42, rmse_in_sample=0.31, rmse_heldout=0.42,
+        mae_in_sample=0.28, mae_heldout=0.36,
         heldout_count=4, rmse_gate_basis="held-out",
     )
     assert "In-sample RMSE (fit residuals): 0.3100 px" in telemetry
     assert "Held-out RMSE (4 check points): 0.4200 px" in telemetry
+    assert "In-sample MAE (fit residuals): 0.2800 px" in telemetry
+    assert "Held-out MAE (4 check points): 0.3600 px" in telemetry
     assert "Gate RMSE: 0.4200 px (held-out)" in telemetry
     assert "Measured: 0.4200 px" in telemetry
 
@@ -106,12 +111,15 @@ def test_heldout_rmse_is_explicit_in_gate_telemetry_and_dossier():
     fig = create_combined_visualization(
         image, image, image, [], rmse_px=0.42,
         rmse_in_sample_px=0.31, rmse_heldout_px=0.42,
+        mae_in_sample_px=0.28, mae_heldout_px=0.36,
         heldout_count=4, rmse_gate_basis="held-out",
     )
     try:
         title = fig._suptitle.get_text()
         assert "In-sample RMSE: 0.3100 px" in title
         assert "Held-out RMSE (4 checks): 0.4200 px" in title
+        assert "In-sample MAE: 0.2800 px" in title
+        assert "Held-out MAE: 0.3600 px" in title
         assert "Gate RMSE: 0.4200 px (held-out)" in title
     finally:
         import matplotlib.pyplot as plt
@@ -123,6 +131,8 @@ def test_heldout_rmse_is_explicit_in_gate_telemetry_and_dossier():
         rmse=0.31, rmse_in_sample=0.31, rmse_heldout=None,
         heldout_count=0,
         rmse_gate_basis="in-sample fallback; held-out unavailable",
+        mae_in_sample=0.31, mae_heldout=None,
     )
     assert "Held-out RMSE: UNAVAILABLE" in fallback_telemetry
+    assert "Held-out MAE: UNAVAILABLE" in fallback_telemetry
     assert "Gate RMSE: 0.3100 px (in-sample fallback; held-out unavailable)" in fallback_telemetry
