@@ -1,0 +1,10 @@
+pair,matcher,rmse_heldout_split,rmse_ground_truth,n_gt_points,gt_source,verdict_agrees
+synthetic_gentle,RIFT2,,,25,known synthetic warp (no valid transform),UNMEASURED_NO_FIT
+synthetic_gentle,LightGlue_ALIKED,0.4231709230,0.119166,25,known synthetic warp (data/ground_truth/synthetic_gentle.csv),YES
+synthetic_gentle,SIFT_RANSAC,0.4735171094,0.053374,25,known synthetic warp (data/ground_truth/synthetic_gentle.csv),YES
+OHRC_pair,RIFT2,,,0,pending human landmark picking,UNMEASURED
+OHRC_pair,LightGlue_ALIKED,1.7960719576,,0,pending human landmark picking,UNMEASURED
+OHRC_pair,SIFT_RANSAC,1.5425123317,,0,pending human landmark picking,UNMEASURED
+TMC2_fore_nadir,RIFT2,,,0,pending human landmark picking,UNMEASURED
+TMC2_fore_nadir,LightGlue_ALIKED,1.5558487007,,0,pending human landmark picking,UNMEASURED
+TMC2_fore_nadir,SIFT_RANSAC,2.2258678123,,0,pending human landmark picking,UNMEASURED

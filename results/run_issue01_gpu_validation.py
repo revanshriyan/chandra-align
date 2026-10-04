@@ -109,7 +109,7 @@ def disabled_rift(*args, **kwargs):
     return Matcher
 
 
-def run_one(pair, matcher_name, ref, sec, sensor, pixel_scale):
+def run_one(pair, matcher_name, ref, sec, sensor, pixel_scale, artifact_path=None):
     import app
     import chandra_align.matcher as matcher_module
     import chandra_align.matching.deep_matchers as deep_module
@@ -182,6 +182,13 @@ def run_one(pair, matcher_name, ref, sec, sensor, pixel_scale):
             secondary_sensor_name=sensor, reference_sensor_name=sensor,
             max_image_dimension=4096,
         )
+        if artifact_path is not None and result.get("affine_matrix") is not None:
+            np.savez_compressed(
+                artifact_path,
+                affine_matrix=np.asarray(result["affine_matrix"], dtype=np.float64),
+                pts_ref_inliers=np.asarray(result["pts_ref_inliers"], dtype=np.float64),
+                pts_src_inliers=np.asarray(result["pts_sec_inliers"], dtype=np.float64),
+            )
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         wall = time.perf_counter() - started

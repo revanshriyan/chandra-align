@@ -1120,6 +1120,31 @@ def _safe_rejection_output_tuple(summary, status_message, image_shape=(768, 1024
         return _minimal_rejection_output_tuple(status_message, summary)
 
 
+def _unsupported_raster_message(ref_file, sec_file):
+    """Return a practical upload fallback when a scientific raster won't decode."""
+    paths = []
+    for value in (ref_file, sec_file):
+        if isinstance(value, dict):
+            value = value.get("path") or value.get("name")
+        else:
+            value = getattr(value, "path", None) or getattr(value, "name", None) or value
+        if value:
+            paths.append(os.fspath(value))
+    suffixes = {Path(path).suffix.lower() for path in paths}
+    if ".qub" in suffixes:
+        return (
+            "Could not read the IIRS .qub cube with the available raster readers. "
+            "Export the selected IIRS band (default band 125) to GeoTIFF or PNG and "
+            "upload that image. For ENVI rasters, include the matching .hdr file."
+        )
+    if ".img" in suffixes:
+        return (
+            "Could not read this PDS .IMG product. Upload its matching label/metadata "
+            "file, or export the image to GeoTIFF or PNG."
+        )
+    return "Invalid or unsupported image format. Upload a readable image or scientific raster."
+
+
 def process_alignment(
     ref_file,
     sec_file,
@@ -1180,7 +1205,7 @@ def process_alignment(
         if ref_img is None or sec_img is None:
             return _safe_rejection_output_tuple(
                 _failed_judge_metrics_summary(),
-                "Invalid or Unsupported Planetary File Format",
+                _unsupported_raster_message(ref_file, sec_file),
             )
         result = _align_core(
             ref_img, sec_img,

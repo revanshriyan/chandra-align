@@ -453,6 +453,16 @@ def test_fix4_gpu_duration_and_progress_minimal():
     assert getattr(app.run_alignment_on_gpu, "duration", 90) == 90
 
 
+def test_iirs_qub_decode_failure_has_actionable_upload_fallback():
+    from app import _unsupported_raster_message
+
+    message = _unsupported_raster_message("reference.png", "iirs_band.qub")
+    assert "Could not read the IIRS .qub cube" in message
+    assert "band 125" in message
+    assert "GeoTIFF or PNG" in message
+    assert "matching .hdr" in message
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
