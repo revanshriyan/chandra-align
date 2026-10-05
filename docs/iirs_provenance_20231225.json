@@ -1,0 +1,88 @@
+{
+  "product_id": "ch2_iir_nci_20231225T1904122779_d_img_d18",
+  "mission": "Chandrayaan-2",
+  "instrument": "IIRS (Imaging Infrared Spectrometer)",
+  "level": "Calibrated (nci)",
+  "format": "PDS4",
+  "observation_start": "2023-12-25T19:04:12.277Z",
+  "observation_end": "2023-12-25T19:15:33.575Z",
+  "footprint_refined_corners": {
+    "upper_left": {
+      "lat": -71.721884,
+      "lon": 21.121892
+    },
+    "upper_right": {
+      "lat": -71.748809,
+      "lon": 19.70745
+    },
+    "lower_left": {
+      "lat": -35.8399,
+      "lon": 17.913788
+    },
+    "lower_right": {
+      "lat": -35.849495,
+      "lon": 17.415093
+    }
+  },
+  "overlap_note": "True swath polygon (refined corners) intersects BOTH TMC-2 strips (fore ch2_tmc_ncf_20231101T0125121344_d_img_d18 and nadir ch2_tmc_ncn_20231101T0125121377_d_img_d18), verified by independent south-polar-stereographic quad-vs-quad test.",
+  "source": "PRADAN (pradan.issdc.gov.in), downloaded 2026-10-05",
+  "source_zip": "ch2_iir_nci_20231225T1904122779_d_img_d18.zip",
+  "source_zip_bytes": 2749499488,
+  "cube": {
+    "samples": 250,
+    "lines": 12842,
+    "bands": 256,
+    "dtype": "float32 LE",
+    "interleave": "BSQ",
+    "units": "radiance",
+    "wavelength_range_nm": [
+      712.3,
+      5009.7
+    ]
+  },
+  "extraction": "Pre-extracted candidate bands from the full calibrated cube (direct BSQ read, no resampling). Full 3.29 GB cube retained by the QA engineer for any full-cube rerun.",
+  "bands": [
+    {
+      "band_1indexed": 1,
+      "wavelength_nm": 712.3,
+      "shape": [
+        12842,
+        250
+      ],
+      "dtype": "float32",
+      "finite_frac": 1.0,
+      "min": 0.0,
+      "max": 1188432.25,
+      "mean": 2675.44140625,
+      "file": "bands/iirs2_b001_712.3nm.npy"
+    },
+    {
+      "band_1indexed": 128,
+      "wavelength_nm": 2852.6,
+      "shape": [
+        12842,
+        250
+      ],
+      "dtype": "float32",
+      "finite_frac": 1.0,
+      "min": 0.0,
+      "max": 746.1122436523438,
+      "mean": 191.15760803222656,
+      "file": "bands/iirs2_b128_2852.6nm.npy"
+    },
+    {
+      "band_1indexed": 256,
+      "wavelength_nm": 5009.7,
+      "shape": [
+        12842,
+        250
+      ],
+      "dtype": "float32",
+      "finite_frac": 1.0,
+      "min": 0.0,
+      "max": 50625.94140625,
+      "mean": 739.3106079101562,
+      "file": "bands/iirs2_b256_5009.7nm.npy"
+    }
+  ]
+}
