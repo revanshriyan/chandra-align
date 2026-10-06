@@ -1,0 +1,41 @@
+# IIRS↔TMC-2 LoFTR breakthrough — addendum to Phase 9 report
+
+## Result
+
+**First successful IIRS↔TMC-2 registration.** LoFTR (detector-free dense
+matcher, kornia `outdoor` weights) on the destriped 2852.6 nm band vs
+common-GSD TMC-2:
+
+| Stage | Correspondences | Unique inliers | RMSE | Verdict |
+| --- | --- | --- | --- | --- |
+| LoFTR raw | 2242 | 639 | 1.83 px | COARSE_ADVISORY |
+| + LK sub-pixel refine | 1881 kept | 748 | 1.37 px | COARSE_ADVISORY |
+
+Gate 3: PASS (cond 1.0, det 0.976, scale ratio 1.0, projectivity 0.0).
+Quadrants: 315 / 152 / 161 / 11 — all four active, entropy 1.60.
+Transform: near-rigid, ~1.3° rotation, scale 0.988, translation (2.0, 110.2) px.
+
+## Honest caveats
+
+- COARSE, not sub-pixel (1.37 px > 0.50 px accept threshold).
+- The Phase 10 pixel area-check returns "weak" (0/36 cells verified) — but it
+  was calibrated same-sensor; on cross-modal data this is absence of evidence,
+  not disproof. A cross-modal-calibrated pixel check is future work.
+- Q4 holds only 11 of 748 inliers; spatial weighting is uneven.
+- LoFTR is terrestrially trained; lunar transfer is measured here (it worked),
+  not assumed.
+
+## Environment note
+
+torch 2.14.1+cpu + kornia 0.8.3 installed 2026-10-07 after an initial CDN
+timeout. Fixed a real dtype bug in `loftr_arm.py`: kornia's checkpoint loads
+as float64, so the input now adapts to the model's actual parameter dtype.
+
+## What did not work (kept for the record)
+
+- SIFT on all 3 bands: 1–25 Lowe matches, none gated.
+- Wallis: detection up, matching unchanged — not adopted.
+- GOA→NMI: chance-level on all bands.
+- Phase-congruency arm (Phase 14): 11 Lowe-good → 8 inliers, gate COARSE but
+  inliers clustered on the left edge and pixel-unverified — promising,
+  not claimed.
