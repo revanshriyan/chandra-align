@@ -39,3 +39,20 @@ as float64, so the input now adapts to the model's actual parameter dtype.
 - Phase-congruency arm (Phase 14): 11 Lowe-good → 8 inliers, gate COARSE but
   inliers clustered on the left edge and pixel-unverified — promising,
   not claimed.
+
+## 2026-10-07 update: pseudo-panchromatic composite improves on the single band
+
+Per the SOTA brief (idea 3), tested IIRS composites through the same LoFTR+LK
+harness and gates — no threshold touched:
+
+| Input | LoFTR corr | Inliers (post-LK) | RMSE | Verdict |
+| --- | --- | --- | --- | --- |
+| 2852nm single band | 2242 | 748 | 1.37 px | COARSE_ADVISORY |
+| VNIR composite (<1500nm) | 2432 | 997 | 1.35 px | COARSE_ADVISORY |
+| Full-spectrum mean | 2405 | 724 | 1.90 px | COARSE_ADVISORY |
+| TMC-2-weighted composite | 1950 | 496 | 1.82 px | COARSE_ADVISORY |
+
+The VNIR composite is the new best: +33% inliers, 1.35 px. Full-spectrum
+averaging adds SWIR thermal-emission physics TMC-2 never sees — measured
+worse, as the brief predicted. All composites gate clean; the winner was
+picked by measurement, not by design.
