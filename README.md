@@ -18,13 +18,13 @@ CHANDRA-ALIGN registers lunar imagery across sensor, illumination, and scale dif
 
 ## How It Works
 
-![CHANDRA-ALIGN end-to-end data flow: PDS4 products to verdict and exports](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-overview.png)
+![CHANDRA-ALIGN end-to-end data flow: PDS4 products to verdict and exports](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-overview.svg)
 
 **The pipeline in one picture:** Chandrayaan-2 products (OHRC, TMC-2, IIRS) enter with their PDS4 labels, get preprocessed into bounded crops, run through a matcher cascade, get a RANSAC fit, face a fail-closed gate, and leave as verdict + telemetry + exports. Every number below is measured — the single source of truth is [`results/table_canonical_v1.csv`](results/table_canonical_v1.csv), and [`docs/model-card.md`](docs/model-card.md) is the honest benchmark card generated from it.
 
 ### 1. Matcher cascade
 
-![Matcher cascade: LightGlue/ALIKED primary, RIFT2 opt-in only, SIFT/RANSAC CPU fallback](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-cascade.png)
+![Matcher cascade: LightGlue/ALIKED primary, RIFT2 opt-in only, SIFT/RANSAC CPU fallback](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-cascade.svg)
 
 - **LightGlue/ALIKED (GPU primary)** — the validated deep-learning path: synthetic sub-pixel ACCEPT at 0.3695 px / 43 inliers; competitive real-pair results at 1.7961 px (OHRC) and 1.5558 px (TMC-2).
 - **RIFT2 (non-functional, under investigation; not the primary matcher):** the Sept. 30 CPU audit and issue #1 RTX 5070 GPU validation returned 0–1 correspondences per pair, with no valid fits. Vendored but disabled unless `CHANDRA_ENABLE_RIFT2=1`. See [`results/table_issue01_gpu_validation.csv`](results/table_issue01_gpu_validation.csv).
@@ -33,7 +33,7 @@ CHANDRA-ALIGN registers lunar imagery across sensor, illumination, and scale dif
 
 ### 2. Fail-closed spatial validation gate
 
-![Fail-closed gate: ACCEPT, COARSE ADVISORY, and REJECT tiers with exact thresholds](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-gates.png)
+![Fail-closed gate: ACCEPT, COARSE ADVISORY, and REJECT tiers with exact thresholds](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-gates.svg)
 
 | Tier | RMSE | Inliers | Entropy | Quadrants | Meaning |
 | --- | --- | --- | --- | --- | --- |
@@ -72,6 +72,16 @@ Issue #4 measured three-level coarse-to-fine matching on the same 12 pairs: 5 ma
 ### Cross-modal breakthrough: first IIRS↔TMC-2 registration
 
 SIFT-family matchers failed on every IIRS↔TMC-2 attempt (1–25 Lowe matches, none surviving the gate; see [`docs/phase9-report.md`](docs/phase9-report.md)). A detector-free dense matcher (LoFTR, `chandra_align/xmodal/loftr_arm.py`) broke through on IIRS vs common-GSD TMC-2: **2,432 correspondences → 997 inliers after sub-pixel refinement → RMSE 1.35 px → COARSE_ADVISORY**, Gate 3 passing, all four quadrants active (VNIR composite of the 256-band cube; single-band best was 1.37 px / 748). Full account with caveats in [`docs/phase9-loftr-addendum.md`](docs/phase9-loftr-addendum.md). COARSE, not sub-pixel — reported as measured.
+
+| Input | Matcher | Correspondences | RMSE (px) | Inliers | Quadrants | Gate |
+| --- | --- | --- | --- | --- | --- | --- |
+| IIRS 2852nm ↔ TMC-2 | SIFT_RANSAC | 25 | N/A | 0 | 0/4 | DEGENERATE_FAILURE |
+| IIRS 2852nm ↔ TMC-2 | LoFTR_outdoor | 2242 | 1.83 | 639 | 4/4 | COARSE ADVISORY |
+| IIRS 2852nm ↔ TMC-2 | LoFTR_outdoor + LK refine | 1881 | 1.37 | 748 | 4/4 | COARSE ADVISORY |
+| IIRS VNIR composite ↔ TMC-2 | LoFTR_outdoor + LK refine | 2432 | 1.35 | 997 | 4/4 | COARSE ADVISORY |
+| IIRS 2852nm ↔ TMC-2 | MINIMA_LoFTR + LK refine | 173 | 1.74 | 52 | 3/4 | COARSE ADVISORY |
+
+All cross-modal runs behind the frozen Phase 8 gates; full per-arm account in [`docs/phase9-report.md`](docs/phase9-report.md) and [`docs/phase9-loftr-addendum.md`](docs/phase9-loftr-addendum.md).
 
 ### Example Results
 
