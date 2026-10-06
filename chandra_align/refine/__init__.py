@@ -240,3 +240,75 @@ def refine_subpixel_ncc(img_a, img_b, pts_a, pts_b, ncc_window=11, search_range_
         "refine_residual_std_px": float(np.hypot(res[:, 0], res[:, 1]).std()),
     }
     return kept_a, out_b, stats
+
+
+# ---------------- Phase 8: guarded verification ----------------
+
+def verify_guarded(points_a, points_b, cfg_verification: dict, image_shape=None):
+    """RANSAC verification with Phase 8 guards.
+
+    Pipeline: pre-fit ABSTAIN classification -> verify_magsac -> unique-inlier
+    dedup (2 px) -> RANSAC span guard (<50% Y-span relaxes the threshold up to
+    12 px and refits) -> Gate 3 transform-conditioning backstop.
+
+    Returns a dict with keys: abstain_code (None when a fit was attempted),
+    inliers_a, inliers_b, model, inlier_ratio, n_raw, n_unique, span_guard
+    (whether the threshold was relaxed), gate3 (conditioning report), and
+    ok (fit accepted by every guard).
+    """
+    from chandra_align.metrics.conditioning import (
+        check_transform_conditioning,
+        classify_prefit_abstain,
+        dedup_correspondences,
+    )
+
+    pa = np.asarray(points_a, np.float32).reshape(-1, 2)
+    pb = np.asarray(points_b, np.float32).reshape(-1, 2)
+    out = {
+        "abstain_code": None, "inliers_a": np.zeros((0, 2), np.float32),
+        "inliers_b": np.zeros((0, 2), np.float32), "model": None,
+        "inlier_ratio": 0.0, "n_raw": int(len(pa)), "n_unique": 0,
+        "span_guard": False, "gate3": {}, "ok": False,
+    }
+    code = classify_prefit_abstain(pa, pb)
+    if code is not None:
+        out["abstain_code"] = code
+        return out
+
+    cfg = dict(cfg_verification)
+    inl_a, inl_b, M, ratio = verify_magsac(pa, pb, cfg)
+    if M is None:
+        out["abstain_code"] = "NO_VALID_MODEL"
+        return out
+
+    # Span guard: inliers covering <50% of the Y extent get a relaxed
+    # threshold (up to 12 px) and a refit instead of accepting collapse.
+    if image_shape is not None and len(inl_a) >= 3:
+        h = float(image_shape[0])
+        y_span = float(inl_a[:, 1].max() - inl_a[:, 1].min()) if len(inl_a) else 0.0
+        base_thresh = float(cfg.get("ransac_reproj_threshold", 3.0))
+        if h > 0 and (y_span / h) < 0.5 and base_thresh < 12.0:
+            cfg["ransac_reproj_threshold"] = min(12.0, base_thresh * 2.0)
+            inl_a, inl_b, M, ratio = verify_magsac(pa, pb, cfg)
+            out["span_guard"] = True
+            if M is None:
+                out["abstain_code"] = "NO_VALID_MODEL"
+                return out
+
+    # Unique-inlier dedup before gating; report raw + unique.
+    u_a, u_b, _idx, n_raw, n_unique = dedup_correspondences(inl_a, inl_b, radius=2.0)
+    out["n_raw"], out["n_unique"] = n_raw, n_unique
+    out["inliers_a"] = u_a.astype(np.float32)
+    out["inliers_b"] = u_b.astype(np.float32)
+    out["inlier_ratio"] = float(n_unique) / len(pa) if len(pa) else 0.0
+
+    # Gate 3 backstop on the fitted model.
+    ok3, rep3 = check_transform_conditioning(M)
+    out["gate3"] = rep3
+    if not ok3:
+        out["abstain_code"] = "NO_VALID_MODEL"
+        out["model"] = None
+        return out
+    out["model"] = M
+    out["ok"] = True
+    return out
