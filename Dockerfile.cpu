@@ -1,0 +1,32 @@
+# ==========================================
+# Chandra-Align — slim CPU runtime image
+# No CUDA: runs the SIFT/RANSAC CPU fallback path and the full test suite.
+# Build: docker build -f Dockerfile.cpu -t chandra-align:cpu .
+# Run:   docker run --rm chandra-align:cpu --help
+# ==========================================
+FROM python:3.10-slim AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgdal-dev \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements-cpu.txt .
+RUN pip install --no-cache-dir -r requirements-cpu.txt
+
+# Non-root user
+RUN useradd -m -u 10001 -s /bin/bash appuser
+COPY . /app
+RUN chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 7860
+
+ENTRYPOINT ["python3", "-m", "chandra_align.cli.batch"]
