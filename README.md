@@ -18,18 +18,36 @@ CHANDRA-ALIGN registers lunar imagery across sensor, illumination, and scale dif
 
 ## How It Works
 
-1. **Preprocessing** prepares image data for cross-sensor matching while respecting bounded image-size limits.
-2. **RIFT2 (non-functional, under investigation; not the primary matcher):** the Sept. 30 CPU audit and issue #1 RTX 5070 GPU validation returned 0–1 correspondences per pair, with no valid fits. See [`results/table_issue01_gpu_validation.csv`](results/table_issue01_gpu_validation.csv).
-3. **LightGlue/ALIKED GPU matching** is the validated deep-learning path: synthetic sub-pixel ACCEPT at 0.3695 px / 43 inliers; competitive real-pair results at 1.7961 px (OHRC) and 1.5558 px (TMC-2).
-4. **SIFT + Brute-Force RANSAC CPU fallback** estimates the transform as the validated CPU fallback.
-5. **Sub-pixel refinement** attempts NCC/parabolic refinement of the RANSAC estimate. If too few correspondences survive refinement, the pipeline retains the RANSAC model rather than promoting an unsupported refined fit.
-6. **Fail-safe spatial validation gate** classifies the result as **ACCEPT**, **COARSE ADVISORY**, or **REJECT** before export.
+<p align="center">
+	<img src="docs/images/pipeline-overview.png" width="800" alt="CHANDRA-ALIGN end-to-end data flow: PDS4 products to verdict and exports" />
+</p>
 
-### Spatial Validation Gate
+**The pipeline in one picture:** Chandrayaan-2 products (OHRC, TMC-2, IIRS) enter with their PDS4 labels, get preprocessed into bounded crops, run through a matcher cascade, get a RANSAC fit, face a fail-closed gate, and leave as verdict + telemetry + exports. Every number below is measured — the single source of truth is [`results/table_canonical_v1.csv`](results/table_canonical_v1.csv), and [`docs/model-card.md`](docs/model-card.md) is the honest benchmark card generated from it.
 
-- **ACCEPT (sub-pixel):** RMSE ≤ 0.50 px, configured minimum inliers, spatial entropy ≥ 0.75, and support in at least 3 of 4 quadrants.
-- **COARSE ADVISORY:** RMSE ≤ 2.50 px, configured minimum inliers, entropy ≥ 0.50, and support in at least 2 quadrants. This is a regional fit advisory, not a sub-pixel acceptance.
-- **REJECT:** any result that does not meet either tier. Non-finite metrics fail closed; rejected fits do not expose transform telemetry, and invalid RMSE is reported as unavailable rather than a misleading zero.
+### 1. Matcher cascade
+
+<p align="center">
+	<img src="docs/images/pipeline-cascade.png" width="700" alt="Matcher cascade: LightGlue/ALIKED primary, RIFT2 opt-in only, SIFT/RANSAC CPU fallback" />
+</p>
+
+- **LightGlue/ALIKED (GPU primary)** — the validated deep-learning path: synthetic sub-pixel ACCEPT at 0.3695 px / 43 inliers; competitive real-pair results at 1.7961 px (OHRC) and 1.5558 px (TMC-2).
+- **RIFT2 (non-functional, under investigation; not the primary matcher):** the Sept. 30 CPU audit and issue #1 RTX 5070 GPU validation returned 0–1 correspondences per pair, with no valid fits. Vendored but disabled unless `CHANDRA_ENABLE_RIFT2=1`. See [`results/table_issue01_gpu_validation.csv`](results/table_issue01_gpu_validation.csv).
+- **SIFT + Brute-Force RANSAC (CPU fallback)** — estimates the transform as the validated CPU fallback.
+- **Sub-pixel refinement** attempts NCC/parabolic refinement of the RANSAC estimate. If too few correspondences survive refinement, the pipeline retains the RANSAC model rather than promoting an unsupported refined fit.
+
+### 2. Fail-closed spatial validation gate
+
+<p align="center">
+	<img src="docs/images/pipeline-gates.png" width="800" alt="Fail-closed gate: ACCEPT, COARSE ADVISORY, and REJECT tiers with exact thresholds" />
+</p>
+
+| Tier | RMSE | Inliers | Entropy | Quadrants | Meaning |
+| --- | --- | --- | --- | --- | --- |
+| **ACCEPT** (sub-pixel) | ≤ 0.50 px | ≥ 8 | ≥ 0.75 | ≥ 3/4 | trusted registration |
+| **COARSE ADVISORY** | ≤ 2.50 px | ≥ 8 | ≥ 0.50 | ≥ 2/4 | regional fit advisory, not sub-pixel |
+| **REJECT** | anything else | — | — | — | `DEGENERATE_FAILURE`; telemetry masked, reasons reported |
+
+Non-finite metrics fail closed; rejected fits do not expose transform telemetry, and invalid RMSE is reported as unavailable rather than a misleading zero. Gate verdicts are final — confidence scores never override them.
 
 ## High-Resolution Handling
 
@@ -53,7 +71,7 @@ The matcher measurements below are recorded in [`results/table_issue01_gpu_valid
 
 The independent ground-truth protocol is documented in [`docs/ground-truth-protocol.md`](docs/ground-truth-protocol.md), and its split-held-out versus independent-RMSE comparison is recorded in [`results/table_issue02_ground_truth.csv`](results/table_issue02_ground_truth.csv); OHRC and TMC-2 independent landmarks remain pending human picking.
 
-The Issue #3 crop benchmark recorded 12 browse-mapped south-polar pairs (six OHRC and six TMC-2) in [`results/table_issue03_benchmark.csv`](results/table_issue03_benchmark.csv): LightGlue/ALIKED produced 7 COARSE and 5 DEGENERATE_FAILURE verdicts; SIFT/RANSAC produced 9 COARSE and 3 DEGENERATE_FAILURE verdicts. No row was ACCEPTED; `gt_rmse` remains empty pending independent landmarks, and these windows do not cover mare terrain.
+The Issue #3 crop benchmark recorded 12 browse-mapped south-polar pairs (six OHRC and six TMC-2) in [`results/table_issue03_benchmark.csv`](results/table_issue03_benchmark.csv): LightGlue/ALIKED produced 7 COARSE and 5 DEGENERATE_FAILURE verdicts; SIFT/RANSAC produced 8 COARSE and 4 DEGENERATE_FAILURE verdicts. No row was ACCEPTED; `gt_rmse` remains empty pending independent landmarks, and these windows do not cover mare terrain.
 
 Issue #4 measured three-level coarse-to-fine matching on the same 12 pairs: 5 matcher-pair verdicts improved, 16 were unchanged, and 3 regressed, so it remains opt-in; paired RMSE and runtime measurements are in [`results/table_issue04_coarse2fine.csv`](results/table_issue04_coarse2fine.csv). A native-resolution 8192×8192 OHRC tiled run used 2,482 MiB peak RSS versus 5,123 MiB for the eager resized run (51.6% lower) and returned REJECTED; details are in [`results/issue04_tiled_memory.json`](results/issue04_tiled_memory.json). Ground-truth RMSE is unavailable for this demonstration.
 
@@ -92,6 +110,15 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 python app.py
+```
+
+### Docker
+
+- **GPU (full pipeline):** `docker build -t chandra-align .` — CUDA 12.1, runs the Gradio app.
+- **CPU slim (fallback path + tests):** `docker build -f Dockerfile.cpu -t chandra-align:cpu .` — no CUDA, runs the SIFT/RANSAC CPU path and the batch CLI.
+
+```bash
+docker run --rm chandra-align:cpu --help
 ```
 
 ## Private Demo Access
