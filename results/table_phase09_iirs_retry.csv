@@ -1,0 +1,8 @@
+arm,verdict,inliers,rmse_px,n_lowe
+sift_712nm,ABSTAIN,0,,1
+sift_2852nm,ABSTAIN,0,,25
+sift_5009nm,DEGENERATE_FAILURE,2,0.0,13
+sift_wallis,ABSTAIN,0,,2
+goa_nmi,ABSTAIN,0,,
+sift_tps,RESCUE_FAILED,,,
+loftr,torch/kornia unavailable,,,
