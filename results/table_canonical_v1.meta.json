@@ -1,0 +1,14 @@
+{
+  "table_version": "v1",
+  "generated_utc": "2026-10-06T21:39:59+00:00",
+  "source_commit": "2d9b577bea18baa37f9e7db58ef85b9d83e5e177",
+  "generator": "scripts/make_canonical_results_table.py",
+  "row_count": 61,
+  "source_tables": [
+    "table_issue01_gpu_validation.csv",
+    "table_issue02_ground_truth.csv",
+    "table_issue03_benchmark.csv",
+    "table_issue05_baselines.csv",
+    "table_issue12_iirs.csv"
+  ]
+}
