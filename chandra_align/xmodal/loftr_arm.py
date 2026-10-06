@@ -35,6 +35,7 @@ class LoFTRMatcher:
         import torch
         from kornia.feature import LoFTR
         self._matcher = LoFTR(pretrained=self.pretrained)
+        self._matcher = self._matcher.float()
         self._matcher.eval()
 
     @staticmethod
@@ -57,6 +58,10 @@ class LoFTRMatcher:
             self._load()
         ta = self._to_tensor(img_a)
         tb = self._to_tensor(img_b)
+        # kornia's pretrained checkpoint can load as float64, overriding any
+        # .float() conversion — adapt the input to the model's real dtype.
+        want = next(self._matcher.parameters()).dtype
+        ta, tb = ta.to(want), tb.to(want)
         with torch.no_grad():
             out = self._matcher({"image0": ta, "image1": tb})
         k0 = out["keypoints0"].cpu().numpy().reshape(-1, 2)
