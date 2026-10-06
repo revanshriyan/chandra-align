@@ -77,7 +77,7 @@ Issue #4 measured three-level coarse-to-fine matching on the same 12 pairs: 5 ma
 
 ### Cross-modal breakthrough: first IIRS↔TMC-2 registration
 
-SIFT-family matchers failed on every IIRS↔TMC-2 attempt (1–25 Lowe matches, none surviving the gate; see [`docs/phase9-report.md`](docs/phase9-report.md)). A detector-free dense matcher (LoFTR, `chandra_align/xmodal/loftr_arm.py`) broke through on the destriped 2852.6 nm band vs common-GSD TMC-2: **2,242 correspondences → 748 inliers after sub-pixel refinement → RMSE 1.37 px → COARSE_ADVISORY**, Gate 3 passing, all four quadrants active. Full account with caveats in [`docs/phase9-loftr-addendum.md`](docs/phase9-loftr-addendum.md). COARSE, not sub-pixel — reported as measured.
+SIFT-family matchers failed on every IIRS↔TMC-2 attempt (1–25 Lowe matches, none surviving the gate; see [`docs/phase9-report.md`](docs/phase9-report.md)). A detector-free dense matcher (LoFTR, `chandra_align/xmodal/loftr_arm.py`) broke through on IIRS vs common-GSD TMC-2: **2,432 correspondences → 997 inliers after sub-pixel refinement → RMSE 1.35 px → COARSE_ADVISORY**, Gate 3 passing, all four quadrants active (VNIR composite of the 256-band cube; single-band best was 1.37 px / 748). Full account with caveats in [`docs/phase9-loftr-addendum.md`](docs/phase9-loftr-addendum.md). COARSE, not sub-pixel — reported as measured.
 
 ### Example Results
 
