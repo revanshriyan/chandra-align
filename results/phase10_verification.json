@@ -1,0 +1,90 @@
+{
+  "pairs": [
+    {
+      "pair_id": "synth_shift_0",
+      "overall": "verified",
+      "n_cells": 36,
+      "n_verified": 36,
+      "n_weak": 0,
+      "n_no_evidence": 0,
+      "verified_fraction": 1.0,
+      "summary": "synth_shift_0: pixel area-check verified (36/36 cells verified, 0 weak, 0 no evidence)"
+    },
+    {
+      "pair_id": "synth_shift_0_wrong",
+      "overall": "weak",
+      "n_cells": 36,
+      "n_verified": 1,
+      "n_weak": 24,
+      "n_no_evidence": 11,
+      "verified_fraction": 0.027777777777777776,
+      "summary": "synth_shift_0_wrong: pixel area-check weak (1/36 cells verified, 24 weak, 11 no evidence)"
+    },
+    {
+      "pair_id": "synth_shift_1",
+      "overall": "verified",
+      "n_cells": 36,
+      "n_verified": 36,
+      "n_weak": 0,
+      "n_no_evidence": 0,
+      "verified_fraction": 1.0,
+      "summary": "synth_shift_1: pixel area-check verified (36/36 cells verified, 0 weak, 0 no evidence)"
+    },
+    {
+      "pair_id": "synth_shift_1_wrong",
+      "overall": "weak",
+      "n_cells": 36,
+      "n_verified": 2,
+      "n_weak": 28,
+      "n_no_evidence": 6,
+      "verified_fraction": 0.05555555555555555,
+      "summary": "synth_shift_1_wrong: pixel area-check weak (2/36 cells verified, 28 weak, 6 no evidence)"
+    },
+    {
+      "pair_id": "synth_shift_2",
+      "overall": "verified",
+      "n_cells": 36,
+      "n_verified": 36,
+      "n_weak": 0,
+      "n_no_evidence": 0,
+      "verified_fraction": 1.0,
+      "summary": "synth_shift_2: pixel area-check verified (36/36 cells verified, 0 weak, 0 no evidence)"
+    },
+    {
+      "pair_id": "synth_shift_2_wrong",
+      "overall": "weak",
+      "n_cells": 36,
+      "n_verified": 1,
+      "n_weak": 24,
+      "n_no_evidence": 11,
+      "verified_fraction": 0.027777777777777776,
+      "summary": "synth_shift_2_wrong: pixel area-check weak (1/36 cells verified, 24 weak, 11 no evidence)"
+    }
+  ],
+  "triplet": {
+    "cyclic_rmse_px": 0.0,
+    "closed": true,
+    "failed_legs": [],
+    "n_points": 4,
+    "cycle_matrix": [
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ]
+    ]
+  },
+  "calibration": {
+    "verified_fraction_true_mean": 1.0,
+    "verified_fraction_true_min": 1.0,
+    "verified_fraction_wrong_max": 0.1875,
+    "threshold_verified_frac": 0.6,
+    "threshold_weak_frac": 0.3,
+    "separates": true
+  }
+}
