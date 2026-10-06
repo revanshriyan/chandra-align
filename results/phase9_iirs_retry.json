@@ -1,0 +1,98 @@
+{
+  "sift_712nm": {
+    "funnel": {
+      "n_det_a": 4767,
+      "n_det_b": 10000,
+      "n_desc_a": 4767,
+      "n_desc_b": 10000,
+      "n_raw": 4767,
+      "n_lowe": 1
+    },
+    "abstain": "INSUFFICIENT_UNIQUE",
+    "n_raw": 1,
+    "n_unique": 0,
+    "verdict": "ABSTAIN",
+    "rmse_px": null,
+    "inliers": 0
+  },
+  "sift_2852nm": {
+    "funnel": {
+      "n_det_a": 8989,
+      "n_det_b": 10000,
+      "n_desc_a": 8989,
+      "n_desc_b": 10000,
+      "n_raw": 8989,
+      "n_lowe": 25
+    },
+    "abstain": "NO_VALID_MODEL",
+    "n_raw": 4,
+    "n_unique": 4,
+    "verdict": "ABSTAIN",
+    "rmse_px": null,
+    "inliers": 0
+  },
+  "sift_5009nm": {
+    "funnel": {
+      "n_det_a": 6892,
+      "n_det_b": 10000,
+      "n_desc_a": 6892,
+      "n_desc_b": 10000,
+      "n_raw": 6892,
+      "n_lowe": 13
+    },
+    "abstain": null,
+    "n_raw": 2,
+    "n_unique": 2,
+    "verdict": "DEGENERATE_FAILURE",
+    "rmse_px": 0.0,
+    "inliers": 2,
+    "entropy": 1.0,
+    "quadrants": "{'Q1': {'name': 'Top-Left', 'inlier_count': 0, 'rmse_px': 0.0}, 'Q2': {'name': 'Top-Right', 'inlier_count': 1, 'rmse_px': 0.0}, 'Q3': {'name': 'Bottom-Left', 'inlier_count': 0, 'rmse_px': 0.0}, 'Q4': {'name': 'Bottom-Right', 'inlier_count': 1, 'rmse_px': 0.0}}",
+    "message": "REJECTED (Insufficient Inlier Yield (2 < 8) | Degenerate Spatial Cluster (2/4 Active Quadrants))"
+  },
+  "sift_wallis": {
+    "funnel": {
+      "n_det_a": 10000,
+      "n_det_b": 10000,
+      "n_desc_a": 10000,
+      "n_desc_b": 10000,
+      "n_raw": 10000,
+      "n_lowe": 2
+    },
+    "abstain": "INSUFFICIENT_UNIQUE",
+    "n_raw": 2,
+    "n_unique": 0,
+    "verdict": "ABSTAIN",
+    "rmse_px": null,
+    "inliers": 0
+  },
+  "goa_nmi": {
+    "n_searched": 150,
+    "n_candidates": 0,
+    "nmi_mean": 0.0,
+    "abstain": "ZERO_CANDIDATES",
+    "n_raw": 0,
+    "n_unique": 0,
+    "verdict": "ABSTAIN",
+    "rmse_px": null,
+    "inliers": 0
+  },
+  "sift_tps": {
+    "verdict": "RESCUE_FAILED",
+    "n_inliers": 0,
+    "tps": null,
+    "affine": null,
+    "gate3": [
+      false,
+      {
+        "ok": false,
+        "error": "no fit"
+      }
+    ],
+    "reason": "insufficient_correspondences",
+    "has_warp": false
+  },
+  "loftr": {
+    "skipped": "torch/kornia unavailable"
+  }
+}
