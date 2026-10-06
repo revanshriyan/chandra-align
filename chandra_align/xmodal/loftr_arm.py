@@ -10,9 +10,21 @@ same gates and is scored under held-out discipline like every other arm.
 Requires torch + kornia (kornia.feature.LoFTR). If unavailable, the arm
 reports 'unavailable' instead of failing — the retry harness treats that
 as a skipped arm, not an error.
+
+pretrained="outdoor": kornia's stock MegaDepth-outdoor weights.
+pretrained="minima": MINIMA cross-modal LoFTR checkpoint (Ren et al.,
+CVPR 2025; trained on synthetically-generated modalities). The MINIMA
+state dict is key-compatible with kornia's LoFTR after stripping the
+Lightning 'matcher.' prefix (211/211 keys match); it is loaded with
+coarse temp_bug_fix=True exactly as MINIMA's own loader does.
 """
 
+import os
+
 import numpy as np
+
+MINIMA_LOFTR_CKPT = os.path.expanduser(
+    "~/workspace/minima_weights/minima_loftr.ckpt")
 
 
 def loftr_available():
@@ -32,9 +44,28 @@ class LoFTRMatcher:
         self._matcher = None
 
     def _load(self):
+        import copy
         import torch
         from kornia.feature import LoFTR
-        self._matcher = LoFTR(pretrained=self.pretrained)
+        if self.pretrained == "minima":
+            from kornia.feature.loftr.loftr import default_cfg
+            cfg = copy.deepcopy(default_cfg)
+            # MINIMA's loader sets temp_bug_fix=True for non-official
+            # checkpoints; replicate it for their weights.
+            cfg["coarse"]["temp_bug_fix"] = True
+            self._matcher = LoFTR(pretrained=None, config=cfg)
+            if not os.path.isfile(MINIMA_LOFTR_CKPT):
+                raise RuntimeError(
+                    "MINIMA LoFTR checkpoint not found at "
+                    f"{MINIMA_LOFTR_CKPT}")
+            raw = torch.load(MINIMA_LOFTR_CKPT, map_location="cpu",
+                             weights_only=False)
+            sd = raw["state_dict"]
+            stripped = {k[8:] if k.startswith("matcher.") else k: v
+                        for k, v in sd.items()}
+            self._matcher.load_state_dict(stripped, strict=True)
+        else:
+            self._matcher = LoFTR(pretrained=self.pretrained)
         self._matcher = self._matcher.float()
         self._matcher.eval()
 
