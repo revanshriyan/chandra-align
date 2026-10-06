@@ -15,11 +15,31 @@ from .quadrant import (
 )
 
 
-def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad_counts):
-    """Public package entry point for the three-tier photogrammetric gate."""
-    return _validate_registration_gate(
+def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad_counts,
+                               model=None):
+    """Public package entry point for the three-tier photogrammetric gate.
+
+    When ``model`` (the fitted 2x3/3x3 transform) is supplied, Gate 3
+    transform-conditioning runs as a final backstop: a transform that fails
+    conditioning is REJECTED even if the residual tiers would accept it.
+    """
+    status_message, status_code = _validate_registration_gate(
         rmse, inliers, min_inliers, spatial_entropy, quad_counts
     )
+    if model is not None and status_code != "DEGENERATE_FAILURE":
+        from .conditioning import check_transform_conditioning
+        try:
+            rmse_v = float(rmse)
+        except (TypeError, ValueError):
+            rmse_v = float("inf")
+        ok, report = check_transform_conditioning(model, rmse_px=rmse_v)
+        if not ok:
+            failed = [k for k, v in report.get("checks", {}).items() if not v]
+            status_message = (
+                f"REJECTED (Gate 3 transform conditioning: {', '.join(failed)})"
+            )
+            status_code = "DEGENERATE_FAILURE"
+    return status_message, status_code
 
 
 def apply_transform(M, pts):
