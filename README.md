@@ -18,17 +18,13 @@ CHANDRA-ALIGN registers lunar imagery across sensor, illumination, and scale dif
 
 ## How It Works
 
-<p align="center">
-	<img src="https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-overview.png" width="800" alt="CHANDRA-ALIGN end-to-end data flow: PDS4 products to verdict and exports" />
-</p>
+![CHANDRA-ALIGN end-to-end data flow: PDS4 products to verdict and exports](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-overview.png)
 
 **The pipeline in one picture:** Chandrayaan-2 products (OHRC, TMC-2, IIRS) enter with their PDS4 labels, get preprocessed into bounded crops, run through a matcher cascade, get a RANSAC fit, face a fail-closed gate, and leave as verdict + telemetry + exports. Every number below is measured — the single source of truth is [`results/table_canonical_v1.csv`](results/table_canonical_v1.csv), and [`docs/model-card.md`](docs/model-card.md) is the honest benchmark card generated from it.
 
 ### 1. Matcher cascade
 
-<p align="center">
-	<img src="https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-cascade.png" width="700" alt="Matcher cascade: LightGlue/ALIKED primary, RIFT2 opt-in only, SIFT/RANSAC CPU fallback" />
-</p>
+![Matcher cascade: LightGlue/ALIKED primary, RIFT2 opt-in only, SIFT/RANSAC CPU fallback](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-cascade.png)
 
 - **LightGlue/ALIKED (GPU primary)** — the validated deep-learning path: synthetic sub-pixel ACCEPT at 0.3695 px / 43 inliers; competitive real-pair results at 1.7961 px (OHRC) and 1.5558 px (TMC-2).
 - **RIFT2 (non-functional, under investigation; not the primary matcher):** the Sept. 30 CPU audit and issue #1 RTX 5070 GPU validation returned 0–1 correspondences per pair, with no valid fits. Vendored but disabled unless `CHANDRA_ENABLE_RIFT2=1`. See [`results/table_issue01_gpu_validation.csv`](results/table_issue01_gpu_validation.csv).
@@ -37,9 +33,7 @@ CHANDRA-ALIGN registers lunar imagery across sensor, illumination, and scale dif
 
 ### 2. Fail-closed spatial validation gate
 
-<p align="center">
-	<img src="https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-gates.png" width="800" alt="Fail-closed gate: ACCEPT, COARSE ADVISORY, and REJECT tiers with exact thresholds" />
-</p>
+![Fail-closed gate: ACCEPT, COARSE ADVISORY, and REJECT tiers with exact thresholds](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-gates.png)
 
 | Tier | RMSE | Inliers | Entropy | Quadrants | Meaning |
 | --- | --- | --- | --- | --- | --- |
@@ -81,27 +75,19 @@ SIFT-family matchers failed on every IIRS↔TMC-2 attempt (1–25 Lowe matches, 
 
 ### Example Results
 
-<p align="center">
-	<img src="https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/gate-checklist-accepted.png" width="700" alt="LightGlue/ALIKED accepted synthetic-pair checklist" />
-</p>
+![LightGlue/ALIKED accepted synthetic-pair checklist](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/gate-checklist-accepted.png)
 
 LightGlue/ALIKED on the calibrated synthetic pair — RMSE 0.3695 px, 43 inliers, entropy 1.9988, 4/4 quadrants: ACCEPTED (sub-pixel), measured on RTX 5070.
 
-<p align="center">
-	<img src="https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/gate-checklist-rejected.png" width="700" alt="RIFT2 rejected synthetic-pair checklist" />
-</p>
+![RIFT2 rejected synthetic-pair checklist](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/gate-checklist-rejected.png)
 
 RIFT2 produced 0 correspondences on the same input — rejected with transform telemetry masked (N/A). The failed primary is reported, not hidden.
 
-<p align="center">
-	<img src="https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/viz-lightglue-synthetic-checkerboard.png" width="700" alt="LightGlue/ALIKED calibrated synthetic registration checkerboard with inlier points" />
-</p>
+![LightGlue/ALIKED calibrated synthetic registration checkerboard with inlier points](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/viz-lightglue-synthetic-checkerboard.png)
 
 LightGlue/ALIKED, calibrated synthetic pair — checkerboard blend of the accepted registration (RMSE 0.3695 px, 43 inliers, 4/4 quadrants). Measured on RTX 5070.
 
-<p align="center">
-	<img src="https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/viz-lightglue-ohrc-overlay.png" width="700" alt="LightGlue/ALIKED OHRC reference raster with 34 inlier points across four quadrants" />
-</p>
+![LightGlue/ALIKED OHRC reference raster with 34 inlier points across four quadrants](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/viz-lightglue-ohrc-overlay.png)
 
 LightGlue/ALIKED, OHRC pair — 34 inliers across all four quadrants at 1.7961 px: COARSE advisory, not sub-pixel. Measured on RTX 5070.
 
