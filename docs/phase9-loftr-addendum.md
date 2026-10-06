@@ -56,3 +56,23 @@ The VNIR composite is the new best: +33% inliers, 1.35 px. Full-spectrum
 averaging adds SWIR thermal-emission physics TMC-2 never sees — measured
 worse, as the brief predicted. All composites gate clean; the winner was
 picked by measurement, not by design.
+
+## 2026-10-07 update: MINIMA cross-modal LoFTR tested — does not beat outdoor
+
+Per the SOTA brief (idea 1), tested MINIMA-LoFTR (CVPR 2025 cross-modal
+checkpoint, 211/211 key-compatible with kornia LoFTR, added as
+`pretrained="minima"` in `loftr_arm.py`) on the identical pair and harness:
+
+| | Outdoor | MINIMA |
+| --- | --- | --- |
+| Correspondences | 2242 | 243 |
+| Raw verdict | COARSE (639 inl, 1.83px) | DEGENERATE_FAILURE (105 inl, 2.65px, 2/4 quads) |
+| + LK refine | COARSE (748 inl, 1.37px) | COARSE (52 inl, 1.74px, 3/4 quads) |
+
+MINIMA trains on synthetic IR/depth/event/sketch modalities — none resembles
+a hyperspectral↔panchromatic lunar pair. Tested, measured, not adopted.
+
+**The valuable finding:** two independently-trained matchers converge on the
+same geometry — ~1.2° rotation, ~0.99 scale, ~107–110 px y-translation,
+agreeing to 1.8 px at image center. Cross-matcher agreement corroborates the
+breakthrough is real geometry, not a matcher artifact.
