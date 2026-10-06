@@ -75,6 +75,10 @@ The Issue #3 crop benchmark recorded 12 browse-mapped south-polar pairs (six OHR
 
 Issue #4 measured three-level coarse-to-fine matching on the same 12 pairs: 5 matcher-pair verdicts improved, 16 were unchanged, and 3 regressed, so it remains opt-in; paired RMSE and runtime measurements are in [`results/table_issue04_coarse2fine.csv`](results/table_issue04_coarse2fine.csv). A native-resolution 8192×8192 OHRC tiled run used 2,482 MiB peak RSS versus 5,123 MiB for the eager resized run (51.6% lower) and returned REJECTED; details are in [`results/issue04_tiled_memory.json`](results/issue04_tiled_memory.json). Ground-truth RMSE is unavailable for this demonstration.
 
+### Cross-modal breakthrough: first IIRS↔TMC-2 registration
+
+SIFT-family matchers failed on every IIRS↔TMC-2 attempt (1–25 Lowe matches, none surviving the gate; see [`docs/phase9-report.md`](docs/phase9-report.md)). A detector-free dense matcher (LoFTR, `chandra_align/xmodal/loftr_arm.py`) broke through on the destriped 2852.6 nm band vs common-GSD TMC-2: **2,242 correspondences → 748 inliers after sub-pixel refinement → RMSE 1.37 px → COARSE_ADVISORY**, Gate 3 passing, all four quadrants active. Full account with caveats in [`docs/phase9-loftr-addendum.md`](docs/phase9-loftr-addendum.md). COARSE, not sub-pixel — reported as measured.
+
 ### Example Results
 
 <p align="center">
