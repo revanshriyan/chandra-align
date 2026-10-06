@@ -101,6 +101,17 @@ LightGlue/ALIKED, calibrated synthetic pair — checkerboard blend of the accept
 
 LightGlue/ALIKED, OHRC pair — 34 inliers across all four quadrants at 1.7961 px: COARSE advisory, not sub-pixel. Measured on RTX 5070.
 
+### Trust, robustness & calibration
+
+| Layer | Result |
+| --- | --- |
+| Independent pixel verification (Phase 10) | 100% cells verified on true transforms, ≤18.75% on wrong ones; synthetic triplet loop closure 0 px |
+| Robustness battery (Phase 11) | 45 deterministic runs: 34 SUCCESS_SUBPIXEL / 10 COARSE_ADVISORY / 1 DEGENERATE_FAILURE |
+| Confident-but-wrong detection (Phase 11) | `sun_flip` case: 0.87 px inlier RMSE yet 485.8 px off truth — inlier self-consistency ≠ correctness |
+| Confidence calibration (Phase 12) | Fitted Brier 0.1198 vs 0.2197 heuristic baseline; verdict NOT CALIBRATED — calibration never touches gate decisions |
+
+Full accounts in [`docs/phase12-report.md`](docs/phase12-report.md) and the phase result files under [`results/`](results/).
+
 ## Run Locally
 
 Requires Python 3.10 or newer. Full-resolution Chandrayaan-2 source imagery is not included; obtain products and their labels through ISRO PRADAN.
