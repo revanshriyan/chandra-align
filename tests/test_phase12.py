@@ -1,5 +1,6 @@
 """Phase 12 tests — confidence calibration (deterministic, no sklearn)."""
 
+import os
 import numpy as np
 import pytest
 
@@ -87,8 +88,9 @@ def test_gates_do_not_import_calibration():
     # the calibration module must never influence gate decisions:
     # no gate/metrics path may import it
     import subprocess
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out = subprocess.run(
         ["grep", "-rn", "trust.calibration\\|trust\\.calibration\\|from .calibration\\|from chandra_align.trust.calibration",
          "chandra_align/metrics", "chandra_align/refine", "--include=*.py"],
-        capture_output=True, text=True, cwd="/home/hatch/workspace/chandra-align")
+        capture_output=True, text=True, cwd=repo_root)
     assert out.stdout.strip() == "", f"gate path imports calibration: {out.stdout}"
