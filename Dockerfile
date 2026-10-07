@@ -8,13 +8,17 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 \
-    python3.10-dev \
-    python3-pip \
+    software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 \
+    python3.12-dev \
+    python3.12-venv \
     build-essential \
     libgdal-dev \
     git \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && python3.12 -m ensurepip --upgrade
 
 WORKDIR /build
 
@@ -30,12 +34,15 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/install/bin:${PATH}" \
-    PYTHONPATH="/install/lib/python3.10/site-packages:${PYTHONPATH}:/app" \
+    PYTHONPATH="/install/lib/python3.12/site-packages:${PYTHONPATH}:/app" \
     GDAL_DATA=/usr/share/gdal \
     PROJ_LIB=/usr/share/proj
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 \
+    software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 \
     libgdal30 \
     libgl1-mesa-glx \
     libglib2.0-0 \
@@ -58,4 +65,4 @@ USER appuser
 EXPOSE 7860
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python3", "app.py"]
+CMD ["python3.12", "app.py"]
