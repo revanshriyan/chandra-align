@@ -1,0 +1,4 @@
+pair,gate_rmse_px,n_patches,mean_ncc_field,mean_ncc_affine,frac_field_wins,mean_mad_field,mean_mad_affine
+ohrc_01,0.4312,334,0.3868,0.085,0.793,21.767,32.612
+ohrc_02,0.4687,396,0.5886,0.3275,0.818,13.951,21.561
+ohrc_03,0.3427,398,0.4727,0.1831,0.761,21.217,31.297

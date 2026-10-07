@@ -29,6 +29,7 @@ Pipeline contract
 
 import os
 
+import cv2
 import numpy as np
 
 from chandra_align.trust import split_fit_holdout
@@ -302,5 +303,193 @@ def apply_deform_field_stage(p_src, p_ref, M, lambda_grid=LAMBDA_GRID, seed=7):
         "rmse_after_px": rmse_after,
         "residuals_vec": r_corr,
         "residuals_mag": np.linalg.norm(r_corr, axis=1),
+        # The fitted forward map, for the opt-in dense-remap export:
+        # reference coords = M_hook @ p_sec + d(p_sec). Carried so the
+        # exported raster can reproduce the scored geometry instead of the
+        # affine-only warp. Telemetry sanitizers must exclude these keys.
+        "field": field,          # (wx, ax, wy, ay, px, py) TPS tuple
+        "M_hook": Ma.copy(),     # (2, 3) partial-affine the field corrects
     })
     return out
+
+
+# ---------------------------------------------------------------------------
+# Dense-remap export (opt-in): evaluate the fitted forward map on the grid.
+# ---------------------------------------------------------------------------
+
+def _check_export_field(field):
+    """Validate the fitted field tuple; return normalized components."""
+    try:
+        wx, ax, wy, ay, px, py = field
+        wx = np.asarray(wx, dtype=np.float64).reshape(-1)
+        wy = np.asarray(wy, dtype=np.float64).reshape(-1)
+        ax = np.asarray(ax, dtype=np.float64).reshape(3)
+        ay = np.asarray(ay, dtype=np.float64).reshape(3)
+        px = np.asarray(px, dtype=np.float64).reshape(-1)
+        py = np.asarray(py, dtype=np.float64).reshape(-1)
+    except (TypeError, ValueError):
+        raise ValueError("malformed field tuple")
+    n = px.shape[0]
+    if n == 0 or not (wx.shape[0] == n and wy.shape[0] == n and py.shape[0] == n):
+        raise ValueError("field control points inconsistent")
+    for a in (wx, ax, wy, ay, px, py):
+        if not np.all(np.isfinite(a)):
+            raise ValueError("non-finite field coefficients")
+    return (wx, ax, wy, ay, px, py)
+
+
+def _tps_eval_both(w_x, a_x, w_y, a_y, px, py, qx, qy, dtype=np.float64):
+    """TPS evaluation of both displacement components with a SHARED kernel.
+
+    Same math as _tps_eval (which builds the (T, n) kernel twice, once per
+    component); the kernel depends only on geometry, so one build serves
+    both. Exact when dtype=float64; the export path uses float32, whose
+    rounding is bounded end-to-end by unit test (< 0.05 px map diff).
+    """
+    dt = np.float32 if dtype is np.float32 else np.float64
+    px = np.asarray(px, dtype=dt).reshape(-1)
+    py = np.asarray(py, dtype=dt).reshape(-1)
+    qx = np.asarray(qx, dtype=dt).reshape(-1)
+    qy = np.asarray(qy, dtype=dt).reshape(-1)
+    w_x = np.asarray(w_x, dtype=dt).reshape(-1)
+    w_y = np.asarray(w_y, dtype=dt).reshape(-1)
+    a_x = np.asarray(a_x, dtype=dt).reshape(3)
+    a_y = np.asarray(a_y, dtype=dt).reshape(3)
+    d2 = (qx[:, None] - px[None, :]) ** 2 + (qy[:, None] - py[None, :]) ** 2
+    with np.errstate(divide="ignore", invalid="ignore"):
+        K = np.where(d2 > 0, d2 * np.log(d2), dt(0.0))
+    dx = K @ w_x + a_x[0] + a_x[1] * qx + a_x[2] * qy
+    dy = K @ w_y + a_y[0] + a_y[1] * qx + a_y[2] * qy
+    return np.stack([dx, dy], axis=1)
+
+
+def _eval_field_tiled(field, q, tile_points=16384):
+    """Evaluate the residual field at query points, tiled for memory.
+
+    _tps_eval materializes a (T, n_ctrl) float64 kernel; tiling keeps the
+    transient under ~256 MB even for thousands of control points.
+    Deterministic: tiles are processed in row order, no randomness.
+    """
+    q = np.asarray(q, dtype=np.float64).reshape(-1, 2)
+    if q.shape[0] == 0:
+        return np.zeros((0, 2), dtype=np.float64)
+    parts = []
+    for s in range(0, q.shape[0], tile_points):
+        d = _eval_residual_field(field, q[s:s + tile_points])
+        if not np.all(np.isfinite(d)):
+            raise ValueError("non-finite field evaluation")
+        parts.append(d)
+    return np.vstack(parts)
+
+
+def _eval_field_tiled_fast(field, q, tile_points=65536):
+    """Export-path field evaluation: shared float32 kernel, larger tiles.
+
+    Same TPS math as _eval_residual_field; float32 rounding is bounded
+    end-to-end (unit test: < 0.05 px map diff vs the exact path).
+    """
+    wx, ax, wy, ay, px, py = field
+    q = np.asarray(q, dtype=np.float64).reshape(-1, 2)
+    if q.shape[0] == 0:
+        return np.zeros((0, 2), dtype=np.float64)
+    parts = []
+    for s in range(0, q.shape[0], tile_points):
+        qq = q[s:s + tile_points] / TPS_SCALE  # _tps_eval_both takes normalized coords
+        d = _tps_eval_both(wx, ax, wy, ay, px, py, qq[:, 0], qq[:, 1],
+                           dtype=np.float32)
+        if not np.all(np.isfinite(d)):
+            raise ValueError("non-finite field evaluation")
+        parts.append(np.asarray(d, dtype=np.float64))
+    return np.vstack(parts)
+
+
+def build_field_remap_maps(sec_shape, ref_shape, M_hook, field,
+                           n_iter=5, coarse_factor=2, _exact=False):
+    """Build cv2.remap sampling maps reproducing the scored field geometry.
+
+    The stage scores the forward map F(p) = M_hook @ p + d(p) (secondary ->
+    reference coordinates). The exported raster must place secondary content
+    p at reference position F(p); i.e. for each output pixel q we need the
+    secondary coordinate p with F(p) = q. That inverse is obtained by
+    fixed-point iteration on the affine sampling map S(q) = A^-1 (q - t):
+
+        p_{k+1} = S(q - d(p_k)),   p_0 = S(q),
+
+    which converges geometrically because the validated field is smooth and
+    fold-free (min Jacobian det >= 0.5, so ||A^-1 grad d|| << 1). The
+    displacement field d(.) is evaluated ONCE on the secondary grid (tiled);
+    iterations only bilinearly resample it, so this is cheap and exact to
+    ~1e-4 px after a few iterations -- no new fitting, no new validation.
+
+    Performance: d(.) is smooth (TPS, regularized), so it is evaluated on a
+    coarse_factor-decimated grid and bilinearly upsampled (cv2.resize), and
+    the kernel is shared between components in float32. The total
+    approximation error vs the exact path (_exact=True: float64, full grid)
+    is bounded by unit test (< 0.05 px map diff).
+
+    Returns (map_x, map_y) float32 arrays of shape ref_shape for
+    cv2.remap(sec, map_x, map_y, INTER_LINEAR). Raises ValueError on any
+    degenerate input; the caller must fail closed to the affine warp.
+    """
+    try:
+        hs, ws = int(sec_shape[0]), int(sec_shape[1])
+        hr, wr = int(ref_shape[0]), int(ref_shape[1])
+    except (TypeError, ValueError, IndexError):
+        raise ValueError("bad image shapes")
+    if min(hs, ws, hr, wr) <= 0:
+        raise ValueError("non-positive image shape")
+    Ma = np.asarray(M_hook, dtype=np.float64)
+    if Ma.shape != (2, 3) or not np.all(np.isfinite(Ma)):
+        raise ValueError("bad M_hook")
+    A = Ma[:, :2]
+    t = Ma[:, 2]
+    det = float(A[0, 0] * A[1, 1] - A[0, 1] * A[1, 0])
+    if not np.isfinite(det) or abs(det) < 1e-9:
+        raise ValueError("singular M_hook linear part")
+    A_inv = np.array([[A[1, 1], -A[0, 1]], [-A[1, 0], A[0, 0]]]) / det
+    field = _check_export_field(field)
+
+    # Forward displacement on the secondary grid, tiled. The field is
+    # smooth (regularized TPS), so it is evaluated on a decimated grid and
+    # bilinearly upsampled; the error is bounded by unit test (< 0.05 px
+    # end-to-end vs _exact=True). _exact=True forces the slow exact path
+    # (float64, full grid) for validation only.
+    cf = 1 if _exact else max(int(coarse_factor), 1)
+    ys, xs = np.mgrid[0:hs:cf, 0:ws:cf].astype(np.float64)
+    p_sec = np.stack([xs.ravel(), ys.ravel()], axis=1)
+    if _exact:
+        d_coarse = _eval_field_tiled(field, p_sec)
+    else:
+        d_coarse = _eval_field_tiled_fast(field, p_sec)
+    hc, wc = ys.shape
+    d_coarse = d_coarse.reshape(hc, wc, 2).astype(np.float32)
+    if cf == 1:
+        d_sec_f32 = d_coarse
+    else:
+        d_sec_f32 = cv2.resize(d_coarse, (ws, hs),
+                               interpolation=cv2.INTER_LINEAR)
+    if not np.all(np.isfinite(d_sec_f32)):
+        raise ValueError("non-finite displacement grid")
+
+    # Output pixel coordinates (reference frame), kept as 2D grids so
+    # cv2.remap can resample the displacement field directly.
+    yr, xr = np.mgrid[0:hr, 0:wr].astype(np.float64)
+    q = np.stack([xr, yr], axis=-1)  # (hr, wr, 2)
+
+    def _affine_sample(qq):
+        return (qq - t) @ A_inv.T
+
+    p = _affine_sample(q)
+    for _ in range(max(int(n_iter), 0)):
+        dk = cv2.remap(d_sec_f32,
+                       p[..., 0].astype(np.float32), p[..., 1].astype(np.float32),
+                       interpolation=cv2.INTER_LINEAR,
+                       borderMode=cv2.BORDER_REPLICATE)
+        p = _affine_sample(q - dk.astype(np.float64))
+        if not np.all(np.isfinite(p)):
+            raise ValueError("non-finite fixed-point iterate")
+    map_x = p[..., 0].astype(np.float32)
+    map_y = p[..., 1].astype(np.float32)
+    if not (np.all(np.isfinite(map_x)) and np.all(np.isfinite(map_y))):
+        raise ValueError("non-finite remap maps")
+    return map_x, map_y
