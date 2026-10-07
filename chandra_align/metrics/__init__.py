@@ -10,6 +10,7 @@ import numpy as np
 from .quadrant import (
     build_judge_metrics_summary,
     compute_quadrant_metrics,
+    compute_spatial_uniformity_metrics,
     format_quadrant_html,
     validate_registration_gate as _validate_registration_gate,
 )
