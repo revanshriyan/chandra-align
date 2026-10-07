@@ -536,6 +536,7 @@ def match_pair_hf(
             diagnostics["registration_engine"] = "SIFT + Brute-Force (RANSAC fallback)"
             diagnostics["sift_variant"] = variant_name
             diagnostics["sift_ratio"] = ratio
+            diagnostics["lightglue_error"] = lightglue_error
             return (candidate_ref.astype(np.float32), candidate_sec.astype(np.float32),
                     diagnostics["registration_engine"], diagnostics)
         diagnostics["sift_error"] = "No SIFT candidate reached eight partial-affine RANSAC inliers"
