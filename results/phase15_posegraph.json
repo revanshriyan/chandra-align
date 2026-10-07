@@ -1,0 +1,42 @@
+{
+ "real_triplet": {
+  "status": "ABSTAIN",
+  "reason": "No real-data image triplet exists: the repo holds gated PAIRWISE registrations (Phase 9 IIRS<->TMC-2, Phase 13 OHRC stereo and TMC-2 fore/nadir pairs) but no set of three images with gated affines on all three legs (A->B, B->C, C->A). Optimizing a fabricated triplet would be dishonest; skipping real data."
+ },
+ "synthetic": {
+  "status": "OPTIMIZED",
+  "legs": [
+   {
+    "pair": "0->1",
+    "verdict": "SUCCESS_SUBPIXEL",
+    "rmse_px": 0.3911,
+    "n_inliers": 81,
+    "noise_sigma": 0.35
+   },
+   {
+    "pair": "1->2",
+    "verdict": "COARSE_ADVISORY",
+    "rmse_px": 1.3621,
+    "n_inliers": 81,
+    "noise_sigma": 1.1
+   },
+   {
+    "pair": "2->0",
+    "verdict": "COARSE_ADVISORY",
+    "rmse_px": 0.552,
+    "n_inliers": 81,
+    "noise_sigma": 0.45
+   }
+  ],
+  "misclosure_before_px": 0.3615666695643037,
+  "misclosure_after_px": 4.0346213528147646e-14,
+  "per_edge_rmse_px": [
+   0.1205,
+   0.1206,
+   0.1206
+  ],
+  "nfev": 2,
+  "acceptance": "met (synthetic-only)",
+  "note": "Ground-truth affines known; each leg independently fitted from noisy synthetic correspondences and passed through the real frozen gate before optimization."
+ }
+}
