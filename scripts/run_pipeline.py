@@ -45,6 +45,13 @@ def _find_log_entry(product_path: str, run_id: str | None = None) -> dict | None
 def main(config_path, ref_path, mov_path, out_dir, metrics_path):
     import numpy as np
 
+    # Deterministic RANSAC for reproducible runs (integration-test stability).
+    try:
+        import cv2
+        cv2.setRNGSeed(42)
+    except ImportError:
+        pass
+
     # --- Download-log gate for real data ---
     # Detect if inputs look like real data (not synthetic fixtures under fixtures/)
     is_synthetic = "fixtures" in mov_path or "fixtures" in ref_path
