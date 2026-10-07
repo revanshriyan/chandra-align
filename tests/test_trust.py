@@ -136,3 +136,49 @@ def test_heldout_rmse_is_explicit_in_gate_telemetry_and_dossier():
     assert "Held-out RMSE: UNAVAILABLE" in fallback_telemetry
     assert "Held-out MAE: UNAVAILABLE" in fallback_telemetry
     assert "Gate RMSE: 0.3100 px (in-sample fallback; held-out unavailable)" in fallback_telemetry
+
+
+# ============================================================================
+# Spatial uniformity diagnostics (grid occupancy + nearest-neighbor spread)
+# Diagnostic only — NOT gate criteria; gates remain frozen.
+# ============================================================================
+
+def test_uniformity_metrics_uniform_vs_clustered():
+    from chandra_align.metrics import compute_spatial_uniformity_metrics
+    rng = np.random.default_rng(0)
+    uniform_pts = np.column_stack([
+        rng.uniform(0, 1000, 200), rng.uniform(0, 1000, 200)])
+    clustered_pts = np.column_stack([
+        rng.uniform(0, 100, 200), rng.uniform(0, 100, 200)])
+    u = compute_spatial_uniformity_metrics(uniform_pts, (1000, 1000))
+    c = compute_spatial_uniformity_metrics(clustered_pts, (1000, 1000))
+    # Uniform spread occupies most of the 8x8 grid; a corner cluster does not.
+    assert u["grid_occupancy"] > 0.8
+    assert c["grid_occupancy"] < 0.1
+    # Nearest-neighbor distances separate the two regimes decisively.
+    assert u["nn_mean_px"] > c["nn_mean_px"] * 3
+    assert u["nn_p5_px"] > c["nn_p5_px"] * 3
+    assert u["n_points"] == 200 and c["n_points"] == 200
+    assert u["occupied_cells"] > c["occupied_cells"]
+
+
+def test_uniformity_metrics_edge_cases():
+    from chandra_align.metrics import compute_spatial_uniformity_metrics
+    e = compute_spatial_uniformity_metrics([], (1000, 1000))
+    assert e["grid_occupancy"] == 0.0 and e["n_points"] == 0
+    s = compute_spatial_uniformity_metrics([[500, 500]], (1000, 1000))
+    assert s["n_points"] == 1 and s["nn_mean_px"] == 0.0
+    # Out-of-frame points are excluded, same convention as quadrant metrics.
+    o = compute_spatial_uniformity_metrics(
+        [[-10, 500], [500, 500], [2000, 2000]], (1000, 1000))
+    assert o["n_points"] == 1
+
+
+def test_uniformity_metrics_deterministic():
+    from chandra_align.metrics import compute_spatial_uniformity_metrics
+    rng = np.random.default_rng(7)
+    pts = np.column_stack([
+        rng.uniform(0, 500, 60), rng.uniform(0, 500, 60)])
+    a = compute_spatial_uniformity_metrics(pts, (500, 500))
+    b = compute_spatial_uniformity_metrics(pts, (500, 500))
+    assert a == b
