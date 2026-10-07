@@ -27,7 +27,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-cpu.txt
           pip install pytest pytest-cov
 
       - name: Run Full Pytest Suite
@@ -48,7 +48,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
+          file: ./Dockerfile.cpu
           push: false
           tags: chandra_align:latest
           cache-from: type=gha
