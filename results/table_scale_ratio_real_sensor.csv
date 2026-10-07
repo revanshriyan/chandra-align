@@ -1,0 +1,6 @@
+ratio,n_corr,n_inliers,rmse_inlier_px,rmse_vs_truth_px,entropy,quadrants,verdict,texture_source,seed,matcher,interp_down,interp_up,truth
+1,6686,6675,0.0898,0.0124,1.9896,4,SUCCESS_SUBPIXEL,"ohrc_01_reference.png: real OHRC benchmark crop (2048x2048 uint8, native-resolution regolith texture from data/benchmark_crops/)",7,sift_cpu,n/a,n/a,real_texture_exact_7.3px_shift
+2,5735,5714,0.1586,0.0164,1.9938,4,SUCCESS_SUBPIXEL,"ohrc_01_reference.png: real OHRC benchmark crop (2048x2048 uint8, native-resolution regolith texture from data/benchmark_crops/)",7,sift_cpu,INTER_AREA,INTER_CUBIC,real_texture_exact_7.3px_shift
+4,2668,2638,0.4525,0.0442,1.9981,4,SUCCESS_SUBPIXEL,"ohrc_01_reference.png: real OHRC benchmark crop (2048x2048 uint8, native-resolution regolith texture from data/benchmark_crops/)",7,sift_cpu,INTER_AREA,INTER_CUBIC,real_texture_exact_7.3px_shift
+8,925,853,0.9672,0.1051,1.9989,4,COARSE_ADVISORY,"ohrc_01_reference.png: real OHRC benchmark crop (2048x2048 uint8, native-resolution regolith texture from data/benchmark_crops/)",7,sift_cpu,INTER_AREA,INTER_CUBIC,real_texture_exact_7.3px_shift
+16,258,137,1.5555,0.574,1.9819,4,COARSE_ADVISORY,"ohrc_01_reference.png: real OHRC benchmark crop (2048x2048 uint8, native-resolution regolith texture from data/benchmark_crops/)",7,sift_cpu,INTER_AREA,INTER_CUBIC,real_texture_exact_7.3px_shift
