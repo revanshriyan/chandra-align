@@ -236,3 +236,43 @@ def test_flag_on_degenerate_pair_no_crash():
             os.environ["CHANDRA_DEFORM_FIELD"] = old
     assert out["status_code"] in ("SUCCESS_SUBPIXEL", "COARSE_ADVISORY",
                                   "DEGENERATE_FAILURE")
+
+
+def test_flag_on_pre_balance_hook_ohrc01_improves():
+    """Flag ON, pre-balance hook: stage applies in-pipeline and improves ohrc_01.
+
+    A16 Part B's SUCCESS_SUBPIXEL (0.45 px) was measured on A14's standalone
+    842-inlier match set; the true _align_core's match_pair_hf caps keypoints
+    (618 raw -> ~100 RANSAC inliers), so the stage's internal held-out reads
+    higher here. This test pins what IS true in-pipeline: the stage applies
+    at the pre-balance placement and the gate RMSE improves vs flag-off,
+    under the frozen tiers. See docs/deform-field-pipeline-stage-2026-10-08.md.
+    """
+    app_module = _require_app()
+    ref, sec = _real_pair()
+    old = os.environ.get("CHANDRA_DEFORM_FIELD")
+    try:
+        os.environ.pop("CHANDRA_DEFORM_FIELD", None)
+        out_off = app_module._align_core(ref, sec)
+        os.environ["CHANDRA_DEFORM_FIELD"] = "1"
+        out_on = app_module._align_core(ref, sec)
+    finally:
+        if old is None:
+            os.environ.pop("CHANDRA_DEFORM_FIELD", None)
+        else:
+            os.environ["CHANDRA_DEFORM_FIELD"] = old
+    info = out_on["judge_metrics"]["deform_field_stage"]
+    assert info["applied"] is True
+    assert info["hook_placement"] == "pre_balance"
+    assert info["lambda_chosen"] in (0.1, 1.0, 10.0, 100.0)
+    assert info["min_jacobian_det"] > 0.5
+    # The gate scores the stage's internal held-out (generalization), not the
+    # affine in-sample fit.
+    assert out_on["judge_metrics"]["rmse_gate_basis"] == \
+        "held-out (deform-field stage internal stride 80/20 split)"
+    assert out_on["status_code"] in ("SUCCESS_SUBPIXEL", "COARSE_ADVISORY",
+                                     "DEGENERATE_FAILURE")
+    # The relocation must improve (or at worst preserve) the gate RMSE.
+    gate_on = float(out_on["judge_metrics"]["rmse_gate_px"])
+    gate_off = float(out_off["judge_metrics"]["rmse_gate_px"])
+    assert gate_on <= gate_off

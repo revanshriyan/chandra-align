@@ -44,22 +44,43 @@ the frozen gate re-runs on field-corrected residuals.
 
 ## Hook (the only edit to existing pipeline code)
 
-`app.py::_align_core`, 55 insertions, zero modified lines:
+`app.py::_align_core` — hook removal + hook insertion, zero modified
+lines of existing logic:
 
-1. After the affine residuals are computed: if
-   `CHANDRA_DEFORM_FIELD=1` (also accepts true/yes/on), call the stage;
-   on `applied`, swap in the field-corrected residuals. The whole call
-   is wrapped in try/except → fail closed. With the flag unset, the
-   residuals are untouched: **bit-identical behavior**.
-2. After the pipeline's own held-out section: when the field applied,
-   the gate RMSE becomes the stage's internal field held-out (the
-   honest generalization basis); the affine held-out is preserved in
-   telemetry for comparison.
-3. One telemetry key, `judge_metrics["deform_field_stage"]`
-   (JSON-sanitized), diagnostic-only.
+**Original placement (A14, superseded):** after the affine residuals were
+computed (post-pruning). The stage saw the pruned 8–19 inlier set, where
+it honestly declined on most pairs (`no_improvement`) — see
+[`docs/deform-stage-multipair-2026-10-08.md`](deform-stage-multipair-2026-10-08.md).
+
+**Current placement (A17, Part-B formulation):** right after matching,
+*before* quadrant balancing, on the UNBUCKETED match set. When
+`CHANDRA_DEFORM_FIELD=1` (also accepts true/yes/on):
+1. A primary RANSAC on the raw matches (the pipeline's own
+   `_estimate_partial_affine_with_threshold`, `cv2.setRNGSeed(7)` for
+   determinism) yields the inlier set the field needs;
+2. `apply_deform_field_stage` fits the TPS residual field (λ by internal
+   held-out, all fuses kept);
+3. on `applied`, the field-corrected reference points
+   (`ref' = M@sec + F(sec) = ref − r_corr`) *replace* `pts_ref`/`pts_sec`,
+   and the existing balance → bucket → RANSAC → NCC-refit chain below —
+   unmodified — runs on the corrected correspondences.
+
+With the flag unset, the matches are untouched: **bit-identical
+behavior** (proven by test across unset/"0"/"off"). Fail-closed: any
+exception, a failed hook RANSAC, or a declined stage leaves the original
+matches in place. A maintenance check after the `_align_core` fallback
+block voids the stage result if the fallback replaced the
+correspondences after the stage applied (fail-closed; inert for
+SIFT-path pairs where the fallback flag is already set).
+
+The gate-basis override is unchanged in position and semantics: when the
+field applied, the gate RMSE becomes the stage's internal stride-80/20
+field held-out (generalization, not in-sample); inlier count, quadrants,
+and entropy come from the final pruned set. One telemetry key,
+`judge_metrics["deform_field_stage"]` (JSON-sanitized), diagnostic-only.
 
 Gate thresholds are **frozen and untouched**: the stage only changes the
-residuals the existing `validate_registration_gate` scores
+data the existing `validate_registration_gate` scores
 (ACCEPT ≤0.50 px / ≥8 inliers / entropy ≥0.75 / ≥3 quads;
 COARSE ≤2.50 px / ≥8 inliers / entropy ≥0.50 / ≥2 quads).
 
@@ -101,9 +122,50 @@ operates on whatever inlier set the pipeline produces.
    reported check set (4 candidates, clear winner at 0.1 by 0.45 vs
    0.73). The bootstrap range above is the honest uncertainty.
 
+## Relocation to pre-balance placement (A17) — measured through true _align_core
+
+The original post-pruning hook saw only 8–19 pruned inliers and honestly
+declined on most pairs. A16 Part B proved the formulation: stage on the
+*unbucketed* RANSAC set, then the existing chain on corrected points. The
+hook now lives before quadrant balancing (see Hook section above).
+
+**Discrepancy vs A16 Part B, understood and documented:** A16's
+SUCCESS_SUBPIXEL numbers (ohrc_01/02/03 at 0.45/0.45/0.34 px) were
+measured on A14's standalone match set (5061 raw → 842 RANSAC inliers).
+The true `_align_core`'s `match_pair_hf` caps keypoints per cell
+(`select_detector_keypoints(..., 64)`), yielding 618 raw → ~100 hook
+RANSAC inliers on ohrc_01. The stage's internal held-out on the smaller
+set reads higher. A16 Part B's exact numbers are therefore *not*
+reproducible through the true pipeline — the 842-inlier set does not
+exist there. What follows is the honest in-pipeline measurement (flag
+ON vs OFF, true `_align_core`, frozen gates, seed 7):
+
+| Pair | Flag OFF (verdict / gate px) | Flag ON (verdict / gate px) | Stage |
+|---|---|---|---|
+| ohrc_01 | COARSE / 1.64 | COARSE / 0.61 | applied λ=0.1 |
+| ohrc_02 | COARSE / 1.30 | COARSE / 0.82 | applied λ=0.1 |
+| ohrc_03 | COARSE / 1.10 | COARSE / 0.59 | applied λ=0.1 |
+| ohrc_04 | COARSE / 1.71 | COARSE / 0.67 | applied λ=0.1 |
+| ohrc_05 | COARSE / 2.05 | COARSE / 0.80 | applied λ=0.1 |
+| ohrc_06 | COARSE / 1.15 | COARSE / 0.53 | applied λ=0.1 |
+| tmc2_01 | COARSE / 2.31 | COARSE / 1.21 | applied λ=0.1 |
+| tmc2_02 | COARSE / 1.86 | COARSE / 0.82 | applied λ=0.1 |
+| tmc2_03 | DEGENERATE / 8.41 | COARSE / 1.00 | applied λ=10.0 |
+| tmc2_04 | DEGENERATE / 1.72 | **SUCCESS_SUBPIXEL** / 0.47 | applied λ=0.1 |
+| tmc2_05 | DEGENERATE / 3.03 | COARSE / 0.70 | applied λ=0.1 |
+| tmc2_06 | COARSE / 1.80 | COARSE / 0.83 | applied λ=10.0 |
+
+**Zero verdict downgrades** (12/12); three DEGENERATE→COARSE/SUCCESS
+upgrades; gate RMSE improves on 11/12 pairs. The tmc2_04 SUCCESS is
+borderline (8 inliers — the gate minimum — at 0.47 px) and is reported
+as such, not as a clean win. The ohrc SUCCESS_SUBPIXELs from A16 Part B
+do not transfer because the true pipeline's match set is smaller; the
+relocation is still a strict improvement over the post-pruning hook
+(which declined 10/12).
+
 ## Tests
 
-`tests/test_deform_field_stage.py` — 10 passed, 3 app-level skipped
+`tests/test_deform_field_stage.py` — 10 passed, 4 app-level skipped
 locally (no Gradio runtime; they run in CI, same pattern as
 test_app.py):
 
