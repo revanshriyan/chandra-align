@@ -76,6 +76,86 @@ def compute_quadrant_metrics(inliers_src, residuals, img_shape):
     return quadrants, entropy
 
 
+
+def compute_spatial_uniformity_metrics(inliers_src, img_shape, grid=(8, 8)):
+    """Grid-occupancy and nearest-neighbor spread diagnostics.
+
+    DIAGNOSTIC ONLY — reported alongside quadrant entropy; NOT a gate
+    criterion. Gate thresholds (validate_registration_gate) remain frozen.
+
+    Coordinates are (x, y) in the raster frame. Invalid/out-of-frame
+    coordinates are excluded, same convention as compute_quadrant_metrics.
+
+    Returns a JSON-safe dict:
+    - grid_shape: (rows, cols)
+    - grid_occupancy: fraction of grid cells containing >= 1 inlier (0..1)
+    - occupied_cells: int
+    - n_points: int (valid in-frame inliers)
+    - nn_mean_px, nn_median_px, nn_std_px: nearest-neighbor distance stats
+    - nn_p5_px: 5th-percentile NN distance — low values flag tight clustering
+      even when quadrant entropy looks healthy
+    """
+    points = np.asarray(inliers_src if inliers_src is not None else [],
+                        dtype=np.float64).reshape(-1, 2)
+    if len(img_shape) < 2:
+        raise ValueError("img_shape must provide height and width")
+    height, width = int(img_shape[0]), int(img_shape[1])
+    if height <= 0 or width <= 0:
+        raise ValueError("Image height and width must be positive")
+    rows, cols = int(grid[0]), int(grid[1])
+    if rows <= 0 or cols <= 0:
+        raise ValueError("grid dimensions must be positive")
+
+    empty = {
+        "grid_shape": [rows, cols],
+        "grid_occupancy": 0.0,
+        "occupied_cells": 0,
+        "n_points": 0,
+        "nn_mean_px": 0.0, "nn_median_px": 0.0,
+        "nn_std_px": 0.0, "nn_p5_px": 0.0,
+    }
+    if len(points) == 0:
+        return empty
+    x, y = points[:, 0], points[:, 1]
+    valid = (np.isfinite(points).all(axis=1) & (x >= 0) & (x < width)
+             & (y >= 0) & (y < height))
+    pts = points[valid]
+    n = len(pts)
+    if n == 0:
+        return empty
+
+    # Grid occupancy: fraction of cells holding >= 1 inlier.
+    gx = np.clip((pts[:, 0] / width * cols).astype(int), 0, cols - 1)
+    gy = np.clip((pts[:, 1] / height * rows).astype(int), 0, rows - 1)
+    occupied = len(set(zip(gy.tolist(), gx.tolist())))
+    occupancy = occupied / float(rows * cols)
+
+    # Nearest-neighbor distances (each point to its closest *other* point).
+    if n < 2:
+        nn = np.zeros(0)
+    else:
+        try:
+            from scipy.spatial import cKDTree
+            dists, _ = cKDTree(pts).query(pts, k=2)
+            nn = np.asarray(dists[:, 1], dtype=np.float64)
+        except Exception:
+            # scipy missing or binary-incompatible: pure-numpy fallback
+            d2 = ((pts[:, None, :] - pts[None, :, :]) ** 2).sum(axis=2)
+            np.fill_diagonal(d2, np.inf)
+            nn = np.sqrt(d2.min(axis=1))
+    nn = nn[np.isfinite(nn)]
+
+    return {
+        "grid_shape": [rows, cols],
+        "grid_occupancy": _finite_float(occupancy),
+        "occupied_cells": int(occupied),
+        "n_points": int(n),
+        "nn_mean_px": _finite_float(nn.mean()) if len(nn) else 0.0,
+        "nn_median_px": _finite_float(np.median(nn)) if len(nn) else 0.0,
+        "nn_std_px": _finite_float(nn.std()) if len(nn) else 0.0,
+        "nn_p5_px": _finite_float(np.percentile(nn, 5)) if len(nn) else 0.0,
+    }
+
 def format_quadrant_html(quadrant_dict, spatial_entropy):
     """Render the dark-slate quadrant metrics card and entropy target badge."""
     entropy = _finite_float(spatial_entropy)
@@ -239,6 +319,7 @@ def build_judge_metrics_summary(
 
 __all__ = [
     "compute_quadrant_metrics",
+    "compute_spatial_uniformity_metrics",
     "format_quadrant_html",
     "build_judge_metrics_summary",
     "validate_registration_gate",
