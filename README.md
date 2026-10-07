@@ -125,23 +125,26 @@ Full accounts in [`docs/phase12-report.md`](docs/phase12-report.md) and the phas
 
 ## Run Locally
 
-Requires Python 3.10 or newer. Full-resolution Chandrayaan-2 source imagery is not included; obtain products and their labels through ISRO PRADAN.
+Requires Python 3.12 or newer. Full-resolution Chandrayaan-2 source imagery is not included; obtain products and their labels through ISRO PRADAN.
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-cpu.txt
 python app.py
 ```
 
 ### Docker
 
-- **GPU (full pipeline):** `docker build -t chandra-align .` — CUDA 12.1, runs the Gradio app.
-- **CPU slim (fallback path + tests):** `docker build -f Dockerfile.cpu -t chandra-align:cpu .` — no CUDA, runs the SIFT/RANSAC CPU path and the batch CLI.
+**Canonical entry point:** the CPU Docker image — this is what CI builds, tests, and verifies on every push:
 
 ```bash
+docker build -f Dockerfile.cpu -t chandra-align:cpu .
 docker run --rm chandra-align:cpu --help
 ```
+
+- **CPU slim (canonical):** `Dockerfile.cpu` — no CUDA, runs the SIFT/RANSAC CPU path and the batch CLI (`python -m chandra_align.cli.batch`).
+- **GPU (full pipeline):** `docker build -t chandra-align .` — CUDA 12.1, runs the full pipeline including the Gradio app.
 
 ## Private Demo Access
 
