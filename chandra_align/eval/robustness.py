@@ -184,7 +184,8 @@ def median_inlier_error(residuals):
     return float(np.median(r))
 
 
-def measure_pair(img_a, img_b, M_gt, image_shape=None, sift_nfeatures=10000):
+def measure_pair(img_a, img_b, M_gt, image_shape=None, sift_nfeatures=10000,
+                 return_inliers=False):
     """Run the CURRENT default pipeline and report robustness metrics.
 
     Pipeline (frozen; this function only measures it, never changes it):
@@ -196,6 +197,12 @@ def measure_pair(img_a, img_b, M_gt, image_shape=None, sift_nfeatures=10000):
     AND median error, unique inlier count, entropy, overlap-aware coverage,
     and independent accuracy (probe-grid agreement with exact truth, withheld
     when unavailable).
+
+    When return_inliers=True, the record additionally carries the guarded
+    inlier point arrays ("_inliers_a", "_inliers_b"), the fitted model
+    ("_model"), the raw correspondence count ("_n_raw"), and the quadrant
+    counts dict ("_quadrants") for downstream consumers (e.g. the Phase 13
+    batch harness). Underscore keys are not part of the stable schema.
     """
     import cv2
     from chandra_align.refine import verify_guarded
@@ -230,6 +237,11 @@ def measure_pair(img_a, img_b, M_gt, image_shape=None, sift_nfeatures=10000):
     g = verify_guarded(pa, pb, cfg, image_shape=shape)
     rec["abstain"] = g["abstain_code"]
     M = g["model"]
+    if return_inliers:
+        rec["_inliers_a"] = np.asarray(g["inliers_a"], dtype=np.float64)
+        rec["_inliers_b"] = np.asarray(g["inliers_b"], dtype=np.float64)
+        rec["_model"] = None if M is None else np.asarray(M, dtype=np.float64)
+        rec["_n_raw"] = int(g["n_raw"])
     if not g["ok"] or M is None:
         ia = g["inliers_a"]
         rec["inliers"] = int(g["n_unique"])
@@ -253,6 +265,9 @@ def measure_pair(img_a, img_b, M_gt, image_shape=None, sift_nfeatures=10000):
         "independent_accuracy_px": acc,
         "accuracy_note": note,
     })
+    if return_inliers:
+        rec["_quadrants"] = {k: int(v["inlier_count"])
+                             for k, v in qm_counts.items()}
     return rec
 
 
@@ -269,6 +284,8 @@ def independent_accuracy(M_est, M_gt, n_inliers, shape, grid_n=12):
     """
     if M_est is None or int(n_inliers) < 3:
         return None, "no independent accuracy available"
+    if M_gt is None:
+        return None, "no independent accuracy available (no ground truth)"
     h, w = shape
     ys = np.linspace(0, h - 1, grid_n)
     xs = np.linspace(0, w - 1, grid_n)
