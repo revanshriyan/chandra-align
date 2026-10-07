@@ -1,0 +1,7 @@
+crop_id,pair,isis_test,coreg_chips_attempted,coreg_chips_passed,coreg_pass_fraction,coreg_consensus_frac_5px,coreg_median_dx_px,coreg_median_dy_px,coreg_coherent,ours_n_inliers_unique,ours_rmse_px,ours_rmse_heldout_px,ours_verdict
+synth_12m7,tmc2_w0000_ref_self,TRANSLATE_default_template,81,81,1.00,1.00,-7.0,-12.0,yes,43,0.3695,,SUCCESS_SUBPIXEL
+tmc2_w0000,tmc2_fore_nadir,TRANSLATE_default_template,81,4,0.05,0.00,n/a,n/a,no,1048,1.4142,1.6274,COARSE_ADVISORY
+tmc2_w0000,tmc2_fore_nadir,TRANSLATE_wide_search_140px,81,33,0.41,0.03,25.8,-36.0,no,1048,1.4142,1.6274,COARSE_ADVISORY
+tmc2_w0000,tmc2_fore_nadir,WARP_degree1_wide_search_140px,81,35,0.43,0.03,n/a,n/a,no,1048,1.4142,1.6274,COARSE_ADVISORY
+tmc2_w0001,tmc2_fore_nadir,TRANSLATE_wide_search_140px,81,57,0.70,0.04,-20.0,-33.0,no,1664,2.9210,3.7014,DEGENERATE_FAILURE
+ohrc_w0000,ohrc_pair,TRANSLATE_wide_search_140px,81,47,0.58,0.00,4.0,3.0,no,1692,1.5288,1.7276,COARSE_ADVISORY
