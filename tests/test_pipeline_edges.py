@@ -491,69 +491,95 @@ class TestCRSGuard:
 
 class TestIntegration:
     """End-to-end integration tests."""
-    
-    @pytest.mark.skip(
-        reason="Flaky Windows subprocess integration under full-suite GPU/host memory pressure; tracked in https://github.com/revanshriyan/chandra-align/issues/15"
-    )
+
+    @staticmethod
+    def _sift_config(tmpdir):
+        """Write a CPU-friendly config (SIFT tier-1) so the test runs without LightGlue.
+
+        The tier-2 escalation path is unchanged; only the primary matcher is
+        swapped for the always-available CPU fallback. This keeps the test
+        focused on pipeline integration (subprocess, config loading, metrics
+        output) rather than the GPU matcher, and avoids GPU/host memory
+        pressure that caused the #15 flakes.
+        """
+        with open(os.path.join(TestIntegration._repo_root(), 'config', 'ohrc.yaml'),
+                  'r', encoding='utf-8') as f:
+            cfg_text = f.read()
+        assert 'tier1: "lightglue_aliked"' in cfg_text, "ohrc.yaml tier1 override anchor moved"
+        cfg_text = cfg_text.replace('tier1: "lightglue_aliked"', 'tier1: "sift"', 1)
+        cfg_path = os.path.join(tmpdir, "config_sift.yaml")
+        with open(cfg_path, 'w', encoding='utf-8') as f:
+            f.write(cfg_text)
+        return cfg_path
+
+    @staticmethod
+    def _repo_root():
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    @staticmethod
+    def _assert_pipeline_ok(result):
+        assert result.returncode == 0, (
+            f"pipeline failed rc={result.returncode}\n"
+            f"--- STDOUT (last 2000 chars) ---\n{result.stdout[-2000:]}\n"
+            f"--- STDERR (last 2000 chars) ---\n{result.stderr[-2000:]}"
+        )
+
     def test_full_pipeline_synthetic(self, synthetic_pair_shifted):
         """Full pipeline on synthetic data with known ground truth."""
         ref, mov, M_gt = synthetic_pair_shifted
-        
+
         # Crop to smaller region for faster testing
         ref_crop = ref[100:500, 100:500]
         mov_crop = mov[100:500, 100:500]
-        
+
         with tempfile.TemporaryDirectory() as d:
             # Use "fixtures" in path to bypass download-log gate
             ref_path = os.path.join(d, "fixtures_ref.tif")
             mov_path = os.path.join(d, "fixtures_mov.tif")
             write_tiff(ref_path, ref_crop, crs="EPSG:4326")
             write_tiff(mov_path, mov_crop, crs="EPSG:4326")
-            
+
             import subprocess
             import sys
             result = subprocess.run([
                 sys.executable, 'scripts/run_pipeline.py',
-                'config/ohrc.yaml', ref_path, mov_path,
+                self._sift_config(d), ref_path, mov_path,
                 os.path.join(d, 'out'), os.path.join(d, 'metrics.json')
-            ], capture_output=True, text=True, cwd='.')
-            
-            assert result.returncode == 0
+            ], capture_output=True, text=True, cwd=self._repo_root())
+
+            self._assert_pipeline_ok(result)
             assert "trust_flag" in result.stdout
-    
-    @pytest.mark.skip(
-        reason="Flaky Windows subprocess integration under full-suite GPU/host memory pressure; tracked in https://github.com/revanshriyan/chandra-align/issues/15"
-    )
+
     def test_pipeline_output_contains_required_fields(self, tmp_path):
         """Pipeline output should contain all required metric fields."""
         from chandra_align.testing import make_pair_shift, write_tiff
         ref, mov, _ = make_pair_shift(seed=42)
         ref_crop = ref[100:500, 100:500]
         mov_crop = mov[100:500, 100:500]
-        
+
         ref_path = os.path.join(tmp_path, "fixtures_ref.tif")
         mov_path = os.path.join(tmp_path, "fixtures_mov.tif")
-        write_tiff(ref_path, ref, crs="EPSG:4326")
-        write_tiff(mov_path, mov, crs="EPSG:4326")
-        
+        write_tiff(ref_path, ref_crop, crs="EPSG:4326")
+        write_tiff(mov_path, mov_crop, crs="EPSG:4326")
+
         out_dir = os.path.join(tmp_path, "out")
         metrics_path = os.path.join(out_dir, "metrics.json")
-        
+
         import subprocess
         import sys
         result = subprocess.run([
             sys.executable, 'scripts/run_pipeline.py',
-            'config/ohrc.yaml', ref_path, mov_path,
+            self._sift_config(str(tmp_path)), ref_path, mov_path,
             out_dir, metrics_path
-        ], capture_output=True, text=True, cwd='.')
-        
-        assert result.returncode == 0
-        
+        ], capture_output=True, text=True, cwd=self._repo_root())
+
+        self._assert_pipeline_ok(result)
+
         # Verify metrics.json contains all required fields
         import json
         with open(metrics_path, 'r') as f:
             metrics = json.load(f)
-        
+
         required_fields = [
             'rmse', 'inliers', 'uniformity_score', 'runtime_s',
             'trust_flag', 'matcher', 'approximation_flag',
@@ -561,7 +587,7 @@ class TestIntegration:
         ]
         for field in required_fields:
             assert field in metrics, f"Missing field: {field}"
-        
+
         # Check trust_flag is valid
         assert metrics['trust_flag'] in ['Trusted', 'Not Trusted']
 
