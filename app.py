@@ -598,6 +598,25 @@ def _compute_spatial_uniformity(inlier_points, img_shape):
     return payload
 
 
+def _jsonable_deform_field_info(info):
+    """Strip non-JSON-serializable values from deform-field stage telemetry."""
+    safe = {}
+    for key, value in (info or {}).items():
+        if key in ("residuals_vec", "residuals_mag"):
+            continue
+        if isinstance(value, np.ndarray):
+            value = value.tolist()
+        elif isinstance(value, (np.integer, np.floating)):
+            value = value.item()
+        try:
+            import json as _json
+            _json.dumps(value)
+        except (TypeError, ValueError):
+            value = repr(value)
+        safe[key] = value
+    return safe
+
+
 def _align_core(
     ref_img: np.ndarray,
     sec_img: np.ndarray,
@@ -846,6 +865,28 @@ def _align_core(
     )
     residuals_vec = inlier_ref - pts_sec_h
     residuals_mag = np.linalg.norm(residuals_vec, axis=1)
+    # --- OPT-IN deformation-field stage (CHANDRA_DEFORM_FIELD=1; default OFF) ---
+    # Single hook point. With the flag unset, residuals_vec/residuals_mag above
+    # are untouched and the pipeline is bit-identical to the unmodified path.
+    # When enabled, a regularized TPS residual field is fit on the affine
+    # inliers (lambda chosen by internal held-out; fail-closed skips) and the
+    # SAME frozen gate below re-runs on the field-corrected residuals.
+    # See chandra_align/deform_field.py and
+    # docs/deform-field-pipeline-stage-2026-10-08.md.
+    deform_field_info = {"applied": False, "reason": "flag_off"}
+    if os.environ.get("CHANDRA_DEFORM_FIELD", "").strip().lower() in {"1", "true", "yes", "on"}:
+        try:
+            from chandra_align.deform_field import apply_deform_field_stage
+            deform_field_info = apply_deform_field_stage(
+                inlier_sec, inlier_ref, affine_matrix)
+            if deform_field_info.get("applied"):
+                residuals_vec = np.asarray(
+                    deform_field_info["residuals_vec"], dtype=np.float64)
+                residuals_mag = np.asarray(
+                    deform_field_info["residuals_mag"], dtype=np.float64)
+        except Exception as exc:  # fail closed: keep the affine residuals
+            deform_field_info = {"applied": False,
+                                 "reason": f"exception:{type(exc).__name__}"}
     quadrant_metrics, quadrant_spatial_entropy = compute_quadrant_metrics(
         inlier_ref, residuals_vec, ref_original.shape[:2]
     )
@@ -882,6 +923,18 @@ def _align_core(
         mae_heldout_px = float(heldout_error["mae_px"])
         rmse_gate_px = rmse_heldout_px
         rmse_gate_basis = "held-out"
+    # Deform-field stage, part 2 of the hook: when the field applied, the gate
+    # must score the field's generalization, not the affine in-sample fit. The
+    # stage's internal stride 80/20 held-out (affine+TPS fit on the fit subset,
+    # checked on the disjoint check subset -- the pipeline's own split
+    # methodology) is the honest gate basis. The affine held-out above is
+    # preserved in telemetry for comparison.
+    if deform_field_info.get("applied") and deform_field_info.get("heldout_rmse_px") is not None:
+        deform_field_info["affine_heldout_rmse_px"] = rmse_heldout_px
+        deform_field_info["affine_gate_basis"] = rmse_gate_basis
+        rmse_heldout_px = float(deform_field_info["heldout_rmse_px"])
+        rmse_gate_px = rmse_heldout_px
+        rmse_gate_basis = "held-out (deform-field stage internal stride 80/20 split)"
     rmse_px = rmse_gate_px
     mae_px = mae_in_sample_px
     affine_telemetry = decompose_partial_affine(affine_matrix)
@@ -906,6 +959,8 @@ def _align_core(
         "rmse_gate_basis": rmse_gate_basis,
         "heldout_check_points": int(heldout_error.get("n_check_points", 0)),
         "spatial_uniformity_metrics": spatial_uniformity_metrics,
+        # Deform-field stage telemetry (diagnostic only; never feeds the gate).
+        "deform_field_stage": _jsonable_deform_field_info(deform_field_info),
     })
     confidence_assessment = build_confidence_assessment(
         status_code=status_code, status_message=status_message, rmse_px=rmse_gate_px,
