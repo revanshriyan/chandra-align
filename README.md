@@ -109,7 +109,7 @@ LightGlue/ALIKED, OHRC pair — 34 inliers across all four quadrants at 1.7961 p
 | Robustness battery (Phase 11) | 45 deterministic runs: 34 SUCCESS_SUBPIXEL / 10 COARSE_ADVISORY / 1 DEGENERATE_FAILURE |
 | Confident-but-wrong detection (Phase 11) | `sun_flip` case: 0.87 px inlier RMSE yet 485.8 px off truth — inlier self-consistency ≠ correctness |
 | Confidence calibration (Phase 12) | Fitted Brier 0.1198 vs 0.2197 heuristic baseline; verdict NOT CALIBRATED — calibration never touches gate decisions |
-| Systematic window tiling (Phase 13) | 84 deterministic windows, every one reported: OHRC 41/42 COARSE (median 2166 inliers, 1.49 px), TMC-2 fore/nadir 21/42 COARSE (median 683 inliers, 2.18 px) — full table in [`results/table_phase13_windows.csv`](results/table_phase13_windows.csv) |
+| Systematic window tiling (Phase 13) | 84 deterministic windows, every one reported: OHRC 41/42 COARSE (median 2158 inliers, 1.49 px among COARSE windows), TMC-2 fore/nadir 21/42 COARSE (median 514 inliers, 1.64 px among COARSE windows) — full table in [`results/table_phase13_windows.csv`](results/table_phase13_windows.csv) |
 | Joint pose-graph (Phase 15) | 2D affines solved simultaneously (TRF+Huber, image 0 pinned), gates run first: synthetic loop misclosure 0.36 px → 0.00 px; no real triplet exists so real data ABSTAINs honestly |
 | ChandraBench v0.1 (Phase 16) | 40 human-verified landmarks + one-command evaluator + tech note, CC-BY-4.0, Zenodo-ready — an open benchmark for lunar correspondence |
 | ISIS3 comparison (Phase 17) | `coreg` on identical crops: flawless on synthetic control, but **fails open** on real pairs (57 "successful" chips, 4% consensus) where our pipeline fails closed |
@@ -149,6 +149,10 @@ docker run --rm chandra-align:cpu --help
 ## Private Demo Access
 
 The interactive deployment is private and available for evaluation/review by request. No Space address, demo endpoint, access token, or credential is published in this repository.
+
+## Canonical Results Table
+
+All headline numbers in this README are generated from raw run outputs by [`scripts/generate_results_table.py`](scripts/generate_results_table.py) — the single source of truth (issue #8). The machine-readable sidecar is [`results/table_canonical.json`](results/table_canonical.json); `tests/test_canonical_table.py` fails loudly if any number drifts from its source. Quote only from this table.
 
 ## Repository Layout
 
