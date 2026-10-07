@@ -57,7 +57,9 @@ withdrawn — it came from the mis-registered extraction.
 - Inlier correspondences confirmed real: median 21×21 patch NCC 0.84 for
   inlier pairs vs 0.00 for random pairs.
 - Rotation +2.12° corroborated by three independent checks: NCC rotation sweep
-  (best at +2.1°, NCC 0.618), ECC Euclidean alignment (+2.6°), template-centre
+  (best at −2.1° in getRotationMatrix2D convention = +2.1° atan2, NCC 0.618 vs
+  0.475 unrotated; warpAffine content-rotation direction verified by dot test),
+  ECC Euclidean alignment (+2.6°), template-centre
   mapping lands at (447.8, 453.5) vs window centre (450, 450).
 - 3m ortho offset verified correct at 15336 bytes (label + file arithmetic);
   see note in docs/lroc-adjudication-first-result-2026-10-08.md.
