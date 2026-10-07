@@ -4,7 +4,7 @@
 # Build: docker build -f Dockerfile.cpu -t chandra-align:cpu .
 # Run:   docker run --rm chandra-align:cpu --help
 # ==========================================
-FROM python:3.10-slim AS runtime
+FROM python:3.12-slim AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
