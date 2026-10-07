@@ -109,6 +109,7 @@ LightGlue/ALIKED, OHRC pair — 34 inliers across all four quadrants at 1.7961 p
 | Robustness battery (Phase 11) | 45 deterministic runs: 34 SUCCESS_SUBPIXEL / 10 COARSE_ADVISORY / 1 DEGENERATE_FAILURE |
 | Confident-but-wrong detection (Phase 11) | `sun_flip` case: 0.87 px inlier RMSE yet 485.8 px off truth — inlier self-consistency ≠ correctness |
 | Confidence calibration (Phase 12) | Fitted Brier 0.1198 vs 0.2197 heuristic baseline; verdict NOT CALIBRATED — calibration never touches gate decisions |
+| Systematic window tiling (Phase 13) | 84 deterministic windows, every one reported: OHRC 41/42 COARSE (median 2166 inliers, 1.49 px), TMC-2 fore/nadir 21/42 COARSE (median 683 inliers, 2.18 px) — full table in [`results/table_phase13_windows.csv`](results/table_phase13_windows.csv) |
 
 Full accounts in [`docs/phase12-report.md`](docs/phase12-report.md) and the phase result files under [`results/`](results/).
 
