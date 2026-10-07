@@ -1,5 +1,16 @@
 # Deformation-Field Pipeline Stage (opt-in): affine → field → re-gate — 2026-10-08
 
+> **CORRECTION (2026-10-08, ~04:00 IST):** the tmc2_04 0.47 px SUCCESS_SUBPIXEL
+> reported in the re-hook section below did **not** reproduce — a fresh
+> independent run of the same capped-quota + stage-on config gives
+> DEGENERATE_FAILURE with the stage declining (`no_improvement`), and that
+> run's tmc2 flag-off column contradicted two independent measurements
+> (harness artifact, likely flag leakage). The number is **withdrawn**.
+> The shipped flag-on sub-pixel cases are ohrc_01/02/03 at 0.43/0.47/0.34 px
+> (17–23 inliers) under the flag-gated uncapped quota
+> (docs/quota-12pair-validation-2026-10-08.md). The rest of this document
+> stands as the historical record of the re-hook experiment.
+
 ## Why this stage exists
 
 Worker A13 proved the 1.6 px floor on the real OHRC pair is a model
