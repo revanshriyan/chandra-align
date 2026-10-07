@@ -106,6 +106,7 @@ def test_registration_dossier_has_separate_in_sample_and_heldout_mae():
 
 def test_align_core_synthetic():
     """Verify the calibrated shift clears the strict registration gate."""
+    pytest.importorskip("lightglue", reason="deep-matcher test requires the lightglue package (not installed in CPU CI)")
     ref, sec, _known_transform = make_pair_shift(
         dx=7.3, dy=-3.9, angle_deg=0.4, seed=7
     )
