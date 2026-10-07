@@ -731,6 +731,63 @@ def _align_core(
     if sec_match_scale != 1.0:
         pts_sec = pts_sec / sec_match_scale
 
+    # --- OPT-IN deformation-field stage, pre-balance placement (CHANDRA_DEFORM_FIELD=1; default OFF) ---
+    # Runs BEFORE quadrant balancing, on the UNBUCKETED match set: a primary
+    # RANSAC on the raw matches yields the inlier set the field needs (the
+    # pipeline's own RANSAC below sees bucketed points), the TPS residual
+    # field corrects them, and the corrected correspondences flow into the
+    # existing balance -> bucket -> RANSAC -> NCC-refit chain below, which is
+    # not modified. With the flag unset, pts_ref/pts_sec are untouched and the
+    # pipeline is bit-identical to the unmodified path. Fail-closed: any
+    # exception, a failed RANSAC, or a declined stage leaves the original
+    # matches in place and the pipeline continues exactly as before.
+    # See chandra_align/deform_field.py and
+    # docs/deform-field-pipeline-stage-2026-10-08.md.
+    deform_field_info = {"applied": False, "reason": "flag_off"}
+    if os.environ.get("CHANDRA_DEFORM_FIELD", "").strip().lower() in {"1", "true", "yes", "on"}:
+        try:
+            from chandra_align.deform_field import apply_deform_field_stage
+            deform_field_info = {"applied": False, "reason": "not_attempted"}
+            if len(pts_ref) >= 3 and len(pts_ref) == len(pts_sec):
+                # Deterministic hook RANSAC (cf. A16 Part B, cv2.setRNGSeed(7)).
+                cv2.setRNGSeed(7)
+                M_hook, inliers_hook = _estimate_partial_affine_with_threshold(
+                    pts_sec, pts_ref, ransac_threshold_px
+                )
+                n_hook_in = int(inliers_hook.sum()) if inliers_hook is not None else 0
+                if M_hook is not None and n_hook_in >= MIN_REGISTRATION_INLIERS:
+                    stage_info = apply_deform_field_stage(
+                        pts_sec[inliers_hook], pts_ref[inliers_hook], M_hook
+                    )
+                    if stage_info.get("applied"):
+                        r_corr = np.asarray(stage_info["residuals_vec"], dtype=np.float64)
+                        p_ref_in = np.asarray(pts_ref[inliers_hook], dtype=np.float64)
+                        if r_corr.shape == p_ref_in.shape and np.all(np.isfinite(r_corr)):
+                            # Field-corrected reference points:
+                            # ref' = M@sec + F(sec) = ref - r_corr.
+                            corr_ref = (p_ref_in - r_corr).astype(np.float32)
+                            corr_sec = np.asarray(pts_sec[inliers_hook], dtype=np.float32)
+                            pts_ref, pts_sec = corr_ref, corr_sec
+                            deform_field_info = dict(stage_info)
+                            deform_field_info["hook_placement"] = "pre_balance"
+                            deform_field_info["n_hook_ransac_inliers"] = n_hook_in
+                            # Fallback-void token (popped before telemetry): if the
+                            # _align_core fallback below replaces the points, the
+                            # stage result no longer describes the gated data.
+                            deform_field_info["_fb0"] = bool(
+                                execution_diagnostics.get("fallback_triggered")
+                            )
+                        else:
+                            deform_field_info = {"applied": False, "reason": "nonfinite_corrected"}
+                    else:
+                        deform_field_info = {"applied": False,
+                                             "reason": stage_info.get("reason", "stage_declined")}
+                else:
+                    deform_field_info = {"applied": False, "reason": "hook_ransac_failed"}
+        except Exception as exc:  # fail closed: keep the original matches
+            deform_field_info = {"applied": False,
+                                 "reason": f"exception:{type(exc).__name__}"}
+
     if len(pts_ref):
         pts_ref, pts_sec, _ = select_quadrant_balanced_matches(
             pts_ref, pts_sec, ref_original.shape[:2], quota_per_quadrant=50
@@ -828,6 +885,16 @@ def _align_core(
             except Exception as exc:
                 execution_diagnostics["fallback_error"] = str(exc)
 
+    # Hook maintenance (deform-field stage): if the _align_core fallback above
+    # ran after the stage applied, its re-matched points supersede the
+    # field-corrected set, so the stage result no longer describes the gated
+    # data -- void it fail-closed. (For SIFT-path pairs the fallback flag is
+    # already set by the matcher and this never triggers.)
+    if deform_field_info.get("applied"):
+        _fb0 = deform_field_info.pop("_fb0", None)
+        if _fb0 is False and execution_diagnostics.get("fallback_triggered"):
+            deform_field_info = {"applied": False, "reason": "fallback_superseded"}
+
     if affine_matrix is None:
         raise ValueError(
             f"Insufficient Inliers: partial affine registration requires at least "
@@ -865,28 +932,6 @@ def _align_core(
     )
     residuals_vec = inlier_ref - pts_sec_h
     residuals_mag = np.linalg.norm(residuals_vec, axis=1)
-    # --- OPT-IN deformation-field stage (CHANDRA_DEFORM_FIELD=1; default OFF) ---
-    # Single hook point. With the flag unset, residuals_vec/residuals_mag above
-    # are untouched and the pipeline is bit-identical to the unmodified path.
-    # When enabled, a regularized TPS residual field is fit on the affine
-    # inliers (lambda chosen by internal held-out; fail-closed skips) and the
-    # SAME frozen gate below re-runs on the field-corrected residuals.
-    # See chandra_align/deform_field.py and
-    # docs/deform-field-pipeline-stage-2026-10-08.md.
-    deform_field_info = {"applied": False, "reason": "flag_off"}
-    if os.environ.get("CHANDRA_DEFORM_FIELD", "").strip().lower() in {"1", "true", "yes", "on"}:
-        try:
-            from chandra_align.deform_field import apply_deform_field_stage
-            deform_field_info = apply_deform_field_stage(
-                inlier_sec, inlier_ref, affine_matrix)
-            if deform_field_info.get("applied"):
-                residuals_vec = np.asarray(
-                    deform_field_info["residuals_vec"], dtype=np.float64)
-                residuals_mag = np.asarray(
-                    deform_field_info["residuals_mag"], dtype=np.float64)
-        except Exception as exc:  # fail closed: keep the affine residuals
-            deform_field_info = {"applied": False,
-                                 "reason": f"exception:{type(exc).__name__}"}
     quadrant_metrics, quadrant_spatial_entropy = compute_quadrant_metrics(
         inlier_ref, residuals_vec, ref_original.shape[:2]
     )
