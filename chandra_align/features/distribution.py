@@ -87,6 +87,13 @@ def select_detector_keypoints(keypoints, image_shape, quota_per_cell=64):
     enabled = os.environ.get("CHANDRA_GRID_BUCKETING", "1").strip().lower()
     if enabled in {"0", "false", "no", "off"}:
         return select_quadrant_keypoints(keypoints, image_shape, quota_per_quadrant=50)
+    # Deform-field stage (opt-in) needs a rich keypoint set to see distortion:
+    # the cap sweep (docs/matcher-cap-sweep-2026-10-08.md) showed quotas 128/256
+    # can let the default pipeline lock onto catastrophically wrong transforms,
+    # while uncapped was clean -- so the quota is lifted ONLY when the stage is
+    # enabled. Flag off -> quota honored exactly as passed (bit-identical).
+    if os.environ.get("CHANDRA_DEFORM_FIELD", "").strip().lower() in {"1", "true", "yes", "on"}:
+        quota_per_cell = 10 ** 9
     return select_grid_keypoints(keypoints, image_shape, quota_per_cell=quota_per_cell)
 
 

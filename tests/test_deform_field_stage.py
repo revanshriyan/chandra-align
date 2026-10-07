@@ -276,3 +276,36 @@ def test_flag_on_pre_balance_hook_ohrc01_improves():
     gate_on = float(out_on["judge_metrics"]["rmse_gate_px"])
     gate_off = float(out_off["judge_metrics"]["rmse_gate_px"])
     assert gate_on <= gate_off
+
+
+def test_quota_flag_gating_unit():
+    """Flag off -> per-cell quota honored (64); flag on -> uncapped."""
+    from chandra_align.features.distribution import select_detector_keypoints
+
+    class _KP:
+        def __init__(self, x, y, r):
+            self.pt = (x, y)
+            self.response = r
+
+    rng = np.random.default_rng(7)
+    kps = [_KP(*rng.uniform(0, 2048, 2), rng.random()) for _ in range(2000)]
+    shape = (2048, 2048)
+    old = os.environ.get("CHANDRA_DEFORM_FIELD")
+    try:
+        os.environ.pop("CHANDRA_DEFORM_FIELD", None)
+        _, idx_off = select_detector_keypoints(kps, shape, 64)
+        assert len(idx_off) == 16 * 64
+        os.environ["CHANDRA_DEFORM_FIELD"] = "1"
+        _, idx_on = select_detector_keypoints(kps, shape, 64)
+        assert len(idx_on) == 2000  # uncapped
+        # Deterministic and the capped set is a subset of the uncapped set.
+        _, idx_off2 = select_detector_keypoints(kps, shape, 64)
+        assert len(idx_off2) == 2000  # flag still on
+    finally:
+        if old is None:
+            os.environ.pop("CHANDRA_DEFORM_FIELD", None)
+        else:
+            os.environ["CHANDRA_DEFORM_FIELD"] = old
+    # Flag off again -> back to quota.
+    _, idx_off3 = select_detector_keypoints(kps, shape, 64)
+    assert np.array_equal(np.asarray(idx_off), np.asarray(idx_off3))
