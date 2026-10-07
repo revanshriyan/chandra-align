@@ -602,7 +602,10 @@ def _jsonable_deform_field_info(info):
     """Strip non-JSON-serializable values from deform-field stage telemetry."""
     safe = {}
     for key, value in (info or {}).items():
-        if key in ("residuals_vec", "residuals_mag"):
+        if key in ("residuals_vec", "residuals_mag", "field", "M_hook"):
+            # Raw stage artifacts for the dense-remap export; excluded from
+            # JSON telemetry (large arrays). The export path reads them from
+            # the raw deform_field_info dict, not from judge_metrics.
             continue
         if isinstance(value, np.ndarray):
             value = value.tolist()
@@ -1058,6 +1061,34 @@ def _align_core(
 
     H = _homogeneous_affine(affine_matrix)
     warped_sec = cv2.warpAffine(sec_original, affine_matrix, (ref_original.shape[1], ref_original.shape[0]))
+    # --- OPT-IN dense field remap (CHANDRA_DEFORM_FIELD=1; default OFF) ---
+    # The stage scores the forward map F(p) = M_hook @ p + d(p), but the warp
+    # above is affine-only. When the stage applied (and was not voided by the
+    # fallback check), the exported raster carries the field via cv2.remap
+    # with fixed-point-inverted sampling maps
+    # (chandra_align.deform_field.build_field_remap_maps). Any failure --
+    # bad field, singular matrix, non-finite maps -- falls back to the
+    # affine warp above, bit-identical to the pre-change behavior. The kind
+    # of warp actually exported is recorded in telemetry.
+    warp_export_kind = "affine"
+    if deform_field_info.get("applied"):
+        try:
+            from chandra_align.deform_field import build_field_remap_maps
+            _fmaps = build_field_remap_maps(
+                sec_original.shape[:2], ref_original.shape[:2],
+                deform_field_info.get("M_hook"), deform_field_info.get("field"))
+            _w = cv2.remap(sec_original, _fmaps[0], _fmaps[1],
+                           interpolation=cv2.INTER_LINEAR,
+                           borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            if (_w is not None and _w.shape == warped_sec.shape
+                    and np.all(np.isfinite(_w))):
+                warped_sec = _w
+                warp_export_kind = "field_remap"
+            else:
+                warp_export_kind = "affine (field remap produced degenerate output)"
+        except Exception as exc:  # fail closed: keep the affine warp
+            warp_export_kind = "affine (field remap failed: %s)" % type(exc).__name__
+    judge_metrics["warp_export_kind"] = warp_export_kind
     diff_map = cv2.absdiff(ref_original, warped_sec)
     error_vector_overlay_bgr = draw_error_vector_overlay(
         ref_original, warped_sec, inlier_sec, inlier_ref, affine_matrix, scale=10.0,
