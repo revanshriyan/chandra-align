@@ -35,3 +35,15 @@ will tighten it by ~3x.
 ## Next
 1m orthophoto (2GB) downloading. At 1m/px, expect ~0.8m absolute accuracy
 if the 0.8px RMSE holds, or better with more precise matching.
+
+## Note (2026-10-08, ~01:30 IST) — 3m offset verified correct
+The 3m file's embedded PDS3 label states `RECORD_BYTES=15336`,
+`LABEL_RECORDS=1`, `^IMAGE=2` → image offset **15336 bytes**, confirmed by
+file-size arithmetic (243781056 − 15336 = 15336×15895 exactly). The wrong-offset
+error found in the 1m run (47286 vs 46006) was specific to the 1m file; there is
+no evidence of an offset error in the 3m extraction, and no 3m re-match was
+needed. One caveat: the 3m transform figures (scale 0.947, rotation −2.37°)
+were derived assuming OHRC = 0.25 m/px; the PDS4 label gives 0.26 m/px, so the
+3m transform should be re-derived under the same correction in follow-up work
+— the corrected 1m run on the same M1443025251 product recovered rotation
++2.12°, so the 3m rotation's sign and magnitude are not yet confirmed.
