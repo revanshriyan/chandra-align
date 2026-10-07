@@ -1,9 +1,10 @@
 # Chandra-Align: Sub-Pixel Planetary Raster Alignment & Feature Matching Engine
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-brightgreen.svg)]()
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-brightgreen.svg)]()
 [![Accuracy](https://img.shields.io/badge/RMSE-%3C0.50px%20Sub--Pixel-success)]()
 [![Demo Access](https://img.shields.io/badge/Live%20Demo-Private%20%2F%20By%20Request-orange)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23217163.svg)](https://doi.org/10.5281/zenodo.23217163)
 
 > **Note on Live Demo:** The interactive deployment runs on a private instance for evaluation and review. For access tokens or demo credentials, please contact the repository maintainers directly.
 
@@ -20,7 +21,7 @@ CHANDRA-ALIGN registers lunar imagery across sensor, illumination, and scale dif
 
 ![CHANDRA-ALIGN end-to-end data flow: PDS4 products to verdict and exports](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-overview.svg)
 
-**The pipeline in one picture:** Chandrayaan-2 products (OHRC, TMC-2, IIRS) enter with their PDS4 labels, get preprocessed into bounded crops, run through a matcher cascade, get a RANSAC fit, face a fail-closed gate, and leave as verdict + telemetry + exports. Every number below is measured — the single source of truth is [`results/table_canonical_v1.csv`](results/table_canonical_v1.csv), and [`docs/model-card.md`](docs/model-card.md) is the honest benchmark card generated from it.
+**The pipeline in one picture:** Chandrayaan-2 products (OHRC, TMC-2, IIRS) enter with their PDS4 labels, get preprocessed into bounded crops, run through a matcher cascade, get a RANSAC fit, face a fail-closed gate, and leave as verdict + telemetry + exports. Every number below is measured — the single source of truth is [`results/table_canonical.json`](results/table_canonical.json), generated from raw run outputs by [`scripts/generate_results_table.py`](scripts/generate_results_table.py) (issue #8), and [`docs/model-card.md`](docs/model-card.md) is the honest benchmark card generated from it.
 
 ### 1. Matcher cascade
 
@@ -63,7 +64,7 @@ The matcher measurements below are recorded in [`results/table_issue01_gpu_valid
 | TMC2_fore_nadir | LightGlue_ALIKED | 1537 | 1.5558 | 13 | 1.6692 | 4/4 (2,3,1,7) | COARSE ALIGNMENT (Regional Fit Advisory) | 3.1617 |
 | TMC2_fore_nadir | SIFT_RANSAC | 106 | 2.2259 | 24 | 1.7296 | 4/4 (4,6,2,12) | COARSE ALIGNMENT (Regional Fit Advisory) | 7.1537 |
 
-The independent ground-truth protocol is documented in [`docs/ground-truth-protocol.md`](docs/ground-truth-protocol.md), and its split-held-out versus independent-RMSE comparison is recorded in [`results/table_issue02_ground_truth.csv`](results/table_issue02_ground_truth.csv); OHRC and TMC-2 independent landmarks remain pending human picking.
+The independent ground-truth protocol is documented in [`docs/ground-truth-protocol.md`](docs/ground-truth-protocol.md), and its split-held-out versus independent-RMSE comparison is recorded in [`results/table_issue02_ground_truth.csv`](results/table_issue02_ground_truth.csv). The independent landmarks landed as ChandraBench v0.1: independent GT RMSE (OHRC 5.6510 px, TMC-2 27.3519 px in `table_canonical.json`) sits far above split-held-out RMSE (OHRC 1.5375 px, TMC-2 1.7950 px) — the gap between inlier self-consistency and true transform error remains an open, tracked limitation, not a closed one.
 
 The Issue #3 crop benchmark recorded 12 browse-mapped south-polar pairs (six OHRC and six TMC-2) in [`results/table_issue03_benchmark.csv`](results/table_issue03_benchmark.csv): LightGlue/ALIKED produced 7 COARSE and 5 DEGENERATE_FAILURE verdicts; SIFT/RANSAC produced 8 COARSE and 4 DEGENERATE_FAILURE verdicts. No row was ACCEPTED; `gt_rmse` remains empty pending independent landmarks, and these windows do not cover mare terrain.
 
@@ -82,6 +83,32 @@ SIFT-family matchers failed on every IIRS↔TMC-2 attempt (1–25 Lowe matches, 
 | IIRS 2852nm ↔ TMC-2 | MINIMA_LoFTR + LK refine | 173 | 1.74 | 52 | 3/4 | COARSE ADVISORY |
 
 All cross-modal runs behind the frozen Phase 8 gates; full per-arm account in [`docs/phase9-report.md`](docs/phase9-report.md) and [`docs/phase9-loftr-addendum.md`](docs/phase9-loftr-addendum.md).
+
+### Scale-ratio robustness (synthetic exact truth)
+
+[`scripts/run_scale_ratio.py`](scripts/run_scale_ratio.py) measures CPU/SIFT against **exact ground truth** at downsampling ratios 1:1 through 16:1 (deterministic seed 7; full data in [`results/table_scale_ratio_sift_pilot.csv`](results/table_scale_ratio_sift_pilot.csv)):
+
+| Ratio | Inliers | Truth RMSE (px) | Inlier RMSE (px) | Gate |
+| --- | --- | --- | --- | --- |
+| 1:1 | 1711 | 0.0097 | 0.2593 | SUCCESS_SUBPIXEL |
+| 2:1 | 1372 | 0.0083 | 0.3580 | SUCCESS_SUBPIXEL |
+| 4:1 | 993 | 0.0097 | 0.5276 | COARSE_ADVISORY |
+| 8:1 | 701 | 0.0502 | 0.9416 | COARSE_ADVISORY |
+| 16:1 | 143 | 0.8868 | 1.5871 | COARSE_ADVISORY |
+
+Graceful degradation to 16:1 — no catastrophic failure anywhere. The honest finding is at 4:1: the recovered transform was truth-perfect (0.0097 px) while inlier RMSE (0.5276 px) alone tripped ACCEPT→COARSE. **The gate is conservative, not the matcher** — inlier self-consistency RMSE overestimates true transform error, so the reported RMSE is a pessimistic upper bound. This is why absolute-truth adjudication (below) is the path to a legitimate real-data claim.
+
+### Sun-angle envelope & phase-congruency breakthrough
+
+A systematic illumination sweep on the LROC DTM (Vikram site) maps the SIFT operational envelope — first as a pilot ([`docs/sunangle-envelope-2026-10-07.md`](docs/sunangle-envelope-2026-10-07.md)), then as a full deterministic 96-case grid ([`docs/sunangle-full-sweep-2026-10-08.md`](docs/sunangle-full-sweep-2026-10-08.md), [`results/table_sunangle_full.csv`](results/table_sunangle_full.csv)). The full sweep revises the pilot's harsher numbers: a 15° azimuth difference is COARSE at all elevations (truth RMSE 0.03–1.40 px, transforms verified correct); at el=30° the true failure boundary lies between 90° and 105°; at el=50°/70° matching never fails across the full 180°. Grazing sun is the real killer — at el=10°, azimuth differences ≥30° go fully DEGENERATE (long shadows). Envelope width is render-setup-sensitive (the pilot's render script was never committed), so quote the setup with the number. Either way, our real OHRC pairs sit comfortably inside every measured envelope — the two products are 2 hours apart, a ~7–8° azimuth change.
+
+The repo's phase-congruency front-end (`chandra_align/xmodal/phase_congruency.py`) cracked the azimuth limit ([`docs/pc-azimuth-breakthrough-2026-10-07.md`](docs/pc-azimuth-breakthrough-2026-10-07.md)): PC+SIFT vs raw SIFT at 10° azimuth difference went from 11 to **588 inliers (53×)** and 1.01→0.65 px; at 30° it recovered from DEGENERATE to 18 inliers / 0.90 px COARSE; even at 180° (opposite sun) it found 85 inliers / 0.91 px — all transforms verified near-identity, not false positives. 90° remains a failure mode.
+
+The honest caveat ([`docs/pc-realpair-honest-result-2026-10-07.md`](docs/pc-realpair-honest-result-2026-10-07.md)): on the same-day real OHRC pair PC+SIFT was **worse** (1.70 vs 1.61 px, 7× fewer inliers) — PC discards the intensity texture SIFT needs when illumination is already similar. PC is a specialist tool for cross-illumination pairs (>10° azimuth difference), not a general improvement. Gate thresholds are unchanged for both paths.
+
+### Absolute-truth adjudication against LROC orthophotos (preliminary, under reanalysis)
+
+An independent-absolute-truth attempt is underway: matching the OHRC benchmark crop against LROC orthophotos of the Vikram site (VIKRAMSITE1, 3 m and 1 m grids) instead of OHRC↔OHRC. Early runs found a systematic ~6% scale discrepancy under investigation — the OHRC PDS4 label reads 0.26 m/px, not the assumed 0.25 m/px — and the 1 m image byte-offset is being corrected from the PDS label before any absolute number can be claimed. Full status in [`docs/lroc-adjudication-status-2026-10-07.md`](docs/lroc-adjudication-status-2026-10-07.md). **No absolute-accuracy figure is stated here; the reanalysis will set the number.**
 
 ### Example Results
 
@@ -111,7 +138,8 @@ LightGlue/ALIKED, OHRC pair — 34 inliers across all four quadrants at 1.7961 p
 | Confidence calibration (Phase 12) | Fitted Brier 0.1198 vs 0.2197 heuristic baseline; verdict NOT CALIBRATED — calibration never touches gate decisions |
 | Systematic window tiling (Phase 13) | 84 deterministic windows, every one reported: OHRC 41/42 COARSE (median 2158 inliers, 1.49 px among COARSE windows), TMC-2 fore/nadir 21/42 COARSE (median 514 inliers, 1.64 px among COARSE windows) — full table in [`results/table_phase13_windows.csv`](results/table_phase13_windows.csv) |
 | Joint pose-graph (Phase 15) | 2D affines solved simultaneously (TRF+Huber, image 0 pinned), gates run first: synthetic loop misclosure 0.36 px → 0.00 px; no real triplet exists so real data ABSTAINs honestly |
-| ChandraBench v0.1 (Phase 16) | 40 human-verified landmarks + one-command evaluator + tech note, CC-BY-4.0, Zenodo-ready — an open benchmark for lunar correspondence |
+| ChandraBench v0.1 (Phase 16) | 40 human-verified landmarks + one-command evaluator + tech note, CC-BY-4.0, DOI [10.5281/zenodo.23217163](https://doi.org/10.5281/zenodo.23217163) — release [chandrabench-v0.1](https://github.com/revanshriyan/chandra-align/releases/tag/chandrabench-v0.1) — an open benchmark for lunar correspondence |
+| Spatial uniformity metrics (diagnostic) | `compute_spatial_uniformity_metrics` (`chandra_align/metrics/quadrant.py`): 8×8 grid occupancy + nearest-neighbor spread stats reported alongside quadrant entropy. **Diagnostic only — gate thresholds stay frozen.** |
 | ISIS3 comparison (Phase 17) | `coreg` on identical crops: flawless on synthetic control, but **fails open** on real pairs (57 "successful" chips, 4% consensus) where our pipeline fails closed |
 
 Full accounts in [`docs/phase12-report.md`](docs/phase12-report.md) and the phase result files under [`results/`](results/).

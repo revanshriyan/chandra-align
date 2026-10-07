@@ -1,5 +1,7 @@
 # Sun-Angle Robustness Envelope — 2026-10-07
 
+> **Note (2026-10-08):** the azimuth-tolerance claims below ("fatal beyond ~10°", "DEGENERATE at 15°+") are superseded by the full deterministic 96-case sweep in [`docs/sunangle-full-sweep-2026-10-08.md`](sunangle-full-sweep-2026-10-08.md) ([`results/table_sunangle_full.csv`](../results/table_sunangle_full.csv)), which found 15° COARSE at all elevations and the true el=30° failure boundary between 90° and 105°. The pilot's render script was never committed, so its harsher envelope reflects a different, undocumented render setup. Kept here as the pilot record.
+
 ## Method
 Systematic illumination sweep on LROC DTM (500x500 px at 3m/px, Vikram site).
 Lambertian renders at grid of solar positions; SIFT matching between fixed
