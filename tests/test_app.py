@@ -24,6 +24,8 @@ def test_synthetic_groundtruth_example_pair():
     examples = os.path.join(os.path.dirname(__file__), "..", "docs", "assets", "examples")
     ref = cv2.imread(os.path.join(examples, "synthetic_groundtruth_reference.png"), cv2.IMREAD_GRAYSCALE)
     sec = cv2.imread(os.path.join(examples, "synthetic_groundtruth_secondary.png"), cv2.IMREAD_GRAYSCALE)
+    if ref is None or sec is None:
+        pytest.skip("example fixtures are Git LFS objects; checkout with LFS to run this test")
     assert ref is not None and sec is not None
     assert ref.shape == sec.shape
     assert not np.array_equal(ref, sec)
