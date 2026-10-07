@@ -110,8 +110,18 @@ LightGlue/ALIKED, OHRC pair — 34 inliers across all four quadrants at 1.7961 p
 | Confident-but-wrong detection (Phase 11) | `sun_flip` case: 0.87 px inlier RMSE yet 485.8 px off truth — inlier self-consistency ≠ correctness |
 | Confidence calibration (Phase 12) | Fitted Brier 0.1198 vs 0.2197 heuristic baseline; verdict NOT CALIBRATED — calibration never touches gate decisions |
 | Systematic window tiling (Phase 13) | 84 deterministic windows, every one reported: OHRC 41/42 COARSE (median 2166 inliers, 1.49 px), TMC-2 fore/nadir 21/42 COARSE (median 683 inliers, 2.18 px) — full table in [`results/table_phase13_windows.csv`](results/table_phase13_windows.csv) |
+| Joint pose-graph (Phase 15) | 2D affines solved simultaneously (TRF+Huber, image 0 pinned), gates run first: synthetic loop misclosure 0.36 px → 0.00 px; no real triplet exists so real data ABSTAINs honestly |
+| ChandraBench v0.1 (Phase 16) | 40 human-verified landmarks + one-command evaluator + tech note, CC-BY-4.0, Zenodo-ready — an open benchmark for lunar correspondence |
+| ISIS3 comparison (Phase 17) | `coreg` on identical crops: flawless on synthetic control, but **fails open** on real pairs (57 "successful" chips, 4% consensus) where our pipeline fails closed |
 
 Full accounts in [`docs/phase12-report.md`](docs/phase12-report.md) and the phase result files under [`results/`](results/).
+
+### Standout artifacts
+
+- [Failure gallery](docs/failure-gallery.md) — "How Not to Register the Moon": 8 real failures with diagnoses, including the 485.8 px confident-but-wrong case and the incumbent that fails open.
+- [Behavioral test matrix](chandra_align/eval/behavioral.py) — 15 CheckList-style capability × test-type cells, all runnable.
+- [Trust maps](scripts/trust_map.py) — per-cell verification heatmaps: 36/36 on true transforms, 0/36 on wrong ones.
+- [Frozen evidence](results/EVIDENCE_SHA256.txt) — sha256 manifest of every results file.
 
 ## Run Locally
 
