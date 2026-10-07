@@ -39,7 +39,7 @@ from chandra_align.metrics import (
     compute_deformation_field, grid_deformation_analysis, compute_ground_metrics,
     get_sensor_pixel_scale, metrics_bundle_with_ground, ResidualVector, GroundMetrics,
     compute_quadrant_metrics, format_quadrant_html, build_judge_metrics_summary,
-    validate_registration_gate,
+    compute_spatial_uniformity_metrics, validate_registration_gate,
 )
 from chandra_align.metrics.reporting import build_confidence_assessment
 from chandra_align.visualization import (
@@ -575,6 +575,29 @@ def _match_sift_ransac(ref_image, sec_image, threshold_px):
     return best[1], best[2], best[0]
 
 
+def _compute_spatial_uniformity(inlier_points, img_shape):
+    """8x8 grid-occupancy + nearest-neighbor spread telemetry (DIAGNOSTIC ONLY).
+
+    Never affects gate decisions or verdicts. On any failure the payload
+    reports valid=False with zeroed fields so telemetry marks the metrics
+    invalid rather than fabricating values.
+    """
+    try:
+        payload = compute_spatial_uniformity_metrics(inlier_points, img_shape)
+    except Exception:
+        payload = {
+            "grid_shape": [8, 8],
+            "grid_occupancy": 0.0,
+            "occupied_cells": 0,
+            "n_points": 0,
+            "nn_mean_px": 0.0, "nn_median_px": 0.0,
+            "nn_std_px": 0.0, "nn_p5_px": 0.0,
+        }
+    payload["valid"] = bool(payload.get("n_points", 0) >= 2)
+    payload["diagnostic_only"] = True
+    return payload
+
+
 def _align_core(
     ref_img: np.ndarray,
     sec_img: np.ndarray,
@@ -827,6 +850,10 @@ def _align_core(
         inlier_ref, residuals_vec, ref_original.shape[:2]
     )
     quadrant_html = format_quadrant_html(quadrant_metrics, quadrant_spatial_entropy)
+    # Diagnostic-only spatial uniformity (never feeds the acceptance gate).
+    spatial_uniformity_metrics = _compute_spatial_uniformity(
+        inlier_ref, ref_original.shape[:2]
+    )
 
     rmse_in_sample_px = float(np.sqrt(np.mean(residuals_mag ** 2))) if len(residuals_mag) > 0 else 0.0
     mae_in_sample_px = float(np.mean(residuals_mag)) if len(residuals_mag) > 0 else 0.0
@@ -878,6 +905,7 @@ def _align_core(
         "rmse_gate_px": rmse_gate_px,
         "rmse_gate_basis": rmse_gate_basis,
         "heldout_check_points": int(heldout_error.get("n_check_points", 0)),
+        "spatial_uniformity_metrics": spatial_uniformity_metrics,
     })
     confidence_assessment = build_confidence_assessment(
         status_code=status_code, status_message=status_message, rmse_px=rmse_gate_px,
@@ -919,6 +947,7 @@ def _align_core(
             "rmse_gate_px": rmse_gate_px,
             "rmse_gate_basis": rmse_gate_basis,
             "quadrant_spatial_entropy": quadrant_spatial_entropy,
+            "spatial_uniformity_metrics": spatial_uniformity_metrics,
             "execution_diagnostics": execution_diagnostics,
             "confidence_assessment": confidence_assessment,
             **confidence_assessment,
@@ -974,6 +1003,7 @@ def _align_core(
         "error_vector_overlay_bgr": error_vector_overlay_bgr,
         "quadrant_metrics": quadrant_metrics,
         "quadrant_spatial_entropy": quadrant_spatial_entropy,
+        "spatial_uniformity_metrics": spatial_uniformity_metrics,
         "quadrant_metrics_html": quadrant_html,
         "judge_metrics": judge_metrics,
         "status_message": status_message,
@@ -1027,6 +1057,10 @@ def _failed_judge_metrics_summary(inlier_count: int = 0, total_correspondences: 
     }
     summary = build_judge_metrics_summary(
         0.0, inlier_count, total_correspondences, 0.0, empty_quadrants
+    )
+    # Uniformity telemetry is always present, marked invalid — never fabricated.
+    summary["spatial_uniformity_metrics"] = _compute_spatial_uniformity(
+        np.empty((0, 2)), (1, 1)
     )
     assessment = build_confidence_assessment(
         status_code=summary.get("status_code", "DEGENERATE_FAILURE"),
@@ -1348,6 +1382,15 @@ def process_alignment(
         uniformity = result["uniformity"]
         spatial_entropy = result["spatial_entropy"]
         quadrant_entropy = result["quadrant_spatial_entropy"]
+        grid_uniformity_metrics = result.get("spatial_uniformity_metrics") or {}
+        grid_cells = int((grid_uniformity_metrics.get("grid_shape") or [8, 8])[0]) * int(
+            (grid_uniformity_metrics.get("grid_shape") or [8, 8])[1]
+        )
+        grid_occupancy = float(grid_uniformity_metrics.get("grid_occupancy", 0.0))
+        occupied_cells = int(grid_uniformity_metrics.get("occupied_cells", 0))
+        nn_mean = float(grid_uniformity_metrics.get("nn_mean_px", 0.0))
+        nn_median = float(grid_uniformity_metrics.get("nn_median_px", 0.0))
+        nn_p5 = float(grid_uniformity_metrics.get("nn_p5_px", 0.0))
         refinement_stats = result["refinement_stats"]
         pixel_scale_m = result["pixel_scale_m"]
         status_message = result["status_message"]
@@ -1379,6 +1422,9 @@ def process_alignment(
             f"Sensor Pair Mode: {result['sensor_pair_mode']}\n"
             f"Verified Inliers: {inlier_cnt} / {total_matches} ({inlier_pct:.1f}%)\n"
             f"Spatial Uniformity U: {uniformity:.4f} (entropy {spatial_entropy:.4f} nats)\n"
+            f"Grid Uniformity 8x8 (diagnostic, not gated): occupancy {grid_occupancy:.3f} "
+            f"({occupied_cells}/{grid_cells} cells, {grid_cells - occupied_cells} empty), "
+            f"NN mean {nn_mean:.2f} px, NN median {nn_median:.2f} px, NN p5 {nn_p5:.2f} px\n"
             f"NCC-Refined Candidates (pre-final RANSAC): {refinement_stats.get('refined_pairs', 0)} ({refinement_stats.get('status', 'not run')})\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"PIXEL METRICS:\n"
