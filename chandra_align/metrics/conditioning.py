@@ -122,6 +122,9 @@ def classify_prefit_abstain(pts_a, pts_b):
     - ILL_CONDITIONED: affine design-matrix SVD cond > 1e6.
     None means "a fit may be attempted" (it can still fail -> NO_VALID_MODEL).
     """
+    if pts_a is None or pts_b is None:
+        # None is not a correspondence set; fail closed like zero candidates.
+        return "ZERO_CANDIDATES"
     pa = np.asarray(pts_a, dtype=np.float64).reshape(-1, 2)
     pb = np.asarray(pts_b, dtype=np.float64).reshape(-1, 2)
     if len(pa) == 0 or len(pb) == 0 or len(pa) != len(pb):

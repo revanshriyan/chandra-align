@@ -150,6 +150,10 @@ def verify_magsac(points_a, points_b, cfg_verification: dict):
     """
     import cv2
 
+    if points_a is None:
+        points_a = np.zeros((0, 2), np.float32)
+    if points_b is None:
+        points_b = np.zeros((0, 2), np.float32)
     pa = np.asarray(points_a, np.float32).reshape(-1, 2)
     pb = np.asarray(points_b, np.float32).reshape(-1, 2)
     n = len(pa)
@@ -262,8 +266,10 @@ def verify_guarded(points_a, points_b, cfg_verification: dict, image_shape=None)
         dedup_correspondences,
     )
 
-    pa = np.asarray(points_a, np.float32).reshape(-1, 2)
-    pb = np.asarray(points_b, np.float32).reshape(-1, 2)
+    pa = np.zeros((0, 2), np.float32) if points_a is None else np.asarray(
+        points_a, np.float32).reshape(-1, 2)
+    pb = np.zeros((0, 2), np.float32) if points_b is None else np.asarray(
+        points_b, np.float32).reshape(-1, 2)
     out = {
         "abstain_code": None, "inliers_a": np.zeros((0, 2), np.float32),
         "inliers_b": np.zeros((0, 2), np.float32), "model": None,

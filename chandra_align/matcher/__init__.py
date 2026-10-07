@@ -51,6 +51,9 @@ class RIFT2Matcher:
 
         a = _to_uint8(img_a)
         b = _to_uint8(img_b)
+        if a.size == 0 or b.size == 0:
+            # cv2 would raise on empty images; fail closed with zero candidates.
+            return np.zeros((0, 2), np.float32), np.zeros((0, 2), np.float32)
         kp_a, des_a, kp_b, des_b = self._port(a, b)
         if des_a is None or des_b is None or len(kp_a) < 4 or len(kp_b) < 4:
             return np.zeros((0, 2), np.float32), np.zeros((0, 2), np.float32)
@@ -80,6 +83,9 @@ class SIFTMatcher:
 
         a = _to_uint8(img_a)
         b = _to_uint8(img_b)
+        if a.size == 0 or b.size == 0:
+            # cv2.SIFT raises cv2.error on empty images; fail closed instead.
+            return np.zeros((0, 2), np.float32), np.zeros((0, 2), np.float32)
         k_a, des_a = self._sift.detectAndCompute(a, None)
         k_b, des_b = self._sift.detectAndCompute(b, None)
         if des_a is None or des_b is None or len(k_a) < 4 or len(k_b) < 4:
@@ -101,6 +107,10 @@ def _to_uint8(img):
     if hasattr(img, "numpy"):
         img = img.numpy()
     img = np.asarray(img)
+    if img.size == 0:
+        # Empty image: no percentile stats exist; return an empty uint8 image so
+        # the caller fails closed downstream instead of crashing in nanpercentile.
+        return np.zeros(img.shape, np.uint8)
     if img.ndim == 3:
         return ensure_uint8(img)
     img = np.nan_to_num(img.astype(np.float64, copy=False), nan=0.0, posinf=255.0, neginf=0.0)
