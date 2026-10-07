@@ -251,6 +251,51 @@ def main():
     ]:
         entries.append(entry(m, label, val, gate_src, unit))
 
+    # ---- 9. Deform-field stage (opt-in) shipped results ----
+    src9a = "results/table_quota_12pair.csv"
+    qrows = read_csv(os.path.join(REPO_ROOT, src9a))
+    qmap = {}
+    if qrows:
+        for r in qrows:
+            if r.get("flag") == "on":
+                qmap[r["pair"]] = r
+    for pid, short in [("ohrc_01", "OHRC cratered-rim window (12:09->14:06)"),
+                       ("ohrc_02", "OHRC massif-slope window (12:09->14:06)"),
+                       ("ohrc_03", "OHRC hummocky-relief window (12:09->14:06)")]:
+        r = qmap.get(pid)
+        if r and r.get("rmse_gate_px") and r.get("n_inliers") and r.get("status_code"):
+            entries.append(entry(f"deform_stage_{pid}_gate_rmse",
+                                 f"Deform-field stage gate RMSE ({short}, flag on)",
+                                 fmt(float(r["rmse_gate_px"])), src9a, "px"))
+            entries.append(entry(f"deform_stage_{pid}_inliers",
+                                 f"Deform-field stage inliers ({short}, flag on)",
+                                 str(int(float(r["n_inliers"]))), src9a, ""))
+            entries.append(entry(f"deform_stage_{pid}_verdict",
+                                 f"Deform-field stage verdict ({short}, flag on)",
+                                 r["status_code"], src9a, ""))
+        else:
+            for m, label in [
+                (f"deform_stage_{pid}_gate_rmse", f"Deform-field stage gate RMSE ({short}, flag on)"),
+                (f"deform_stage_{pid}_inliers", f"Deform-field stage inliers ({short}, flag on)"),
+                (f"deform_stage_{pid}_verdict", f"Deform-field stage verdict ({short}, flag on)"),
+            ]:
+                entries.append(entry(m, label, UNVERIFIED, src9a))
+    src9b = "results/table_lroc_field.csv"
+    lrows = read_csv(os.path.join(REPO_ROOT, src9b))
+    lmap = {r["grid"]: r for r in lrows} if lrows else {}
+    for grid, label in [("1m", "LROC 1m grid"), ("3m", "LROC 3m grid")]:
+        r = lmap.get(grid)
+        if r and r.get("field_x_check_rmse_m") and r.get("field_y_check_rmse_m"):
+            lo = min(float(r["field_x_check_rmse_m"]), float(r["field_y_check_rmse_m"]))
+            hi = max(float(r["field_x_check_rmse_m"]), float(r["field_y_check_rmse_m"]))
+            entries.append(entry(f"lroc_field_{grid}_bound_m",
+                                 f"{label} independent held-out absolute bound (field stage)",
+                                 f"{lo:.1f}-{hi:.1f}", src9b, "m"))
+        else:
+            entries.append(entry(f"lroc_field_{grid}_bound_m",
+                                 f"{label} independent held-out absolute bound (field stage)",
+                                 UNVERIFIED, src9b))
+
     # ---- Markdown table to stdout ----
     lines = []
     lines.append("# CHANDRA-ALIGN canonical results table")

@@ -279,8 +279,96 @@
       "unit": "",
       "source": "frozen gate spec \u2014 app.py (judge checklist), chandra_align/registration_transform.py (MIN_REGISTRATION_INLIERS=8)",
       "verified": true
+    },
+    {
+      "metric": "deform_stage_ohrc_01_gate_rmse",
+      "label": "Deform-field stage gate RMSE (OHRC cratered-rim window (12:09->14:06), flag on)",
+      "value": "0.4312",
+      "unit": "px",
+      "source": "results/table_quota_12pair.csv",
+      "verified": true
+    },
+    {
+      "metric": "deform_stage_ohrc_01_inliers",
+      "label": "Deform-field stage inliers (OHRC cratered-rim window (12:09->14:06), flag on)",
+      "value": "17",
+      "unit": "",
+      "source": "results/table_quota_12pair.csv",
+      "verified": true
+    },
+    {
+      "metric": "deform_stage_ohrc_01_verdict",
+      "label": "Deform-field stage verdict (OHRC cratered-rim window (12:09->14:06), flag on)",
+      "value": "SUCCESS_SUBPIXEL",
+      "unit": "",
+      "source": "results/table_quota_12pair.csv",
+      "verified": true
+    },
+    {
+      "metric": "deform_stage_ohrc_02_gate_rmse",
+      "label": "Deform-field stage gate RMSE (OHRC massif-slope window (12:09->14:06), flag on)",
+      "value": "0.4687",
+      "unit": "px",
+      "source": "results/table_quota_12pair.csv",
+      "verified": true
+    },
+    {
+      "metric": "deform_stage_ohrc_02_inliers",
+      "label": "Deform-field stage inliers (OHRC massif-slope window (12:09->14:06), flag on)",
+      "value": "23",
+      "unit": "",
+      "source": "results/table_quota_12pair.csv",
+      "verified": true
+    },
+    {
+      "metric": "deform_stage_ohrc_02_verdict",
+      "label": "Deform-field stage verdict (OHRC massif-slope window (12:09->14:06), flag on)",
+      "value": "SUCCESS_SUBPIXEL",
+      "unit": "",
+      "source": "results/table_quota_12pair.csv",
+      "verified": true
+    },
+    {
+      "metric": "deform_stage_ohrc_03_gate_rmse",
+      "label": "Deform-field stage gate RMSE (OHRC hummocky-relief window (12:09->14:06), flag on)",
+      "value": "0.3427",
+      "unit": "px",
+      "source": "results/table_quota_12pair.csv",
+      "verified": true
+    },
+    {
+      "metric": "deform_stage_ohrc_03_inliers",
+      "label": "Deform-field stage inliers (OHRC hummocky-relief window (12:09->14:06), flag on)",
+      "value": "20",
+      "unit": "",
+      "source": "results/table_quota_12pair.csv",
+      "verified": true
+    },
+    {
+      "metric": "deform_stage_ohrc_03_verdict",
+      "label": "Deform-field stage verdict (OHRC hummocky-relief window (12:09->14:06), flag on)",
+      "value": "SUCCESS_SUBPIXEL",
+      "unit": "",
+      "source": "results/table_quota_12pair.csv",
+      "verified": true
+    },
+    {
+      "metric": "lroc_field_1m_bound_m",
+      "label": "LROC 1m grid independent held-out absolute bound (field stage)",
+      "value": "1.7-2.3",
+      "unit": "m",
+      "source": "results/table_lroc_field.csv",
+      "verified": true
+    },
+    {
+      "metric": "lroc_field_3m_bound_m",
+      "label": "LROC 3m grid independent held-out absolute bound (field stage)",
+      "value": "2.0-2.5",
+      "unit": "m",
+      "source": "results/table_lroc_field.csv",
+      "verified": true
     }
   ],
-  "n_entries": 35,
+  "n_entries": 46,
   "n_unverified": 0
 }
