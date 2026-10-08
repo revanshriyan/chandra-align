@@ -717,7 +717,34 @@ def _align_core(
     except ValueError:
         match_ref, match_sec = ref_processed, sec_processed
         ref_match_scale = sec_match_scale = 1.0
-    if matching_mode == "coarse_to_fine":
+    # Opt-in MatchAnything front-end (no training, pretrained weights).
+    # When CHANDRA_MATCHANYTHING=1 and the weights/deps are available, use
+    # MatchAnything ELoFTR instead of the default matcher. Fail-closed: any
+    # problem falls back to the default matcher. With the flag unset, this
+    # block is skipped and the pipeline is bit-identical.
+    # See chandra_align/matchanything_frontend.py.
+    _ma_pts = None
+    if os.environ.get("CHANDRA_MATCHANYTHING", "").strip().lower() in {"1", "true", "yes", "on"}:
+        try:
+            from chandra_align.matchanything_frontend import (
+                matchanything_available, match_pair_matchanything,
+            )
+            if matchanything_available():
+                _ma0, _ma1 = match_pair_matchanything(match_ref, match_sec)
+                if _ma0 is not None and _ma1 is not None and len(_ma0) >= 3:
+                    _ma_pts = (_ma0, _ma1)
+        except Exception:
+            _ma_pts = None
+    if _ma_pts is not None:
+        pts_ref, pts_sec = _ma_pts
+        engine_name = "matchanything_eloftr"
+        execution_diagnostics = {"matcher": "matchanything_eloftr",
+                                 "opt_in": True,
+                                 "fallback_triggered": False,
+                                 "fallback_reason": None,
+                                 "primary_engine": "MatchAnything/ELoFTR",
+                                 "registration_engine": "MatchAnything/ELoFTR"}
+    elif matching_mode == "coarse_to_fine":
         from chandra_align.matching.coarse_to_fine import coarse_to_fine_match
         pts_ref, pts_sec, engine_name, execution_diagnostics = coarse_to_fine_match(
             match_ref, match_sec, match_pair_hf,
