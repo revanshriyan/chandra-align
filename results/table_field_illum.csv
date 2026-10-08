@@ -1,0 +1,11 @@
+case,elevation_deg,azimuth_deg,flag,status_code,n_inliers,rmse_in_sample_px,rmse_gate_px,truth_rmse_px,entropy,quadrants,df_applied,df_reason,df_lambda,df_heldout_px,df_min_jac_det,fail_closed_note,error
+el30_az060,30.0,60.0,off,DEGENERATE_FAILURE,0,,,,,0,False,fail_closed_no_correspondences,,,,Insufficient keypoint correspondences detected. Matcher detail: No SIFT candidate reached eight part,
+el30_az060,30.0,60.0,on,DEGENERATE_FAILURE,0,,,,,0,False,fail_closed_no_correspondences,,,,Insufficient keypoint correspondences detected. Matcher detail: No SIFT candidate reached eight part,
+el30_az090,30.0,90.0,off,DEGENERATE_FAILURE,0,,,,,0,False,fail_closed_no_correspondences,,,,Insufficient keypoint correspondences detected. Matcher detail: No SIFT candidate reached eight part,
+el30_az090,30.0,90.0,on,DEGENERATE_FAILURE,0,,,,,0,False,fail_closed_no_correspondences,,,,Insufficient keypoint correspondences detected. Matcher detail: No SIFT candidate reached eight part,
+el30_az105,30.0,105.0,off,DEGENERATE_FAILURE,0,,,,,0,False,fail_closed_no_correspondences,,,,Insufficient keypoint correspondences detected. Matcher detail: No SIFT candidate reached eight part,
+el30_az105,30.0,105.0,on,DEGENERATE_FAILURE,0,,,,,0,False,fail_closed_no_correspondences,,,,Insufficient keypoint correspondences detected. Matcher detail: No SIFT candidate reached eight part,
+el50_az090,50.0,90.0,off,DEGENERATE_FAILURE,0,,,,,0,False,fail_closed_no_correspondences,,,,Insufficient keypoint correspondences detected. Matcher detail: No SIFT candidate reached eight part,
+el50_az090,50.0,90.0,on,DEGENERATE_FAILURE,0,,,,,0,False,fail_closed_no_correspondences,,,,Insufficient keypoint correspondences detected. Matcher detail: No SIFT candidate reached eight part,
+el10_az030,10.0,30.0,off,SUCCESS_SUBPIXEL,29,0.4263850012684778,0.4493877565273053,0.14004994970606993,1.9903513586196353,4,False,flag_off,,,,,
+el10_az030,10.0,30.0,on,SUCCESS_SUBPIXEL,20,0.5019199666003561,0.3961111610330194,0.1477965795247178,1.8609640474436813,4,False,no_improvement,,,,,
