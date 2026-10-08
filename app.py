@@ -724,12 +724,14 @@ def _align_core(
     except ValueError:
         match_ref, match_sec = ref_processed, sec_processed
         ref_match_scale = sec_match_scale = 1.0
-    # Opt-in MatchAnything front-end (no training, pretrained weights).
-    # When CHANDRA_MATCHANYTHING=1 and the weights/deps are available, use
-    # MatchAnything ELoFTR instead of the default matcher. Fail-closed: any
-    # problem falls back to the default matcher. With the flag unset, this
-    # block is skipped and the pipeline is bit-identical.
-    # See chandra_align/matchanything_frontend.py.
+    # Opt-in matcher front-ends (priority: MatchAnything > AnyMatch > PC).
+    # Each arm is attempted in turn; the first yielding >= 3 points wins via
+    # the single if/elif selection chain below. All arms are additive and
+    # flag-gated: with every flag unset the pipeline is bit-identical to
+    # the default path. Fail-closed: any arm problem falls back to the next
+    # arm, then to the default matcher.
+    # - CHANDRA_MATCHANYTHING=1: MatchAnything ELoFTR (pretrained weights).
+    #   See chandra_align/matchanything_frontend.py.
     _ma_pts = None
     if os.environ.get("CHANDRA_MATCHANYTHING", "").strip().lower() in {"1", "true", "yes", "on"}:
         try:
@@ -742,21 +744,8 @@ def _align_core(
                     _ma_pts = (_ma0, _ma1)
         except Exception:
             _ma_pts = None
-    if _ma_pts is not None:
-        pts_ref, pts_sec = _ma_pts
-        engine_name = "matchanything_eloftr"
-        execution_diagnostics = {"matcher": "matchanything_eloftr",
-                                 "opt_in": True,
-                                 "fallback_triggered": False,
-                                 "fallback_reason": None,
-                                 "primary_engine": "MatchAnything/ELoFTR",
-                                 "registration_engine": "MatchAnything/ELoFTR"}
-    # Opt-in AnyMatch front-end (no training, fine-tuned weights).
-    # When CHANDRA_ANYMATCH=1 and the weights/deps are available, use
-    # AnyMatch fine-tuned LoFTR instead of the default matcher. Fail-closed:
-    # any problem falls back to the default matcher. With the flag unset,
-    # this block is skipped and the pipeline is bit-identical.
-    # See chandra_align/anymatch_frontend.py.
+    # - CHANDRA_ANYMATCH=1: AnyMatch fine-tuned LoFTR (fine-tuned weights).
+    #   See chandra_align/anymatch_frontend.py.
     _am_pts = None
     if _ma_pts is None and os.environ.get("CHANDRA_ANYMATCH", "").strip().lower() in {"1", "true", "yes", "on"}:
         try:
@@ -769,7 +758,38 @@ def _align_core(
                     _am_pts = (_am0, _am1)
         except Exception:
             _am_pts = None
-    if _am_pts is not None:
+    # - CHANDRA_PC=1: phase-congruency maps (polarity-invariant structure;
+    #   pure numpy/cv2, no weights). Complementary to SIFT: SIFT wins at
+    #   small sun-angle differences, PC wins at near-opposite sun.
+    #   See chandra_align/pc_frontend.py.
+    _pc_pts = None
+    if _ma_pts is None and _am_pts is None and os.environ.get("CHANDRA_PC", "").strip().lower() in {"1", "true", "yes", "on"}:
+        try:
+            from chandra_align.pc_frontend import (
+                pc_available, match_pair_pc,
+            )
+            if pc_available():
+                _p0, _p1 = match_pair_pc(match_ref, match_sec)
+                if _p0 is not None and _p1 is not None and len(_p0) >= 3:
+                    _pc_pts = (_p0, _p1)
+        except Exception:
+            _pc_pts = None
+    # ---- Opt-in arm selection (priority: MatchAnything > AnyMatch > PC) ----
+    # The three opt-in arms were attempted above in priority order; the
+    # first one yielding >= 3 points wins. Single if/elif chain so a
+    # successful arm is never overwritten by a later branch. With every
+    # flag unset all three are None and the default matching_mode path
+    # runs bit-identical to before.
+    if _ma_pts is not None:
+        pts_ref, pts_sec = _ma_pts
+        engine_name = "matchanything_eloftr"
+        execution_diagnostics = {"matcher": "matchanything_eloftr",
+                                 "opt_in": True,
+                                 "fallback_triggered": False,
+                                 "fallback_reason": None,
+                                 "primary_engine": "MatchAnything/ELoFTR",
+                                 "registration_engine": "MatchAnything/ELoFTR"}
+    elif _am_pts is not None:
         pts_ref, pts_sec = _am_pts
         engine_name = "anymatch_loftr"
         execution_diagnostics = {"matcher": "anymatch_loftr",
@@ -778,6 +798,15 @@ def _align_core(
                                  "fallback_reason": None,
                                  "primary_engine": "AnyMatch/LoFTR",
                                  "registration_engine": "AnyMatch/LoFTR"}
+    elif _pc_pts is not None:
+        pts_ref, pts_sec = _pc_pts
+        engine_name = "pc_frontend"
+        execution_diagnostics = {"matcher": "pc_frontend",
+                                 "opt_in": True,
+                                 "fallback_triggered": False,
+                                 "fallback_reason": None,
+                                 "primary_engine": "PhaseCongruency/SIFT",
+                                 "registration_engine": "PhaseCongruency/SIFT"}
     elif matching_mode == "coarse_to_fine":
         from chandra_align.matching.coarse_to_fine import coarse_to_fine_match
         pts_ref, pts_sec, engine_name, execution_diagnostics = coarse_to_fine_match(
