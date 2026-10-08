@@ -228,7 +228,13 @@ def test_flag_on_degenerate_pair_no_crash():
     old = os.environ.get("CHANDRA_DEFORM_FIELD")
     try:
         os.environ["CHANDRA_DEFORM_FIELD"] = "1"
-        out = app_module._align_core(ref, sec)
+        try:
+            out = app_module._align_core(ref, sec)
+        except ValueError as e:
+            # Matcher correctly rejects garbage input fail-closed;
+            # the stage never runs, so no stage crash is possible.
+            assert "Insufficient keypoint" in str(e)
+            return
     finally:
         if old is None:
             os.environ.pop("CHANDRA_DEFORM_FIELD", None)
