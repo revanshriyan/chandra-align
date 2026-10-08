@@ -602,11 +602,18 @@ def _jsonable_deform_field_info(info):
     """Strip non-JSON-serializable values from deform-field stage telemetry."""
     safe = {}
     for key, value in (info or {}).items():
-        if key in ("residuals_vec", "residuals_mag", "field", "M_hook"):
+        if key in ("residuals_vec", "residuals_mag", "field", "M_hook",
+                   "refit_field", "refit_M_hook"):
             # Raw stage artifacts for the dense-remap export; excluded from
             # JSON telemetry (large arrays). The export path reads them from
             # the raw deform_field_info dict, not from judge_metrics.
             continue
+        if key == "rescue_info" and isinstance(value, dict):
+            # Strip raw refit artifacts from the nested rescue info; keep
+            # the scalar telemetry (gate code, RMSE, counts, etc.).
+            value = {k: v for k, v in value.items()
+                     if k not in ("refit_field", "refit_M_hook",
+                                  "admitted_mask", "field", "M_hook")}
         if isinstance(value, np.ndarray):
             value = value.tolist()
         elif isinstance(value, (np.integer, np.floating)):
@@ -866,6 +873,17 @@ def _align_core(
                                     _rescue["rescue_quad_counts"] = [
                                         _qc["Q1"], _qc["Q2"],
                                         _qc["Q3"], _qc["Q4"]]
+                                    # Store the refit field for the export
+                                    # path: when the rescue verdict is
+                                    # adopted, the dense remap must use the
+                                    # rescue field, not the normal field.
+                                    # Excluded from JSON telemetry (raw
+                                    # arrays); the export path reads them
+                                    # from deform_field_info directly.
+                                    _rescue["refit_field"] = _refit.get(
+                                        "field")
+                                    _rescue["refit_M_hook"] = _refit.get(
+                                        "M_hook")
                             except Exception as _rexc:
                                 _rescue = {"rescued": False,
                                            "reason": "exception:%s" % type(
@@ -1116,6 +1134,28 @@ def _align_core(
                    "rmse_px": 0.0},
         }
         deform_field_info["verdict_source"] = "l1_rescue_second_opinion"
+        # Export consistency: the dense remap (below) reads
+        # deform_field_info["field"] / ["M_hook"]. When the rescue verdict
+        # is adopted, the exported raster must use the rescue refit's
+        # field, not the normal stage's field. Fail-closed: if the refit
+        # field is missing or invalid, keep the normal field.
+        try:
+            _rf = _ri.get("refit_field")
+            _rm = _ri.get("refit_M_hook")
+            if _rf is not None and _rm is not None:
+                from chandra_align.deform_field import (
+                    _check_export_field as _cef)
+                _rf_checked = _cef(_rf)
+                _rm_arr = np.asarray(_rm, dtype=np.float64)
+                if (_rf_checked is not None and _rm_arr.shape == (2, 3)
+                        and np.all(np.isfinite(_rm_arr))):
+                    deform_field_info["field"] = _rf_checked
+                    deform_field_info["M_hook"] = _rm_arr
+                    deform_field_info["export_field_source"] = (
+                        "l1_rescue_refit")
+        except Exception:
+            # Fail-closed: keep the normal stage field for export.
+            pass
     judge_metrics = build_judge_metrics_summary(
         rmse_px,
         inlier_cnt,
