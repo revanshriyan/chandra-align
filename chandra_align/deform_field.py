@@ -575,13 +575,19 @@ def maybe_rescue_and_refit(stage_info, pts_sec_raw, pts_ref_raw,
         out["reason"] = "coverage_sufficient"
         return stage_info, out
 
-    # Score the FULL raw set under the field: |p_ref - (M@sec + d(sec))|.
+    # Score the FULL raw set under a STIFF field: |p_ref - (M@sec + d(sec))|.
+    # The stage's gate field (often λ=0.01) overfits the covered region and
+    # extrapolates poorly; rescue needs the smooth trend, so we fit a
+    # dedicated scoring field at λ=1.0 on the hook inliers. The admitted set
+    # is still refit with the full grid below, so the gate keeps its guardrail.
     out["n_candidates"] = int(ps.shape[0])
     try:
-        d_all = _eval_residual_field(field, ps)
+        r_hook = pr[mask] - _apply_affine(Ma, ps[mask])
+        score_field = _fit_residual_field(ps[mask], r_hook, 1.0)
+        d_all = _eval_residual_field(score_field, ps)
         pred = _apply_affine(Ma, ps) + d_all
         resid = np.linalg.norm(pr - pred, axis=1)
-    except (ValueError, FloatingPointError):
+    except (ValueError, FloatingPointError, np.linalg.LinAlgError):
         out["reason"] = "eval_failed"
         return stage_info, out
     admit = np.isfinite(resid) & (resid < RESCUE_THRESHOLD_PX)
