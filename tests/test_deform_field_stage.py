@@ -78,9 +78,9 @@ def test_smooth_warp_recovery():
     assert out["applied"] is True
     assert out["rmse_after_px"] < out["rmse_before_px"]
     assert out["heldout_rmse_px"] < out["heldout_rmse_affine_px"]
-    assert out["lambda_chosen"] in (0.1, 1.0, 10.0, 100.0)
+    assert out["lambda_chosen"] in (0.01, 0.03, 0.1, 1.0, 10.0, 100.0)
     assert out["min_jacobian_det"] > 0.5
-    assert len(out["lambda_sweep"]) == 4
+    assert len(out["lambda_sweep"]) == 6
     r = out["residuals_mag"]
     assert r.shape == (len(p1),)
     assert np.all(np.isfinite(r))
@@ -213,7 +213,7 @@ def test_flag_on_end_to_end_frozen_tiers():
     info = out["judge_metrics"]["deform_field_stage"]
     assert isinstance(info["applied"], bool)
     if info["applied"]:
-        assert info["lambda_chosen"] in (0.1, 1.0, 10.0, 100.0)
+        assert info["lambda_chosen"] in (0.01, 0.03, 0.1, 1.0, 10.0, 100.0)
         assert info["rmse_after_px"] <= info["rmse_before_px"]
         assert info["min_jacobian_det"] > 0.5
         assert info["heldout_rmse_px"] < info["heldout_rmse_affine_px"]
@@ -264,7 +264,7 @@ def test_flag_on_pre_balance_hook_ohrc01_improves():
     info = out_on["judge_metrics"]["deform_field_stage"]
     assert info["applied"] is True
     assert info["hook_placement"] == "pre_balance"
-    assert info["lambda_chosen"] in (0.1, 1.0, 10.0, 100.0)
+    assert info["lambda_chosen"] in (0.01, 0.03, 0.1, 1.0, 10.0, 100.0)
     assert info["min_jacobian_det"] > 0.5
     # The gate scores the stage's internal held-out (generalization), not the
     # affine in-sample fit.
