@@ -1,0 +1,13 @@
+pair,flag,match_ref_shape,match_sec_shape,n_matches,max_hits_one_target,unique_target_ratio,collapse_gone,engine,pair_description
+tmc2_01,off,2048x2048,2048x2048,384,3,0.8203,True,SIFT + Brute-Force (RANSAC fallback),south-polar highlands; large shadowed crater walls and rugged relief (visual only; no DEM label)
+tmc2_01,on,2048x2048,2048x2048,5406,4,0.8951,True,SIFT + Brute-Force (RANSAC fallback),south-polar highlands; large shadowed crater walls and rugged relief (visual only; no DEM label)
+tmc2_02,off,2048x2048,2048x2048,440,3,0.8432,True,SIFT + Brute-Force (RANSAC fallback),south-polar highlands; cratered surface with broad shadowed relief (visual only)
+tmc2_02,on,2048x2048,2048x2048,5318,4,0.8932,True,SIFT + Brute-Force (RANSAC fallback),south-polar highlands; cratered surface with broad shadowed relief (visual only)
+tmc2_03,off,2048x2048,2048x2048,515,3,0.8796,True,SIFT + Brute-Force (RANSAC fallback),south-polar highlands; large shadowed crater and cratered surroundings (visual only)
+tmc2_03,on,2048x2048,2048x2048,5745,4,0.9046,True,SIFT + Brute-Force (RANSAC fallback),south-polar highlands; large shadowed crater and cratered surroundings (visual only)
+tmc2_04,off,2048x2048,2048x2048,606,4,0.8713,True,SIFT + Brute-Force (RANSAC fallback),south-polar highlands; crater rim and rugged inter-crater relief (visual only)
+tmc2_04,on,2048x2048,2048x2048,6807,4,0.8904,True,SIFT + Brute-Force (RANSAC fallback),south-polar highlands; crater rim and rugged inter-crater relief (visual only)
+tmc2_05,off,2048x2048,2048x2048,674,3,0.8858,True,SIFT + Brute-Force (RANSAC fallback),south-polar highlands; densely cratered inter-crater terrain (visual only)
+tmc2_05,on,2048x2048,2048x2048,7142,4,0.9002,True,SIFT + Brute-Force (RANSAC fallback),south-polar highlands; densely cratered inter-crater terrain (visual only)
+tmc2_06,off,2048x2048,2048x2048,735,3,0.9224,True,SIFT + Brute-Force (RANSAC fallback),south-polar highlands; isolated crater with shadowed rim relief (visual only)
+tmc2_06,on,2048x2048,2048x2048,7712,4,0.9236,True,SIFT + Brute-Force (RANSAC fallback),south-polar highlands; isolated crater with shadowed rim relief (visual only)
