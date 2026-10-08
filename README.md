@@ -21,7 +21,7 @@ CHANDRA-ALIGN registers lunar imagery across sensor, illumination, and scale dif
 
 | Claim | Measured | Basis |
 | --- | --- | --- |
-| Sub-pixel real-pair registration | **0.29–0.47 px** on 7 pairs — 5 OHRC + 2 TMC-2 (11–24 inliers) | Frozen gate, opt-in deformation-field stage + L1 field-guided rescue, held-out scoring |
+| Sub-pixel real-pair registration | **0.29–0.47 px** on 8 pairs — 5 OHRC + 3 TMC-2 (7–24 inliers) | Frozen gate, opt-in deformation-field stage + L1 field-guided rescue, held-out scoring |
 | Absolute accuracy vs LROC truth | **1.7–2.3 m** (1 m grid), **2.0–2.5 m** (3 m grid) | Independent held-out check points, no leakage |
 | Synthetic control | 0.31–0.40 px, transforms recovered to ~0.1 px / 0.01° | Exact ground truth |
 | Cross-modal (IIRS↔TMC-2) | 1.35 px COARSE, 997 inliers | First registration of its kind on this pair |
