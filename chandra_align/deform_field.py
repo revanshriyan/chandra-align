@@ -495,3 +495,113 @@ def build_field_remap_maps(sec_shape, ref_shape, M_hook, field,
     if not (np.all(np.isfinite(map_x)) and np.all(np.isfinite(map_y))):
         raise ValueError("non-finite remap maps")
     return map_x, map_y
+
+
+# ---------------------------------------------------------------------------
+# L1: field-guided match rescue (opt-in).
+#
+# When the hook RANSAC's inliers are quadrant-starved (<3 quadrants), the
+# fitted field scores the FULL raw match set and admits field-consistent
+# (<1 px) correspondences the global affine could not see past; the stage is
+# then REFIT on the admitted set (same machinery, same grid, same held-out
+# guardrail). Validated in docs/ohrc-blocker-levers-2026-10-08.md: ohrc_04
+# goes from COARSE (2 quadrants) to SUCCESS_SUBPIXEL (0.357 px held-out,
+# entropy 0.96, 4 quadrants) under the frozen gate.
+#
+# The rescue is evaluated as a SECOND OPINION: the caller gates the refit
+# admitted set directly (the worker's validated method) and adopts the rescue
+# verdict only on a strict upgrade. The normal pipeline pool is never
+# perturbed. Fail-closed throughout.
+# ---------------------------------------------------------------------------
+
+RESCUE_THRESHOLD_PX = 1.0      # conservative admission (worker's <1 px)
+RESCUE_TRIGGER_QUADRANTS = 3   # attempt only when hook inliers cover fewer
+
+
+def _quadrant_ids(pts, img_shape):
+    """Quadrant id per point: 0 TL, 1 TR, 2 BL, 3 BR. Points are (x, y)."""
+    h, w = int(img_shape[0]), int(img_shape[1])
+    pts = np.asarray(pts, dtype=np.float64)
+    if h <= 0 or w <= 0 or pts.shape[0] == 0:
+        return np.zeros(pts.shape[0], dtype=int)
+    x = np.clip(pts[:, 0], 0.0, float(w) - 1e-6)
+    y = np.clip(pts[:, 1], 0.0, float(h) - 1e-6)
+    return ((y >= h / 2.0).astype(int) * 2 + (x >= w / 2.0).astype(int))
+
+
+def maybe_rescue_and_refit(stage_info, pts_sec_raw, pts_ref_raw,
+                           hook_inlier_mask, M_hook, img_shape, seed=7):
+    """Attempt L1 field-guided rescue; refit the stage on admitted matches.
+
+    Returns (stage_info_to_use, rescue_info). When the rescue triggers and
+    the refit applies, stage_info_to_use is the REFIT stage dict and
+    rescue_info carries rescued=True plus the admitted boolean mask under
+    "admitted_mask" (in raw-match order). Otherwise stage_info_to_use is the
+    original stage_info and rescued=False. Never raises for degenerate input.
+    """
+    out = {"rescued": False, "reason": None, "n_admitted": 0,
+           "n_candidates": 0, "hook_quadrants": 0}
+    try:
+        field = _check_export_field(stage_info["field"])
+        Ma = np.asarray(M_hook, dtype=np.float64)
+        if Ma.shape != (2, 3) or not np.all(np.isfinite(Ma)):
+            raise ValueError("bad M_hook")
+    except (KeyError, TypeError, ValueError):
+        out["reason"] = "no_field"
+        return stage_info, out
+
+    ps = _as_points(pts_sec_raw)
+    pr = _as_points(pts_ref_raw)
+    if ps is None or pr is None or ps.shape[0] != pr.shape[0]:
+        out["reason"] = "bad_points"
+        return stage_info, out
+    try:
+        mask = np.asarray(hook_inlier_mask, dtype=bool).reshape(-1)
+    except (TypeError, ValueError):
+        out["reason"] = "bad_mask"
+        return stage_info, out
+    if mask.shape[0] != ps.shape[0] or not np.any(mask):
+        out["reason"] = "bad_mask"
+        return stage_info, out
+
+    # Trigger: hook inliers quadrant-starved.
+    try:
+        n_quads = len(np.unique(_quadrant_ids(pr[mask], img_shape)))
+    except (TypeError, ValueError, IndexError):
+        out["reason"] = "bad_shape"
+        return stage_info, out
+    out["hook_quadrants"] = int(n_quads)
+    if n_quads >= RESCUE_TRIGGER_QUADRANTS:
+        out["reason"] = "coverage_sufficient"
+        return stage_info, out
+
+    # Score the FULL raw set under the field: |p_ref - (M@sec + d(sec))|.
+    out["n_candidates"] = int(ps.shape[0])
+    try:
+        d_all = _eval_residual_field(field, ps)
+        pred = _apply_affine(Ma, ps) + d_all
+        resid = np.linalg.norm(pr - pred, axis=1)
+    except (ValueError, FloatingPointError):
+        out["reason"] = "eval_failed"
+        return stage_info, out
+    admit = np.isfinite(resid) & (resid < RESCUE_THRESHOLD_PX)
+    out["n_admitted"] = int(np.sum(admit))
+    if out["n_admitted"] < MIN_FIELD_POINTS:
+        out["reason"] = "insufficient_admitted"
+        return stage_info, out
+
+    # Refit the stage on the admitted set (same machinery, same grid).
+    try:
+        refit = apply_deform_field_stage(ps[admit], pr[admit], Ma, seed=seed)
+    except Exception:
+        out["reason"] = "refit_exception"
+        return stage_info, out
+    if not refit.get("applied"):
+        out["reason"] = "refit_declined:%s" % refit.get("reason")
+        return stage_info, out
+
+    out["rescued"] = True
+    out["refit_lambda"] = refit.get("lambda_chosen")
+    out["refit_heldout_px"] = refit.get("heldout_rmse_px")
+    out["admitted_mask"] = admit
+    return refit, out
