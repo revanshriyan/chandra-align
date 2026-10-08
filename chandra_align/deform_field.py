@@ -39,8 +39,10 @@ _DEFORM_FIELD_ENV = "CHANDRA_DEFORM_FIELD"
 _FLAG_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 
 # Validated in the deformation-field experiment (docs/deformation-field-2026-10-08.md).
+# Extended 2026-10-08 (docs/ohrc-blocker-levers-2026-10-08.md): 0.01/0.03 added;
+# the stage's internal held-out guardrail picks per-pair, zero downgrades measured.
 TPS_SCALE = 1000.0
-LAMBDA_GRID = (0.1, 1.0, 10.0, 100.0)
+LAMBDA_GRID = (0.01, 0.03, 0.1, 1.0, 10.0, 100.0)
 MIN_FIELD_POINTS = 6          # below this the field is not attempted
 MIN_JACOBIAN_DET = 0.5        # folding fuse: min det(J) must stay above this
 MAX_DISPLACEMENT_PX = 500.0   # numerical-blowup fuse (validated fields: <=35 px)
