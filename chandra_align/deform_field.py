@@ -610,4 +610,106 @@ def maybe_rescue_and_refit(stage_info, pts_sec_raw, pts_ref_raw,
     out["refit_lambda"] = refit.get("lambda_chosen")
     out["refit_heldout_px"] = refit.get("heldout_rmse_px")
     out["admitted_mask"] = admit
+    # Non-circular rescue scoring (additive, measurement-only): the refit
+    # held-out above is scored on a stride subset of the ADMITTED set, but
+    # admission pre-filters for points agreeing with a smooth field (<1px),
+    # so that score is measured on pre-filtered "easy" points. This block
+    # computes a strictly non-circular RMSE: split RAW indices 80/20 BEFORE
+    # admission; the 20% holdout never influences the scoring-field fit, the
+    # admission selection, or the refit. Fail-closed: on any problem the
+    # noncircular_* keys are simply absent and the production rescue result
+    # (decision, gate inputs, export field) is unchanged.
+    try:
+        out.update(_noncircular_rescue_score(ps, pr, mask, Ma, seed=seed))
+    except Exception:
+        pass
     return refit, out
+
+
+def _noncircular_rescue_score(ps, pr, hook_mask, Ma, seed=7):
+    """Strictly non-circular RMSE for an L1 rescue refit.
+
+    Splits RAW match indices 80/20 (deterministic) before admission. The
+    holdout 20% never influences the scoring-field fit, the admission
+    selection, or the refit field fit. Returns a dict of noncircular_*
+    scalars; raises on any problem (the caller treats this as fail-closed /
+    measurement unavailable).
+    """
+    ps = np.asarray(ps, dtype=np.float64)
+    pr = np.asarray(pr, dtype=np.float64)
+    mask = np.asarray(hook_mask, dtype=bool).reshape(-1)
+    Ma = np.asarray(Ma, dtype=np.float64)
+    n = ps.shape[0]
+    if n < 50:
+        raise ValueError("too_few_raw")
+    # Fixed seed, independent of the pipeline seed: the pre-split must not
+    # correlate with the stride-based splits used elsewhere.
+    rng = np.random.default_rng(1007)
+    perm = rng.permutation(n)
+    n_hold = max(1, int(round(n * 0.2)))
+    idx_hold = perm[:n_hold]
+    idx_fit = perm[n_hold:]
+
+    # Scoring field on hook inliers within the FIT pool only, mirroring the
+    # production rescue (stiff lambda=1.0).
+    fit_hook = mask[idx_fit]
+    if int(np.sum(fit_hook)) < MIN_FIELD_POINTS:
+        raise ValueError("too_few_fit_hook")
+    ps_fh = ps[idx_fit][fit_hook]
+    pr_fh = pr[idx_fit][fit_hook]
+    r_hook = pr_fh - _apply_affine(Ma, ps_fh)
+    if not np.all(np.isfinite(r_hook)):
+        raise ValueError("nonfinite_hook_residuals")
+    score_field = _fit_residual_field(ps_fh, r_hook, 1.0)
+
+    # Admission on the FIT pool (same <1px criterion as production).
+    ps_fit = ps[idx_fit]
+    pr_fit = pr[idx_fit]
+    d_fit = _eval_residual_field(score_field, ps_fit)
+    pred_fit = _apply_affine(Ma, ps_fit) + d_fit
+    resid_fit = np.linalg.norm(pr_fit - pred_fit, axis=1)
+    admit_fit = np.isfinite(resid_fit) & (resid_fit < RESCUE_THRESHOLD_PX)
+    if int(np.sum(admit_fit)) < MIN_FIELD_POINTS:
+        raise ValueError("too_few_admitted_fit")
+    ps_adm = ps_fit[admit_fit]
+    pr_adm = pr_fit[admit_fit]
+
+    # Refit the stage on the admitted FIT subset (full lambda grid + its own
+    # internal guardrails, same machinery as production).
+    refit_nc = apply_deform_field_stage(ps_adm, pr_adm, Ma, seed=seed)
+    if not refit_nc.get("applied"):
+        raise ValueError("nc_refit_declined:%s" % refit_nc.get("reason"))
+    fld_nc = _check_export_field(refit_nc["field"])
+    Ma_nc = np.asarray(refit_nc["M_hook"], dtype=np.float64)
+
+    # Admission CRITERION applied to the holdout pool (fixed threshold; the
+    # holdout never influenced the scoring field, the admission selection,
+    # or the refit).
+    ps_hold = ps[idx_hold]
+    pr_hold = pr[idx_hold]
+    d_hold = _eval_residual_field(score_field, ps_hold)
+    pred_hold = _apply_affine(Ma, ps_hold) + d_hold
+    resid_hold = np.linalg.norm(pr_hold - pred_hold, axis=1)
+    admit_hold = np.isfinite(resid_hold) & (resid_hold < RESCUE_THRESHOLD_PX)
+    if int(np.sum(admit_hold)) < 3:
+        raise ValueError("too_few_admitted_hold")
+    ps_h = ps_hold[admit_hold]
+    pr_h = pr_hold[admit_hold]
+
+    # Score the refit field on the admitted holdout ONLY.
+    d_h = _eval_residual_field(fld_nc, ps_h)
+    pred_h = _apply_affine(Ma_nc, ps_h) + d_h
+    r_h = pr_h - pred_h
+    if not np.all(np.isfinite(r_h)):
+        raise ValueError("nonfinite_holdout_residuals")
+    rmse_nc = float(np.sqrt(np.mean(np.sum(r_h ** 2, axis=1))))
+
+    return {
+        "noncircular_rmse_px": rmse_nc,
+        "noncircular_n_fit_raw": int(len(idx_fit)),
+        "noncircular_n_hold_raw": int(len(idx_hold)),
+        "noncircular_n_admitted_fit": int(np.sum(admit_fit)),
+        "noncircular_n_admitted_hold": int(np.sum(admit_hold)),
+        "noncircular_lambda": refit_nc.get("lambda_chosen"),
+        "noncircular_scoring": True,
+    }
