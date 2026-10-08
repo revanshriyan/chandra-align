@@ -763,6 +763,10 @@ def _align_core(
                         pts_sec[inliers_hook], pts_ref[inliers_hook], M_hook
                     )
                     if stage_info.get("applied"):
+                        # Save the RAW matches for the L1 rescue (second
+                        # opinion) before the stage correction overwrites them.
+                        pts_sec_raw = np.asarray(pts_sec)
+                        pts_ref_raw = np.asarray(pts_ref)
                         r_corr = np.asarray(stage_info["residuals_vec"], dtype=np.float64)
                         p_ref_in = np.asarray(pts_ref[inliers_hook], dtype=np.float64)
                         if r_corr.shape == p_ref_in.shape and np.all(np.isfinite(r_corr)):
@@ -774,6 +778,75 @@ def _align_core(
                             deform_field_info = dict(stage_info)
                             deform_field_info["hook_placement"] = "pre_balance"
                             deform_field_info["n_hook_ransac_inliers"] = n_hook_in
+                            # L1: field-guided rescue (second opinion). When the
+                            # hook inliers are quadrant-starved (<3), score the
+                            # full raw match set under the fitted field, admit
+                            # field-consistent (<1 px) correspondences, and
+                            # refit the stage on the admitted set. The refit is
+                            # gated directly (worker's validated method); the
+                            # rescue verdict is adopted after the normal gate
+                            # below, on strict SUCCESS upgrade only. The normal
+                            # pool above is never perturbed.
+                            # See chandra_align/deform_field.py and
+                            # docs/ohrc-blocker-levers-2026-10-08.md.
+                            _rescue = {"rescued": False, "reason": "not_attempted"}
+                            try:
+                                from chandra_align.deform_field import (
+                                    maybe_rescue_and_refit as _rr,
+                                    _eval_residual_field as _ef,
+                                    _apply_affine as _aa,
+                                    _check_export_field as _cf,
+                                )
+                                _refit, _rescue = _rr(
+                                    stage_info, pts_sec_raw, pts_ref_raw,
+                                    inliers_hook, M_hook, match_ref.shape[:2])
+                                if _rescue.get("rescued"):
+                                    # Gate the refit admitted set directly
+                                    # (worker's validated method): quadrants
+                                    # and entropy on the admitted raw points,
+                                    # RMSE from the refit stage's held-out.
+                                    _adm = np.asarray(
+                                        _rescue["admitted_mask"],
+                                        dtype=bool).reshape(-1)
+                                    _fld = _cf(_refit["field"])
+                                    _Ma = np.asarray(
+                                        _refit["M_hook"], dtype=np.float64)
+                                    _ps = np.asarray(
+                                        pts_sec_raw, dtype=np.float64)[_adm]
+                                    _pr = np.asarray(
+                                        pts_ref_raw, dtype=np.float64)[_adm]
+                                    _d = _ef(_fld, _ps)
+                                    _pred = _aa(_Ma, _ps) + _d
+                                    _rvec = _pr - _pred
+                                    _qm, _ent = compute_quadrant_metrics(
+                                        _pr, _rvec, match_ref.shape[:2])
+                                    _qc = {
+                                        "Q1": int(_qm["Q1"]["inlier_count"]),
+                                        "Q2": int(_qm["Q2"]["inlier_count"]),
+                                        "Q3": int(_qm["Q3"]["inlier_count"]),
+                                        "Q4": int(_qm["Q4"]["inlier_count"]),
+                                    }
+                                    _rmsg, _rcode = validate_registration_gate(
+                                        float(_refit["heldout_rmse_px"]),
+                                        int(_adm.sum()),
+                                        MIN_REGISTRATION_INLIERS,
+                                        float(_ent), _qc)
+                                    _rescue["rescue_gate_code"] = _rcode
+                                    _rescue["rescue_gate_rmse_px"] = float(
+                                        _refit["heldout_rmse_px"])
+                                    _rescue["rescue_n"] = int(_adm.sum())
+                                    _rescue["rescue_entropy"] = float(_ent)
+                                    _rescue["rescue_quad_counts"] = [
+                                        _qc["Q1"], _qc["Q2"],
+                                        _qc["Q3"], _qc["Q4"]]
+                            except Exception as _rexc:
+                                _rescue = {"rescued": False,
+                                           "reason": "exception:%s" % type(
+                                               _rexc).__name__}
+                            deform_field_info["rescue_info"] = {
+                                k: v for k, v in _rescue.items()
+                                if k not in ("field", "M_hook", "admitted_mask")
+                            }
                             # Fallback-void token (popped before telemetry): if the
                             # _align_core fallback below replaces the points, the
                             # stage result no longer describes the gated data.
@@ -990,6 +1063,32 @@ def _align_core(
         rmse_px, inlier_cnt, MIN_REGISTRATION_INLIERS,
         quadrant_spatial_entropy, quadrant_metrics,
     )
+    # L1 rescue second opinion: if the rescue refit reached SUCCESS_SUBPIXEL
+    # under the frozen gate while the normal path did not, adopt the rescue
+    # verdict. Strict upgrade only -- never a downgrade or lateral move.
+    _ri = deform_field_info.get("rescue_info") or {}
+    if (_ri.get("rescue_gate_code") == "SUCCESS_SUBPIXEL"
+            and status_code != "SUCCESS_SUBPIXEL"):
+        status_code = "SUCCESS_SUBPIXEL"
+        status_message = "REGISTRATION ACCEPTED (L1 field-guided rescue)"
+        rmse_px = float(_ri["rescue_gate_rmse_px"])
+        rmse_gate_px = rmse_px
+        rmse_gate_basis = ("held-out (L1 rescue refit stage internal "
+                           "stride 80/20 split)")
+        inlier_cnt = int(_ri["rescue_n"])
+        quadrant_spatial_entropy = float(_ri["rescue_entropy"])
+        _rqc = _ri["rescue_quad_counts"]
+        quadrant_metrics = {
+            "Q1": {"inlier_count": int(_rqc[0]), "name": "Top-Left",
+                   "rmse_px": 0.0},
+            "Q2": {"inlier_count": int(_rqc[1]), "name": "Top-Right",
+                   "rmse_px": 0.0},
+            "Q3": {"inlier_count": int(_rqc[2]), "name": "Bottom-Left",
+                   "rmse_px": 0.0},
+            "Q4": {"inlier_count": int(_rqc[3]), "name": "Bottom-Right",
+                   "rmse_px": 0.0},
+        }
+        deform_field_info["verdict_source"] = "l1_rescue_second_opinion"
     judge_metrics = build_judge_metrics_summary(
         rmse_px,
         inlier_cnt,
