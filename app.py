@@ -751,6 +751,33 @@ def _align_core(
                                  "fallback_reason": None,
                                  "primary_engine": "MatchAnything/ELoFTR",
                                  "registration_engine": "MatchAnything/ELoFTR"}
+    # Opt-in AnyMatch front-end (no training, fine-tuned weights).
+    # When CHANDRA_ANYMATCH=1 and the weights/deps are available, use
+    # AnyMatch fine-tuned LoFTR instead of the default matcher. Fail-closed:
+    # any problem falls back to the default matcher. With the flag unset,
+    # this block is skipped and the pipeline is bit-identical.
+    # See chandra_align/anymatch_frontend.py.
+    _am_pts = None
+    if _ma_pts is None and os.environ.get("CHANDRA_ANYMATCH", "").strip().lower() in {"1", "true", "yes", "on"}:
+        try:
+            from chandra_align.anymatch_frontend import (
+                anymatch_available, match_pair_anymatch,
+            )
+            if anymatch_available():
+                _am0, _am1 = match_pair_anymatch(match_ref, match_sec)
+                if _am0 is not None and _am1 is not None and len(_am0) >= 3:
+                    _am_pts = (_am0, _am1)
+        except Exception:
+            _am_pts = None
+    if _am_pts is not None:
+        pts_ref, pts_sec = _am_pts
+        engine_name = "anymatch_loftr"
+        execution_diagnostics = {"matcher": "anymatch_loftr",
+                                 "opt_in": True,
+                                 "fallback_triggered": False,
+                                 "fallback_reason": None,
+                                 "primary_engine": "AnyMatch/LoFTR",
+                                 "registration_engine": "AnyMatch/LoFTR"}
     elif matching_mode == "coarse_to_fine":
         from chandra_align.matching.coarse_to_fine import coarse_to_fine_match
         pts_ref, pts_sec, engine_name, execution_diagnostics = coarse_to_fine_match(
