@@ -598,6 +598,30 @@ def _compute_spatial_uniformity(inlier_points, img_shape):
     return payload
 
 
+def _compute_strip_support(inlier_points, img_shape):
+    """Post-RANSAC strip-collapse telemetry (DIAGNOSTIC fields).
+
+    The strip-collapse measurement is always computed here for telemetry.
+    The fail-closed verdict downgrade inside validate_registration_gate
+    is OPT-IN via CHANDRA_STRIP_GUARD=1 (default: diagnostic only), because
+    the 0.25 threshold is uncalibrated against wide ground truth.
+    Same contract as _compute_spatial_uniformity: never affects gates,
+    invalid on failure.
+    """
+    try:
+        from chandra_align.metrics.spatial_support import spatial_support_report
+        payload = spatial_support_report(inlier_points, img_shape)
+    except Exception:
+        payload = {
+            "valid": False, "collapsed": False, "n_points": 0,
+            "minor_ratio": 0.0, "major_ratio": 0.0,
+            "bbox_coverage_min": 0.0, "hull_area_ratio": 0.0,
+            "threshold": 0.25,
+        }
+    payload["diagnostic_only"] = True
+    return payload
+
+
 def _jsonable_deform_field_info(info):
     """Strip non-JSON-serializable values from deform-field stage telemetry."""
     safe = {}
@@ -945,7 +969,9 @@ def _align_core(
                                         float(_refit["heldout_rmse_px"]),
                                         int(_adm.sum()),
                                         MIN_REGISTRATION_INLIERS,
-                                        float(_ent), _qc)
+                                        float(_ent), _qc,
+                                        pts=_pr,
+                                        frame_shape=match_ref.shape[:2])
                                     _rescue["rescue_gate_code"] = _rcode
                                     _rescue["rescue_gate_rmse_px"] = float(
                                         _refit["heldout_rmse_px"])
@@ -1142,6 +1168,12 @@ def _align_core(
     spatial_uniformity_metrics = _compute_spatial_uniformity(
         inlier_ref, ref_original.shape[:2]
     )
+    # Strip-collapse support telemetry (diagnostic fields; the fail-closed
+    # verdict downgrade inside validate_registration_gate is opt-in via
+    # CHANDRA_STRIP_GUARD=1 and off by default).
+    strip_support_metrics = _compute_strip_support(
+        inlier_ref, ref_original.shape[:2]
+    )
 
     rmse_in_sample_px = float(np.sqrt(np.mean(residuals_mag ** 2))) if len(residuals_mag) > 0 else 0.0
     mae_in_sample_px = float(np.mean(residuals_mag)) if len(residuals_mag) > 0 else 0.0
@@ -1188,6 +1220,7 @@ def _align_core(
     status_message, status_code = validate_registration_gate(
         rmse_px, inlier_cnt, MIN_REGISTRATION_INLIERS,
         quadrant_spatial_entropy, quadrant_metrics,
+        pts=inlier_ref, frame_shape=ref_original.shape[:2],
     )
     # L1 rescue second opinion: if the rescue refit reached SUCCESS_SUBPIXEL
     # under the frozen gate while the normal path did not, adopt the rescue
@@ -1254,6 +1287,7 @@ def _align_core(
         "rmse_gate_basis": rmse_gate_basis,
         "heldout_check_points": int(heldout_error.get("n_check_points", 0)),
         "spatial_uniformity_metrics": spatial_uniformity_metrics,
+        "strip_support_metrics": strip_support_metrics,
         # Deform-field stage telemetry (diagnostic only; never feeds the gate).
         "deform_field_stage": _jsonable_deform_field_info(deform_field_info),
     })
@@ -1298,6 +1332,7 @@ def _align_core(
             "rmse_gate_basis": rmse_gate_basis,
             "quadrant_spatial_entropy": quadrant_spatial_entropy,
             "spatial_uniformity_metrics": spatial_uniformity_metrics,
+        "strip_support_metrics": strip_support_metrics,
             "execution_diagnostics": execution_diagnostics,
             "confidence_assessment": confidence_assessment,
             **confidence_assessment,
@@ -1382,6 +1417,7 @@ def _align_core(
         "quadrant_metrics": quadrant_metrics,
         "quadrant_spatial_entropy": quadrant_spatial_entropy,
         "spatial_uniformity_metrics": spatial_uniformity_metrics,
+        "strip_support_metrics": strip_support_metrics,
         "quadrant_metrics_html": quadrant_html,
         "judge_metrics": judge_metrics,
         "status_message": status_message,
@@ -1438,6 +1474,9 @@ def _failed_judge_metrics_summary(inlier_count: int = 0, total_correspondences: 
     )
     # Uniformity telemetry is always present, marked invalid — never fabricated.
     summary["spatial_uniformity_metrics"] = _compute_spatial_uniformity(
+        np.empty((0, 2)), (1, 1)
+    )
+    summary["strip_support_metrics"] = _compute_strip_support(
         np.empty((0, 2)), (1, 1)
     )
     assessment = build_confidence_assessment(
