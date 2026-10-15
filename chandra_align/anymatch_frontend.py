@@ -6,6 +6,14 @@ for cross-modal robustness. Additive and opt-in via CHANDRA_ANYMATCH=1.
 With the flag unset, this module is never imported and the pipeline is
 bit-identical.
 
+Input-size handling: the vendored LoFTR builds its sinusoidal positional
+encoding as a fixed (1, C, 256, 256) buffer, so the 1/8 coarse feature map
+must stay <= 256 px per side, i.e. inputs <= 2048 px per side. Larger inputs
+throw a tensor-size mismatch inside the model; this front-end therefore
+downscales both images by a shared factor to fit and rescales the returned
+coordinates back to the caller's frame. Pairs already <= 2016 px are
+untouched (scale 1.0, byte-identical to the pre-fix path).
+
 Fail-closed: any error returns (None, None) and the caller falls back
 to the default matcher.
 """
@@ -20,6 +28,11 @@ _TRUE = frozenset({"1", "true", "yes", "on"})
 _AM_ROOT = "/home/hatch/workspace/anymatch/third_party/LoFTR_AnyMatch"
 # Pre-extracted plain state dict (from the lightning-saved LoFTR_AnyMatch.ckpt).
 _CKPT = "/home/hatch/workspace/anymatch/weights/LoFTR_AnyMatch_sd.pt"
+
+# LoFTR positional-encoding hard cap: 256 px at 1/8 -> 2048 px input per
+# side. 2016 (= 63 * 32) leaves headroom so the later 32-multiple padding
+# can never push a resized image past 2048 px.
+_PE_LIMIT_PX = 2016
 
 _model = None
 
@@ -108,6 +121,26 @@ def _pad_to_mult(img, mult=32):
     return cv2.copyMakeBorder(img, 0, ph, 0, pw, cv2.BORDER_REPLICATE)
 
 
+def _fit_pe_limit(img0, img1, limit=_PE_LIMIT_PX):
+    """Downscale both images by a shared factor so each fits `limit`.
+
+    A single shared scale keeps the pair's relative scale intact. Returns
+    (img0_scaled, img1_scaled, scale); scale == 1.0 means no resize.
+    """
+    import cv2
+    m = max(img0.shape[0], img0.shape[1], img1.shape[0], img1.shape[1])
+    if m <= limit:
+        return img0, img1, 1.0
+    scale = limit / m
+    out = []
+    for img in (img0, img1):
+        h, w = img.shape[:2]
+        nh = max(1, int(round(h * scale)))
+        nw = max(1, int(round(w * scale)))
+        out.append(cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA))
+    return out[0], out[1], scale
+
+
 def match_pair_anymatch(img0, img1):
     """Match two grayscale images with AnyMatch fine-tuned LoFTR.
 
@@ -117,8 +150,10 @@ def match_pair_anymatch(img0, img1):
     try:
         import torch
         model = _load_model()
-        p0 = _pad_to_mult(img0)
-        p1 = _pad_to_mult(img1)
+        # Fit the LoFTR positional-encoding cap (shared scale, both images).
+        s0, s1, scale = _fit_pe_limit(img0, img1)
+        p0 = _pad_to_mult(s0)
+        p1 = _pad_to_mult(s1)
 
         t0 = torch.from_numpy(p0).float()[None, None] / 255.0
         t1 = torch.from_numpy(p1).float()[None, None] / 255.0
@@ -132,6 +167,10 @@ def match_pair_anymatch(img0, img1):
         if len(mkpts0) == 0:
             return None, None
         # Padding is bottom/right only: valid-region coordinates are unchanged.
+        # Undo the shared downscale so points are in the caller's frames.
+        if scale != 1.0:
+            mkpts0 = mkpts0 / scale
+            mkpts1 = mkpts1 / scale
         return mkpts0.astype(np.float32), mkpts1.astype(np.float32)
     except Exception:
         return None, None
