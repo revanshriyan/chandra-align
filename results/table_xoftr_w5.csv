@@ -1,0 +1,8 @@
+window,n_corr,n_inliers,rmse_px,verdict,entropy,quadrants,match_s,notes
+W4,41,28,1.0686,COARSE_ADVISORY,1.1626,"['Q1', 'Q2', 'Q3', 'Q4']",0.8,COARSE ALIGNMENT (Regional Fit Advisory)
+W5,33,23,0.9791,COARSE_ADVISORY,0.7554,"['Q1', 'Q2', 'Q3', 'Q4']",0.7,COARSE ALIGNMENT (Regional Fit Advisory)
+N13,61,13,3.1326,DEGENERATE_FAILURE,0.0,"['Q1', 'Q2', 'Q3', 'Q4']",3.4,REJECTED (High Residual RMSE (coarse advisory limit exceeded: 3.1326 px > 2.50 px) | Degenerate Spatial Cluster (1/4 Act
+W0,0,,,DEGENERATE_FAILURE,,,1.0,xoftr <8 correspondences (0)
+W1,95,39,1.2307,COARSE_ADVISORY,1.7383,"['Q1', 'Q2', 'Q3', 'Q4']",1.9,COARSE ALIGNMENT (Regional Fit Advisory)
+W2,110,49,1.5011,COARSE_ADVISORY,1.6424,"['Q1', 'Q2', 'Q3', 'Q4']",1.2,COARSE ALIGNMENT (Regional Fit Advisory)
+W3,118,63,1.1088,COARSE_ADVISORY,1.6842,"['Q1', 'Q2', 'Q3', 'Q4']",1.1,COARSE ALIGNMENT (Regional Fit Advisory)

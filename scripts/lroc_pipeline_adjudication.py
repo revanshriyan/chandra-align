@@ -114,17 +114,18 @@ def run_grid(name, tsz, m_per_px, cx, cy, hw, off, lines, samples):
 
     cv2.setRNGSeed(SEED)
     t0 = time.time()
-    # NOTE on pixel_scale_m: the inputs are PRE-REGISTERED at a common GSD
-    # (template resized to m_per_px, window at m_per_px -- same as standalone).
-    # The pipeline's GSD-aware resampling would otherwise downsample the
-    # window based on sensor-database metadata ('LROC' defaults to 0.25 m/px,
-    # but these are ortho products at 1.0/3.0 m/px). Passing 0.25 declares
-    # matched GSDs so matching runs at full resolution; meters are computed
-    # in the protocol below using the TRUE m_per_px, not this value.
+    # As-deployed GSD handling (2026-10-15): the sensor database now carries
+    # LROC_ORTHO_1M / LROC_ORTHO_3M entries, so we pass the TRUE pixel scale
+    # and the matching sensor name -- no manual override. The inputs are
+    # pre-registered at a common GSD (template resized to m_per_px, window
+    # at m_per_px); the pipeline's GSD-aware resampling sees matched GSDs
+    # (target = max(ref, sec) = m_per_px) and runs at full resolution.
+    # Meters are computed in the protocol below using the TRUE m_per_px.
+    sec_sensor = 'LROC_ORTHO_1M' if name == '1m' else 'LROC_ORTHO_3M'
     try:
         out = app_module._align_core(
-            tmpl, win, pixel_scale_m=0.25,
-            reference_sensor_name='OHRC', secondary_sensor_name='LROC')
+            tmpl, win, pixel_scale_m=m_per_px,
+            reference_sensor_name='OHRC', secondary_sensor_name=sec_sensor)
     except ValueError as exc:
         print('%s PIPELINE DEGENERATE: %s' % (name, exc))
         return dict(grid=name, pipeline_status='DEGENERATE_FAILURE',

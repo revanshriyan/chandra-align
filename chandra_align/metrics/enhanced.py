@@ -24,6 +24,12 @@ SENSOR_PIXEL_SCALES = {
     "LROC_NAC": 0.5,
     "LROC_WAC": 100.0,
     "KAGUYA_TC": 10.0,
+    # LROC NAC ortho products (resampled grids, not native 0.5 m/px).
+    # Added 2026-10-15: the adjudication windows are ortho mosaics at 1m/3m;
+    # without these, 'LROC' falls through to the 0.25 default and the
+    # GSD-aware resampling crushes the 3m window to 128px -> DEGENERATE.
+    "LROC_ORTHO_1M": 1.0,
+    "LROC_ORTHO_3M": 3.0,
 }
 
 

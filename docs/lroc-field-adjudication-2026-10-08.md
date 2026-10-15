@@ -48,8 +48,8 @@ Published bounds: **1m 2.6–3.5m, 3m 6.4–7.1m**. Tiers: COARSE_ADVISORY both.
 
 ## Pre-registered bar — verdict per grid
 
-- **Bound tightens (independent held-out, meters): YES, both grids.** 1m: 2.58→1.70m (x), 3.46→2.32m (y).
-  3m: 7.06→2.03m (x), 6.39→2.47m (y).
+- **Bound tightens (independent held-out, meters): YES, both grids.** 1m: 2.58→1.70m (x; 9.9→6.5 OHRC px), 3.46→2.32m (y; 13.3→8.9 OHRC px).
+  3m: 7.06→2.03m (x; 27.2→7.8 OHRC px), 6.39→2.47m (y; 24.6→9.5 OHRC px).
 - **No folding: YES.** min Jacobian determinant 1.022–1.036 on fit-sets and 1.024–1.036 on the
   unseen check-sets (bar: ≥0.5).
 - **Transform agreement: QUALIFIED.** The hookΔ bars (Δscale ≤ 0.002, Δrot ≤ 0.1°) trip on the
@@ -74,8 +74,8 @@ Published bounds: **1m 2.6–3.5m, 3m 6.4–7.1m**. Tiers: COARSE_ADVISORY both.
 
 | Grid | Published bound | With deform-field stage | Improvement |
 |------|----------------|------------------------|-------------|
-| 1m | 2.6–3.5 m | **1.7–2.3 m** | ~1.5× tighter |
-| 3m | 6.4–7.1 m | **2.0–2.5 m** | ~3× tighter |
+| 1m | 2.6–3.5 m | **1.7–2.3 m** (6.5–8.8 OHRC px) | ~1.5× tighter |
+| 3m | 6.4–7.1 m | **2.0–2.5 m** (7.7–9.6 OHRC px) | ~3× tighter |
 
 These are cross-registration residuals against LROC absolute truth (polar stereographic,
 co-registered with LOLA), not a calibrated absolute-accuracy specification — the same honesty
