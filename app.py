@@ -758,12 +758,28 @@ def _align_core(
                     _am_pts = (_am0, _am1)
         except Exception:
             _am_pts = None
+    # - CHANDRA_XOFTR=1: XoFTR cross-modal LoFTR (pretrained 640 weights).
+    #   Trial 2026-10-15: 0.9791 px on refined W5 (23 inliers, COARSE),
+    #   beating AnyMatch's 1.3324 px on the same window. See
+    #   chandra_align/xoftr_frontend.py.
+    _xo_pts = None
+    if _ma_pts is None and _am_pts is None and os.environ.get("CHANDRA_XOFTR", "").strip().lower() in {"1", "true", "yes", "on"}:
+        try:
+            from chandra_align.xoftr_frontend import (
+                xoftr_available, match_pair_xoftr,
+            )
+            if xoftr_available():
+                _xo0, _xo1 = match_pair_xoftr(match_ref, match_sec)
+                if _xo0 is not None and _xo1 is not None and len(_xo0) >= 3:
+                    _xo_pts = (_xo0, _xo1)
+        except Exception:
+            _xo_pts = None
     # - CHANDRA_PC=1: phase-congruency maps (polarity-invariant structure;
     #   pure numpy/cv2, no weights). Complementary to SIFT: SIFT wins at
     #   small sun-angle differences, PC wins at near-opposite sun.
     #   See chandra_align/pc_frontend.py.
     _pc_pts = None
-    if _ma_pts is None and _am_pts is None and os.environ.get("CHANDRA_PC", "").strip().lower() in {"1", "true", "yes", "on"}:
+    if _ma_pts is None and _am_pts is None and _xo_pts is None and os.environ.get("CHANDRA_PC", "").strip().lower() in {"1", "true", "yes", "on"}:
         try:
             from chandra_align.pc_frontend import (
                 pc_available, match_pair_pc,
@@ -774,11 +790,11 @@ def _align_core(
                     _pc_pts = (_p0, _p1)
         except Exception:
             _pc_pts = None
-    # ---- Opt-in arm selection (priority: MatchAnything > AnyMatch > PC) ----
-    # The three opt-in arms were attempted above in priority order; the
+    # ---- Opt-in arm selection (priority: MatchAnything > AnyMatch > XoFTR > PC) ----
+    # The four opt-in arms were attempted above in priority order; the
     # first one yielding >= 3 points wins. Single if/elif chain so a
     # successful arm is never overwritten by a later branch. With every
-    # flag unset all three are None and the default matching_mode path
+    # flag unset all four are None and the default matching_mode path
     # runs bit-identical to before.
     if _ma_pts is not None:
         pts_ref, pts_sec = _ma_pts
@@ -798,6 +814,15 @@ def _align_core(
                                  "fallback_reason": None,
                                  "primary_engine": "AnyMatch/LoFTR",
                                  "registration_engine": "AnyMatch/LoFTR"}
+    elif _xo_pts is not None:
+        pts_ref, pts_sec = _xo_pts
+        engine_name = "xoftr_640"
+        execution_diagnostics = {"matcher": "xoftr_640",
+                                 "opt_in": True,
+                                 "fallback_triggered": False,
+                                 "fallback_reason": None,
+                                 "primary_engine": "XoFTR/LoFTR",
+                                 "registration_engine": "XoFTR/LoFTR"}
     elif _pc_pts is not None:
         pts_ref, pts_sec = _pc_pts
         engine_name = "pc_frontend"
