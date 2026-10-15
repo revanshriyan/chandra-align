@@ -1,0 +1,4 @@
+arm,n_fit_points,landmark_rmse_px,internal_heldout_rmse_px,lambda,note
+global_affine_baseline,13,28.0317,1.7654,,saved 13-inlier fit; 28.03px baseline
+deform_field_stage,106,14.6757,0.5673459683079347,0.01,field+affine on 20 human landmarks
+l1_rescue_refit,0,,,,rescue not triggered/applied: coverage_sufficient

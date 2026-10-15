@@ -17,12 +17,24 @@ from .quadrant import (
 
 
 def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad_counts,
-                               model=None):
+                               model=None, pts=None, frame_shape=None):
     """Public package entry point for the three-tier photogrammetric gate.
 
     When ``model`` (the fitted 2x3/3x3 transform) is supplied, Gate 3
     transform-conditioning runs as a final backstop: a transform that fails
     conditioning is REJECTED even if the residual tiers would accept it.
+
+    When ``pts`` (the inlier point set, Nx2) and ``frame_shape`` ((h, w))
+    are supplied, the post-RANSAC strip-collapse measurement is available
+    as a final backstop: an inlier set collapsed to a strip is REJECTED
+    with code STRIP_COLLAPSE even if RMSE/entropy/quadrants would accept
+    it (2026-10-15 TMC-2 lesson: 1.77 px inlier RMSE hid a 28 px frame-wide
+    error). The backstop is fail-closed -- it may only downgrade to
+    DEGENERATE_FAILURE, never upgrade -- and OPT-IN via
+    CHANDRA_STRIP_GUARD=1 (default: the measurement is computed for
+    diagnostic telemetry only and the verdict is unchanged). The 0.25
+    support threshold is uncalibrated against wide ground truth (it trips
+    on verified-good fits ohrc_01/ohrc_04), hence opt-in, not default.
     """
     status_message, status_code = _validate_registration_gate(
         rmse, inliers, min_inliers, spatial_entropy, quad_counts
@@ -40,6 +52,21 @@ def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad
                 f"REJECTED (Gate 3 transform conditioning: {', '.join(failed)})"
             )
             status_code = "DEGENERATE_FAILURE"
+    if pts is not None and status_code != "DEGENERATE_FAILURE":
+        from .spatial_support import (
+            check_spatial_support, strip_guard_enabled,
+            STRIP_SUPPORT_RATIO_MIN,
+        )
+        if strip_guard_enabled():
+            ok, report = check_spatial_support(pts, frame_shape)
+            if report.get("valid") and not ok:
+                status_message = (
+                    "REJECTED (STRIP_COLLAPSE: inlier spatial support "
+                    f"minor_ratio={report['minor_ratio']:.3f} "
+                    f"major_ratio={report['major_ratio']:.3f} < "
+                    f"{STRIP_SUPPORT_RATIO_MIN:.2f} of frame)"
+                )
+                status_code = "DEGENERATE_FAILURE"
     return status_message, status_code
 
 
