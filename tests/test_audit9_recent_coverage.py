@@ -223,3 +223,56 @@ def test_xoftr_match_graceful_without_weights(monkeypatch):
     b = np.zeros((64, 64), dtype=np.uint8)
     p0, p1 = m.match_pair_xoftr(a, b)
     assert p0 is None and p1 is None
+
+
+# ---------------------------------------------------------------------------
+# 4. WildMatch frontend (Colab-trained LoFTR, 2026-10-16)
+# ---------------------------------------------------------------------------
+
+def _wildmatch_mod():
+    import chandra_align.wildmatch_frontend as m
+    return m
+
+
+def test_wildmatch_flag_logic():
+    m = _wildmatch_mod()
+    old = os.environ.get("CHANDRA_WILDMATCH")
+    try:
+        for val, expected in [("1", True), ("true", True), ("YES", True),
+                              ("on", True), ("0", False), ("off", False),
+                              ("", False), ("2", False)]:
+            os.environ["CHANDRA_WILDMATCH"] = val
+            assert m.wildmatch_enabled() is expected, val
+        if "CHANDRA_WILDMATCH" in os.environ:
+            del os.environ["CHANDRA_WILDMATCH"]
+        assert m.wildmatch_enabled() is False
+    finally:
+        if old is None:
+            os.environ.pop("CHANDRA_WILDMATCH", None)
+        else:
+            os.environ["CHANDRA_WILDMATCH"] = old
+
+
+def test_wildmatch_available_false_when_weights_missing(monkeypatch):
+    m = _wildmatch_mod()
+    monkeypatch.setattr(m, "_CKPT", "/nonexistent/wildmatch_best.pt")
+    assert m.wildmatch_available() is False
+
+
+def test_wildmatch_fail_closed_without_weights(monkeypatch):
+    m = _wildmatch_mod()
+    monkeypatch.setattr(m, "_CKPT", "/nonexistent/wildmatch_best.pt")
+    monkeypatch.setattr(m, "_model", None)
+    a = np.zeros((64, 64), dtype=np.uint8)
+    b = np.zeros((64, 64), dtype=np.uint8)
+    p0, p1 = m.match_pair_wildmatch(a, b)
+    assert p0 is None and p1 is None
+
+
+def test_wildmatch_does_not_shadow_anymatch_arm():
+    # Separate module, separate model cache: importing WildMatch must not
+    # disturb the AnyMatch arm's state.
+    import chandra_align.anymatch_frontend as am
+    wm = _wildmatch_mod()
+    assert wm._CKPT != am._CKPT
+    assert wm._FLAG != am._FLAG
