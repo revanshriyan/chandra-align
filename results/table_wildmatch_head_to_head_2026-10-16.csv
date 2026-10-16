@@ -1,0 +1,9 @@
+pair,split,ckpt,n_corr,verdict,rmse_px,inliers,entropy,quadrants
+W4,val,base_anymatch,1958,COARSE_ADVISORY,1.2371,1728,1.9076,"['Q1', 'Q2', 'Q3', 'Q4']"
+N1,val,base_anymatch,1321,COARSE_ADVISORY,1.3981,850,1.8122,"['Q1', 'Q2', 'Q3', 'Q4']"
+W5,test,base_anymatch,1438,COARSE_ADVISORY,1.3895,1097,1.7019,"['Q1', 'Q2', 'Q3', 'Q4']"
+N13,test,base_anymatch,85,COARSE_ADVISORY,1.2888,20,1.1568,"['Q1', 'Q2', 'Q3', 'Q4']"
+W4,val,wildmatch_trained,3907,COARSE_ADVISORY,1.1496,3411,1.987,"['Q1', 'Q2', 'Q3', 'Q4']"
+N1,val,wildmatch_trained,3192,COARSE_ADVISORY,1.3098,2985,1.997,"['Q1', 'Q2', 'Q3', 'Q4']"
+W5,test,wildmatch_trained,3777,COARSE_ADVISORY,1.2568,3064,1.9518,"['Q1', 'Q2', 'Q3', 'Q4']"
+N13,test,wildmatch_trained,2322,COARSE_ADVISORY,0.7556,2206,1.8312,"['Q1', 'Q2', 'Q3', 'Q4']"

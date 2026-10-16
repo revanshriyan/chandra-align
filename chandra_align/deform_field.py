@@ -704,12 +704,28 @@ def _noncircular_rescue_score(ps, pr, hook_mask, Ma, seed=7):
         raise ValueError("nonfinite_holdout_residuals")
     rmse_nc = float(np.sqrt(np.mean(np.sum(r_h ** 2, axis=1))))
 
+    # Unconditional metrics on the FULL holdout pool (no admission filter):
+    # the honest "what would a random held-out point see" numbers, reported
+    # alongside the admission-conditioned RMSE so a reader can see both.
+    d_all = _eval_residual_field(fld_nc, ps_hold)
+    pred_all = _apply_affine(Ma_nc, ps_hold) + d_all
+    res_all = np.linalg.norm(pr_hold - pred_all, axis=1)
+    finite_all = np.isfinite(res_all)
+    if np.any(finite_all):
+        frac_within_1px = float(np.mean(res_all[finite_all] < RESCUE_THRESHOLD_PX))
+        median_px = float(np.median(res_all[finite_all]))
+    else:
+        frac_within_1px, median_px = 0.0, float("nan")
+
     return {
         "noncircular_rmse_px": rmse_nc,
         "noncircular_n_fit_raw": int(len(idx_fit)),
         "noncircular_n_hold_raw": int(len(idx_hold)),
         "noncircular_n_admitted_fit": int(np.sum(admit_fit)),
         "noncircular_n_admitted_hold": int(np.sum(admit_hold)),
+        "noncircular_admitted_frac_hold": float(np.mean(admit_hold)),
+        "noncircular_hold_frac_within_1px": frac_within_1px,
+        "noncircular_hold_median_px": median_px,
         "noncircular_lambda": refit_nc.get("lambda_chosen"),
         "noncircular_scoring": True,
     }

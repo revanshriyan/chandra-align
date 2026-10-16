@@ -19,7 +19,11 @@ Same harness as the AnyMatch/XoFTR baselines (frontend → RANSAC 3.0/2000/0.99
 | N13 | test | 1.2888 px, 20 inl | **0.7556 px, 2206 inl** |
 
 All COARSE_ADVISORY, 4/4 quadrants, entropy ≥ 1.83. The W5 1.2568 px beats
-the pre-registered 1.31 px held-out IIRS bar and AnyMatch's 1.4531 px.
+base AnyMatch's 1.3895 px on the identical harness and the historical
+1.4531 px number measured on the same basis. (An earlier draft compared
+W5 to the 1.31 px *held-out* IIRS bar — corrected: these are fit residuals,
+not held-out RMSEs, so that comparison was not like-for-like. A held-out
+80/20 RANSAC comparison is tracked as follow-up work.)
 N13's jump (20 → 2206 inliers, 1.29 → 0.76 px) is the largest single-window
 gain of any arm trialed.
 
