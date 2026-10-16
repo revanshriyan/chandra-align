@@ -748,7 +748,7 @@ def _align_core(
     except ValueError:
         match_ref, match_sec = ref_processed, sec_processed
         ref_match_scale = sec_match_scale = 1.0
-    # Opt-in matcher front-ends (priority: MatchAnything > AnyMatch > PC).
+    # Opt-in matcher front-ends (priority: MatchAnything > WildMatch > AnyMatch > XoFTR > PC).
     # Each arm is attempted in turn; the first yielding >= 3 points wins via
     # the single if/elif selection chain below. All arms are additive and
     # flag-gated: with every flag unset the pipeline is bit-identical to
@@ -768,10 +768,28 @@ def _align_core(
                     _ma_pts = (_ma0, _ma1)
         except Exception:
             _ma_pts = None
+    # - CHANDRA_WILDMATCH=1: WildMatch-trained LoFTR (Colab 2026-10-16,
+    #   fine-tuned on lunar IIRS<->TMC-2; beats base AnyMatch on all four
+    #   val/test windows, W5 1.2568 px). Same arch as AnyMatch, strictly
+    #   better weights on the lunar cross-modal set, so it takes priority
+    #   over the AnyMatch arm when both flags are set.
+    #   See chandra_align/wildmatch_frontend.py.
+    _wm_pts = None
+    if _ma_pts is None and os.environ.get("CHANDRA_WILDMATCH", "").strip().lower() in {"1", "true", "yes", "on"}:
+        try:
+            from chandra_align.wildmatch_frontend import (
+                wildmatch_available, match_pair_wildmatch,
+            )
+            if wildmatch_available():
+                _wm0, _wm1 = match_pair_wildmatch(match_ref, match_sec)
+                if _wm0 is not None and _wm1 is not None and len(_wm0) >= 3:
+                    _wm_pts = (_wm0, _wm1)
+        except Exception:
+            _wm_pts = None
     # - CHANDRA_ANYMATCH=1: AnyMatch fine-tuned LoFTR (fine-tuned weights).
     #   See chandra_align/anymatch_frontend.py.
     _am_pts = None
-    if _ma_pts is None and os.environ.get("CHANDRA_ANYMATCH", "").strip().lower() in {"1", "true", "yes", "on"}:
+    if _ma_pts is None and _wm_pts is None and os.environ.get("CHANDRA_ANYMATCH", "").strip().lower() in {"1", "true", "yes", "on"}:
         try:
             from chandra_align.anymatch_frontend import (
                 anymatch_available, match_pair_anymatch,
@@ -787,7 +805,7 @@ def _align_core(
     #   beating AnyMatch's 1.3324 px on the same window. See
     #   chandra_align/xoftr_frontend.py.
     _xo_pts = None
-    if _ma_pts is None and _am_pts is None and os.environ.get("CHANDRA_XOFTR", "").strip().lower() in {"1", "true", "yes", "on"}:
+    if _ma_pts is None and _wm_pts is None and _am_pts is None and os.environ.get("CHANDRA_XOFTR", "").strip().lower() in {"1", "true", "yes", "on"}:
         try:
             from chandra_align.xoftr_frontend import (
                 xoftr_available, match_pair_xoftr,
@@ -803,7 +821,7 @@ def _align_core(
     #   small sun-angle differences, PC wins at near-opposite sun.
     #   See chandra_align/pc_frontend.py.
     _pc_pts = None
-    if _ma_pts is None and _am_pts is None and _xo_pts is None and os.environ.get("CHANDRA_PC", "").strip().lower() in {"1", "true", "yes", "on"}:
+    if _ma_pts is None and _wm_pts is None and _am_pts is None and _xo_pts is None and os.environ.get("CHANDRA_PC", "").strip().lower() in {"1", "true", "yes", "on"}:
         try:
             from chandra_align.pc_frontend import (
                 pc_available, match_pair_pc,
@@ -814,11 +832,11 @@ def _align_core(
                     _pc_pts = (_p0, _p1)
         except Exception:
             _pc_pts = None
-    # ---- Opt-in arm selection (priority: MatchAnything > AnyMatch > XoFTR > PC) ----
-    # The four opt-in arms were attempted above in priority order; the
+    # ---- Opt-in arm selection (priority: MatchAnything > WildMatch > AnyMatch > XoFTR > PC) ----
+    # The five opt-in arms were attempted above in priority order; the
     # first one yielding >= 3 points wins. Single if/elif chain so a
     # successful arm is never overwritten by a later branch. With every
-    # flag unset all four are None and the default matching_mode path
+    # flag unset all five are None and the default matching_mode path
     # runs bit-identical to before.
     if _ma_pts is not None:
         pts_ref, pts_sec = _ma_pts
@@ -829,6 +847,15 @@ def _align_core(
                                  "fallback_reason": None,
                                  "primary_engine": "MatchAnything/ELoFTR",
                                  "registration_engine": "MatchAnything/ELoFTR"}
+    elif _wm_pts is not None:
+        pts_ref, pts_sec = _wm_pts
+        engine_name = "wildmatch_loftr"
+        execution_diagnostics = {"matcher": "wildmatch_loftr",
+                                 "opt_in": True,
+                                 "fallback_triggered": False,
+                                 "fallback_reason": None,
+                                 "primary_engine": "WildMatch/LoFTR",
+                                 "registration_engine": "WildMatch/LoFTR"}
     elif _am_pts is not None:
         pts_ref, pts_sec = _am_pts
         engine_name = "anymatch_loftr"
