@@ -86,3 +86,31 @@ comparison.
 Open question for the project owner: approve D (telemetry + doc, one
 small additive commit), or park the whole item until the landmark
 calibration is done.
+
+## Addendum 2026-10-16: deployed-path side-by-side (reviewer request)
+
+Both trial arms run through the real `_align_core` IIRS path
+(`sensor_pair_mode='Optical <-> Infrared'`, 320-px floor), next to the
+trial-harness numbers. Evidence:
+`results/table_iirs_deployed_path_2026-10-16.csv`.
+
+| window | arm | trial harness (fit RMSE) | deployed IIRS path |
+|---|---|---|---|
+| W5 | WildMatch | 1.2568 px, 3064 inl | DEGENERATE — arm fail-closes on the 320×22 strip |
+| W5 | base AnyMatch | 1.3895 px, 1097 inl | DEGENERATE — same |
+| N13 | WildMatch | 0.7556 px, 2206 inl | **COARSE_ADVISORY, 49 inl, held-out 1.70 px** |
+| N13 | base AnyMatch | 1.2888 px, 20 inl | DEGENERATE (9 inl) |
+
+N13 is a genuine deployed-pipeline win: the only arm that converts
+DEGENERATE→COARSE through `_align_core` on an IIRS window, with a 1.70 px
+pipeline held-out RMSE (not just a trial-harness fit residual). W5's
+320×22 strip remains too thin for every arm — fail-closed, honest
+DEGENERATE.
+
+## Addendum: bit-reproducibility (reviewer question)
+
+ohrc_04 run twice on current code (seed 7): n_raw = 7562 both times,
+bit-identical. The 7,629 → 7,562 shift the reviewer noticed is code drift
+between the batch-A run and the current tree, not run-to-run
+non-determinism. Determinism holds per code version; cross-batch
+comparisons should note the code version.

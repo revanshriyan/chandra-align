@@ -1,0 +1,5 @@
+window,arm,trial_harness_rmse_px,trial_harness_inliers,deployed_matcher,deployed_status,deployed_inliers,deployed_heldout_rmse_px,notes
+W5,wildmatch_trained,1.2568,3064,None,DEGENERATE_FAILURE,8,,arm fail-closed on 320x22 TMC-2 match window; default chain finds 8 inliers
+W5,base_anymatch,1.3895,1097,None,DEGENERATE_FAILURE,8,,same floor-limited window; base arm also fail-closes
+N13,wildmatch_trained,0.7556,2206,wildmatch_loftr,COARSE_ADVISORY,49,1.7009,arm fires on 320x62 window; DEGENERATE->COARSE conversion vs base
+N13,base_anymatch,1.2888,20,None,DEGENERATE_FAILURE,9,,base arm fail-closes on 320x62; default chain finds 9 inliers
