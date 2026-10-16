@@ -96,6 +96,31 @@ def test_stage_is_deterministic():
     assert a["heldout_rmse_px"] == pytest.approx(b["heldout_rmse_px"])
 
 
+def test_lambda_chosen_by_heldout_not_insample():
+    """Regression test (2026-10-16 λ-sweep review): the stage's λ must be the
+    argmin of the INTERNAL held-out sweep, never the in-sample optimum.
+
+    λ here is the TPS bending-energy weight of the residual deformation
+    field — not a matcher fusion weight. The OHRC independent-pair sweep
+    (λ=1e-4..3e4, 5 seeds) showed a U-shaped held-out curve with the optimum
+    at λ=0.01 while in-sample RMSE keeps falling toward λ=0; selecting by
+    in-sample fit would pick the overfit end. This test locks the
+    held-out-selection invariant so a future change can't silently switch
+    the criterion.
+    """
+    p1, p2, M = _warp_pair()
+    out = apply_deform_field_stage(p1, p2, M)
+    assert out["applied"] is True
+    sweep = out["lambda_sweep"]
+    assert len(sweep) >= 2
+    best_heldout = min(sweep, key=lambda r: r[1])
+    assert out["lambda_chosen"] == pytest.approx(best_heldout[0])
+    assert out["heldout_rmse_px"] == pytest.approx(best_heldout[1])
+    # And the reported held-out must beat affine (the meaningful-improvement
+    # fuse), otherwise the stage would have fail-closed with no_improvement.
+    assert out["heldout_rmse_px"] < out["heldout_rmse_affine_px"]
+
+
 @pytest.mark.parametrize("p_src,p_ref,M,reason", [
     (None, None, np.eye(2, 3), "bad_points"),
     (np.zeros((0, 2)), np.zeros((0, 2)), np.eye(2, 3), "bad_points"),
