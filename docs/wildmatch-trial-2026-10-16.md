@@ -55,3 +55,11 @@ sha256 `4c2ef215630761e146e090f1cf4e7269f1afb5da9a9742b5187476a8e4665ca2`.
 - `results/head_to_head` equivalent: `~/workspace/wildmatch_trained/head_to_head.csv`.
 - 4 new tests in `tests/test_audit9_recent_coverage.py` (flag logic,
   fail-closed without weights, no shadowing of the AnyMatch arm).
+
+## Reproducibility
+- Head-to-head CSV: `results/table_wildmatch_head_to_head_2026-10-16.csv`.
+- Weights: `scripts/download_wildmatch_weights.sh` fetches the 45 MB
+  checkpoint from the public Drive share (handles the virus-scan
+  interstitial), verifies the zip SHA-256, and reconstructs the loadable
+  `.pt`. The reconstructed checkpoint is tensor-identical to the evaluated
+  one (0/211 tensors differ).
