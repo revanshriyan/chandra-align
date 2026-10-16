@@ -1,0 +1,5 @@
+pair,source,n_verified_landmarks,landmark_rmse_px,n_inliers,status_code,strip_minor_ratio,strip_major_ratio,collapsed_at_0.25,notes
+ohrc_01,benchmark_crops+_align_core,,,28,SUCCESS_SUBPIXEL,0.24282579357711875,0.723468694623667,True,landmarks pending: export gt_ohrc_01_human_clicked.csv from the clicker
+ohrc_04,benchmark_crops+_align_core,,,1445,SUCCESS_SUBPIXEL,0.1926308571152302,0.6657836876360684,True,landmarks pending: export gt_ohrc_04_human_clicked.csv from the clicker
+TMC2_fore_nadir_anchor,2026-10-15 landmark rerun,20,28.031705,,,0.075,,True,known-collapsed: 13 SIFT inliers in thin strip; 28.03px landmark RMSE
+OHRC_pair_anchor,2026-10-15 landmark rerun,20,5.471325,,,0.717,,False,known-healthy: no collapse; 5.47px is ~60% non-projective parallax

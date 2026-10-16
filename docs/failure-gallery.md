@@ -156,3 +156,45 @@ prevent — on the same crop our pipeline returns DEGENERATE_FAILURE with
 telemetry masked. The industry standard tool reproduces the disease;
 our gates are the treatment. Full account in
 [`docs/phase17-isis3-comparison.md`](phase17-isis3-comparison.md).
+
+---
+
+## 9. The strip collapse the entropy gate couldn't see (TMC-2, 2026-10-15)
+
+- **What happened:** human-verified landmarks vs pipeline fit: **28.03 px**
+  (~125 m) apart.
+- **Measured:** 13 SIFT inliers collapsed to a thin horizontal strip while
+  landmarks span the frame; inlier RMSE 1.77 px understated frame-wide
+  truth by ~16×. Quadrant entropy 1.95, 4/4 quadrants covered — the gate
+  did **not** catch it because the strip straddles the quadrant boundary.
+- **Diagnosis:** a distribution metric on fixed quadrants is blind to
+  collapse along a boundary. Telemetry now always reports strip-support
+  metrics; the `STRIP_COLLAPSE` verdict downgrade ships opt-in
+  (`CHANDRA_STRIP_GUARD=1`) until human landmarks calibrate a threshold.
+- **Lesson:** Phase 11's rule, confirmed on real data: inlier
+  self-consistency ≠ correctness.
+
+## 10. The regularization sweep that went the wrong way (OHRC independent pair, 2026-10-16)
+
+- **What happened:** the pair sat at 0.5291 px held-out vs the frozen
+  0.50 px gate; the deform field showed an in-sample/held-out gap, so a
+  stiffer-λ sweep looked like the remedy.
+- **Measured:** λ from 0.01 to 10000 — held-out RMSE **rises monotonically**
+  with stiffness (0.5291 → 1.83 px, asymptoting to the pure affine). The
+  most *flexible* field wins the internal held-out.
+- **Diagnosis:** the gap was never overfitting; the remaining error is
+  unmodeled signal (parallax between acquisitions 2.5 yr apart), which no
+  regularization setting can remove.
+- **Lesson:** report the refuted hypothesis, not just the confirmed ones.
+  Pre-registered bar, clean negative, no commit.
+
+## 11. The IIRS strip that fails closed (W5, 2026-10-16)
+
+- **What happened:** W5 IIRS window through the deployed pipeline — the
+  GSD floor hands every matcher a 320×22 TMC-2 strip against a 2000×140
+  IIRS window.
+- **Measured:** all arms fail-closed → **DEGENERATE_FAILURE**. The
+  trial harness (equal-pixel windows) succeeds on the same pair; the
+  deployed path refuses rather than hallucinates.
+- **Lesson:** a pipeline that says "I can't do this" on a 22-pixel-wide
+  strip is more trustworthy than one that returns a number anyway.
