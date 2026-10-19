@@ -198,3 +198,24 @@ our gates are the treatment. Full account in
   deployed path refuses rather than hallucinates.
 - **Lesson:** a pipeline that says "I can't do this" on a 22-pixel-wide
   strip is more trustworthy than one that returns a number anyway.
+
+## 12. The retrieval model that couldn't match (CrossFeat VAE, 2026-10-15)
+
+- **What happened:** a CrossFeat VAE trained on 19 aligned IIRS↔TMC-2
+  pairs (Colab T4, 100 epochs, no divergence, train top-1 28.7% / val
+  27.8% vs 0.05% chance) wired as an opt-in matcher arm
+  (`CHANDRA_CROSSFEAT=1`), evaluated through `_align_core` on held-out
+  W5/N13 against a pre-registered 1.31 px bar.
+- **Measured:** W5: **0 matches** (3 without ratio, all 343–1799 px off on
+  an aligned pair; max 8 even at 2048 keypoints — unusable). N13: **0
+  matches**. Bar: NOT MET.
+- **Diagnosis:** paired-sampling training taught cross-modal
+  *retrieval* (descriptors at the *same* locations), but the descriptors
+  are not discriminative for sparse matching with *independently
+  detected* keypoints. Training success did not transfer to the task.
+  Wiring reverted; checkpoint kept at
+  `~/workspace/crossfeat_results_2026-10-15/` for reference.
+- **Lesson:** a representation that scores well on its training objective
+  is not evidence it solves the downstream task. Test the task, not the
+  objective. (Full record:
+  `docs/crossfeat-integration-negative-2026-10-15.md`.)
