@@ -78,7 +78,8 @@ def analyze_heldout_pair(
     ref_file: Path,
     prod_file: Path,
     gsd_m: float = 0.25,
-    pair_id: str = "ohrc_test_001"
+    pair_id: str = "ohrc_test_001",
+    output_dir: Path | None = None
 ) -> Tuple[Dict, str]:
     """Analyze held-out point pairs and enforce row count and column presence guards."""
     ref_pts = parse_csv_points(ref_file)
@@ -183,7 +184,11 @@ def analyze_heldout_pair(
     ax.legend(loc="upper right")
     fig.tight_layout()
 
-    scatter_path = Path(f"outputs/residual_scatter_{pair_id}.png")
+    scatter_path = (
+        Path(output_dir) / f"residual_scatter_{pair_id}.png"
+        if output_dir is not None
+        else Path(f"outputs/residual_scatter_{pair_id}.png")
+    )
     scatter_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(scatter_path, dpi=120)
     plt.close(fig)
@@ -234,7 +239,11 @@ def analyze_heldout_pair(
         "per_point": results
     }
 
-    report_path = Path(f"reports/heldout_{pair_id}.md")
+    report_path = (
+        Path(output_dir) / f"heldout_{pair_id}.md"
+        if output_dir is not None
+        else Path(f"reports/heldout_{pair_id}.md")
+    )
     report_path.parent.mkdir(parents=True, exist_ok=True)
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(md_lines))

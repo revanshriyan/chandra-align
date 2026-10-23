@@ -18,12 +18,13 @@ import csv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _find_log_entry(product_path: str, run_id: str | None = None) -> dict | None:
+def _find_log_entry(product_path: str, run_id: str | None = None, log_path: str | None = None) -> dict | None:
     """Find a download_log.csv entry matching the product path and optionally run_id."""
-    log_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "data", "download_log.csv"
-    )
+    if log_path is None:
+        log_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "data", "download_log.csv"
+        )
     if not os.path.exists(log_path):
         return None
     with open(log_path, "r", encoding="utf-8", newline="") as f:

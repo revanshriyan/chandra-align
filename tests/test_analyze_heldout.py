@@ -36,7 +36,7 @@ def test_synthetic_validation_known_shift(tmp_path):
         for x, y, conf, ft in ref_points:
             writer.writerow([x + 0.3, y + 0.4, conf, ft])
 
-    summary, rpath = analyze_heldout_pair(ref_csv, prod_csv, gsd_m=0.25, pair_id="synthetic_test")
+    summary, rpath = analyze_heldout_pair(ref_csv, prod_csv, gsd_m=0.25, pair_id="synthetic_test", output_dir=tmp_path)
 
     recovered_rmse = summary["overall"]["rmse_total_px"]
     expected_rmse = 0.500
@@ -66,7 +66,7 @@ def test_guard_mismatched_row_counts(tmp_path):
         writer.writerow([100.3, 100.4, 1, "crater_rim"])  # Only 1 row
 
     with pytest.raises(ValueError, match="Row count mismatch error"):
-        analyze_heldout_pair(ref_csv, prod_csv, gsd_m=0.25, pair_id="mismatch_test")
+        analyze_heldout_pair(ref_csv, prod_csv, gsd_m=0.25, pair_id="mismatch_test", output_dir=tmp_path)
 
 
 def test_guard_missing_confidence_column(tmp_path):
@@ -85,4 +85,4 @@ def test_guard_missing_confidence_column(tmp_path):
         writer.writerow([100.3, 100.4, "crater_rim"])
 
     with pytest.raises(ValueError, match="Missing required 'confidence' column"):
-        analyze_heldout_pair(ref_csv, prod_csv, gsd_m=0.25, pair_id="noconf_test")
+        analyze_heldout_pair(ref_csv, prod_csv, gsd_m=0.25, pair_id="noconf_test", output_dir=tmp_path)

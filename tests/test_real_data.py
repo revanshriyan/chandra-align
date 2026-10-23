@@ -10,69 +10,51 @@ import pytest
 from chandra_align.ingest import read_image, _read_pds4_detached
 
 
-def test_download_log_gate_blocks_without_entry():
+_LOG_FIELDNAMES = ["local_path", "run_id", "product_id", "source_url", "acquisition_date",
+                   "solar_azimuth_deg", "solar_elevation_deg", "scale_ratio"]
+
+
+def _write_dummy_tif(path):
+    img = np.random.rand(100, 100)
+    import rasterio
+    with rasterio.open(path, "w", driver="GTiff", height=100, width=100,
+                       count=1, dtype="float64", crs="EPSG:4326") as dst:
+        dst.write(img.astype(np.float64), 1)
+
+
+def _write_log(path, rows):
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=_LOG_FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def test_download_log_gate_blocks_without_entry(tmp_path):
     """Real-data runs without a download_log.csv entry must be rejected."""
     from scripts.run_pipeline import _find_log_entry
-    with tempfile.TemporaryDirectory() as d:
-        # Create a dummy image that doesn't look like a fixture
-        img = np.random.rand(100, 100)
-        test_path = os.path.join(d, "real_data.tif")
-        # Write a minimal GeoTIFF
-        import rasterio
-        with rasterio.open(test_path, "w", driver="GTiff", height=100, width=100,
-                           count=1, dtype="float64", crs="EPSG:4326") as dst:
-            dst.write(img.astype(np.float64), 1)
-        
-        # _find_log_entry should return None for unlogged paths
-        entry = _find_log_entry(test_path, run_id="test123")
-        assert entry is None
+    test_path = str(tmp_path / "real_data.tif")
+    _write_dummy_tif(test_path)
+    log_path = str(tmp_path / "download_log.csv")
+    _write_log(log_path, [])
+
+    # _find_log_entry should return None for unlogged paths
+    entry = _find_log_entry(test_path, run_id="test123", log_path=log_path)
+    assert entry is None
 
 
-def test_download_log_gate_passes_with_entry():
+def test_download_log_gate_passes_with_entry(tmp_path):
     """Real-data runs with a matching download_log.csv entry pass the gate."""
     from scripts.run_pipeline import _find_log_entry
-    with tempfile.TemporaryDirectory() as d:
-        img = np.random.rand(100, 100)
-        test_path = os.path.join(d, "real_data.tif")
-        import rasterio
-        with rasterio.open(test_path, "w", driver="GTiff", height=100, width=100,
-                           count=1, dtype="float64", crs="EPSG:4326") as dst:
-            dst.write(img.astype(np.float64), 1)
-        
-        # Create a log entry matching this path in the PROJECT's data/download_log.csv
-        # (not a temp file, since _find_log_entry reads from the project data dir)
-        log_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "data", "download_log.csv"
-        )
-        # Read existing entries
-        fieldnames = ["local_path", "run_id", "product_id", "source_url", "acquisition_date",
-                      "solar_azimuth_deg", "solar_elevation_deg", "scale_ratio"]
-        with open(log_path, "r", encoding="utf-8", newline="") as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
-        
-        # Add test entry
-        rows.append({"local_path": test_path, "run_id": "test123", "product_id": "test",
-                     "source_url": "", "acquisition_date": "", "solar_azimuth_deg": "",
-                     "solar_elevation_deg": "", "scale_ratio": ""})
-        
-        with open(log_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(rows)
-        
-        try:
-            entry = _find_log_entry(test_path, run_id="test123")
-            assert entry is not None
-            assert entry["run_id"] == "test123"
-        finally:
-            # Clean up: remove the test entry
-            rows.pop()
-            with open(log_path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(rows)
+    test_path = str(tmp_path / "real_data.tif")
+    _write_dummy_tif(test_path)
+    log_path = str(tmp_path / "download_log.csv")
+    _write_log(log_path, [{"local_path": test_path, "run_id": "test123", "product_id": "test",
+                           "source_url": "", "acquisition_date": "", "solar_azimuth_deg": "",
+                           "solar_elevation_deg": "", "scale_ratio": ""}])
+
+    entry = _find_log_entry(test_path, run_id="test123", log_path=log_path)
+    assert entry is not None
+    assert entry["run_id"] == "test123"
 
 
 def test_pds4_ohrc_reading():
