@@ -38,12 +38,12 @@ def num(value):
 
 # (readme_regex, benchmark, pair, matcher, canonical_column, label)
 CHECKS = [
-    (r"synthetic sub-pixel ACCEPT at ([\d.]+) px / (\d+) inliers",
+    (r"synthetic ACCEPTED \(Sub-Pixel Precision\) at inlier RMSE ([\d.]+) px / (\d+) inliers",
      "gpu_validation", "synthetic_gentle", "LightGlue_ALIKED",
      [("rmse_px", 0), ("inliers", 1)], "synthetic LightGlue"),
-    (r"competitive real-pair results at ([\d.]+) px \(OHRC\) and ([\d.]+) px \(TMC-2\)",
+    (r"competitive real-pair results at inlier RMSE ([\d.]+) px \(OHRC\) and ([\d.]+) px \(TMC-2\)",
      None, None, None, None, "real-pair headline"),
-    (r"OHRC pair — (\d+) inliers across all four quadrants at ([\d.]+) px",
+    (r"OHRC pair — (\d+) inliers across all four quadrants at inlier RMSE ([\d.]+) px",
      "gpu_validation", "OHRC_pair", "LightGlue_ALIKED",
      [("inliers", 0), ("rmse_px", 1)], "OHRC LightGlue"),
     (r"synthetic_gentle \| LightGlue_ALIKED \| \d+ \| ([\d.]+) \| (\d+)",
@@ -92,7 +92,7 @@ def main():
 
     # Real-pair headline: "1.7961 px (OHRC) and 1.5558 px (TMC-2)"
     match = re.search(
-        r"competitive real-pair results at ([\d.]+) px \(OHRC\) and ([\d.]+) px \(TMC-2\)", text
+        r"competitive real-pair results at inlier RMSE ([\d.]+) px \(OHRC\) and ([\d.]+) px \(TMC-2\)", text
     )
     if match:
         for readme_val, pair in ((match.group(1), "OHRC_pair"), (match.group(2), "TMC2_fore_nadir")):
@@ -102,9 +102,9 @@ def main():
 
     # Issue #3 aggregates cited in prose.
     for prose, matcher, verdict in [
-        (r"LightGlue/ALIKED produced (\d+) COARSE and (\d+) DEGENERATE_FAILURE",
+        (r"LightGlue/ALIKED produced (\d+) COARSE_ADVISORY and (\d+) DEGENERATE_FAILURE",
          "LightGlue_ALIKED", ("COARSE_ADVISORY", "DEGENERATE_FAILURE")),
-        (r"SIFT/RANSAC produced (\d+) COARSE and (\d+) DEGENERATE_FAILURE",
+        (r"SIFT/RANSAC produced (\d+) COARSE_ADVISORY and (\d+) DEGENERATE_FAILURE",
          "SIFT_RANSAC", ("COARSE_ADVISORY", "DEGENERATE_FAILURE")),
     ]:
         match = re.search(prose, text)

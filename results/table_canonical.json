@@ -6,7 +6,11 @@
       "value": "0.3695",
       "unit": "px",
       "source": "results/table_issue01_gpu_validation.csv",
-      "verified": true
+      "verified": true,
+      "backend": "GPU",
+      "hardware": "NVIDIA RTX 5070",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "synthetic_lightglue_inliers",
@@ -14,7 +18,11 @@
       "value": "43",
       "unit": "",
       "source": "results/table_issue01_gpu_validation.csv",
-      "verified": true
+      "verified": true,
+      "backend": "GPU",
+      "hardware": "NVIDIA RTX 5070",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "synthetic_lightglue_entropy",
@@ -22,7 +30,11 @@
       "value": "1.9988",
       "unit": "bits",
       "source": "results/table_issue01_gpu_validation.csv",
-      "verified": true
+      "verified": true,
+      "backend": "GPU",
+      "hardware": "NVIDIA RTX 5070",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "synthetic_lightglue_quadrants",
@@ -30,7 +42,11 @@
       "value": "4/4",
       "unit": "",
       "source": "results/table_issue01_gpu_validation.csv",
-      "verified": true
+      "verified": true,
+      "backend": "GPU",
+      "hardware": "NVIDIA RTX 5070",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "synthetic_lightglue_verdict",
@@ -38,7 +54,11 @@
       "value": "ACCEPTED (Sub-Pixel Precision)",
       "unit": "",
       "source": "results/table_issue01_gpu_validation.csv",
-      "verified": true
+      "verified": true,
+      "backend": "GPU",
+      "hardware": "NVIDIA RTX 5070",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "ohrc_insample_rmse",
@@ -46,7 +66,11 @@
       "value": "1.7961",
       "unit": "px",
       "source": "results/table_issue01_gpu_validation.csv",
-      "verified": true
+      "verified": true,
+      "backend": "GPU",
+      "hardware": "NVIDIA RTX 5070",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "ohrc_heldout_rmse",
@@ -54,7 +78,11 @@
       "value": "1.5375",
       "unit": "px",
       "source": "results/table_issue02_ground_truth.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "ohrc_gt_rmse",
@@ -62,7 +90,11 @@
       "value": "5.6510",
       "unit": "px",
       "source": "results/table_issue02_ground_truth.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "tmc2_insample_rmse",
@@ -70,7 +102,11 @@
       "value": "1.5558",
       "unit": "px",
       "source": "results/table_issue01_gpu_validation.csv",
-      "verified": true
+      "verified": true,
+      "backend": "GPU",
+      "hardware": "NVIDIA RTX 5070",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "tmc2_heldout_rmse",
@@ -78,7 +114,11 @@
       "value": "1.7950",
       "unit": "px",
       "source": "results/table_issue02_ground_truth.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "tmc2_gt_rmse",
@@ -86,7 +126,11 @@
       "value": "27.3519",
       "unit": "px",
       "source": "results/table_issue02_ground_truth.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "loftr_correspondences",
@@ -94,7 +138,11 @@
       "value": "2432",
       "unit": "",
       "source": "docs/phase9-loftr-addendum.md",
-      "verified": true
+      "verified": true,
+      "backend": "CPU",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "loftr_inliers",
@@ -102,7 +150,11 @@
       "value": "997",
       "unit": "",
       "source": "docs/phase9-loftr-addendum.md",
-      "verified": true
+      "verified": true,
+      "backend": "CPU",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "loftr_rmse",
@@ -110,7 +162,11 @@
       "value": "1.35",
       "unit": "px",
       "source": "docs/phase9-loftr-addendum.md",
-      "verified": true
+      "verified": true,
+      "backend": "CPU",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "loftr_verdict",
@@ -118,7 +174,11 @@
       "value": "COARSE_ADVISORY",
       "unit": "",
       "source": "docs/phase9-loftr-addendum.md",
-      "verified": true
+      "verified": true,
+      "backend": "CPU",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "phase13_n_windows",
@@ -126,7 +186,11 @@
       "value": "84",
       "unit": "",
       "source": "results/table_phase13_windows.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "phase13_ohrc_coarse",
@@ -134,7 +198,11 @@
       "value": "41/42",
       "unit": "",
       "source": "results/table_phase13_windows.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "phase13_ohrc_median_inliers",
@@ -142,7 +210,11 @@
       "value": "2158",
       "unit": "",
       "source": "results/table_phase13_windows.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "phase13_ohrc_median_rmse",
@@ -150,7 +222,11 @@
       "value": "1.49",
       "unit": "px",
       "source": "results/table_phase13_windows.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "phase13_tmc2_coarse",
@@ -158,7 +234,11 @@
       "value": "21/42",
       "unit": "",
       "source": "results/table_phase13_windows.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "phase13_tmc2_median_inliers",
@@ -166,7 +246,11 @@
       "value": "514",
       "unit": "",
       "source": "results/table_phase13_windows.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "phase13_tmc2_median_rmse",
@@ -174,7 +258,11 @@
       "value": "1.64",
       "unit": "px",
       "source": "results/table_phase13_windows.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "phase15_misclosure_before_px",
@@ -182,7 +270,11 @@
       "value": "0.3616",
       "unit": "px",
       "source": "results/phase15_posegraph.json",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "phase15_misclosure_after_px",
@@ -190,7 +282,11 @@
       "value": "0.0000",
       "unit": "px",
       "source": "results/phase15_posegraph.json",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "phase15_real_status",
@@ -198,7 +294,11 @@
       "value": "ABSTAIN",
       "unit": "",
       "source": "results/phase15_posegraph.json",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "chandrabench_ohrc_gt_rmse",
@@ -206,7 +306,11 @@
       "value": "5.6510",
       "unit": "px",
       "source": "docs/chandrabench-tech-note.md (+ results/table_issue02_ground_truth.csv)",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "chandrabench_tmc2_gt_rmse",
@@ -214,7 +318,11 @@
       "value": "27.3519",
       "unit": "px",
       "source": "docs/chandrabench-tech-note.md (+ results/table_issue02_ground_truth.csv)",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "gate_accept_rmse_px",
@@ -222,7 +330,11 @@
       "value": "0.50",
       "unit": "px",
       "source": "frozen gate spec \u2014 app.py (judge checklist), chandra_align/registration_transform.py (MIN_REGISTRATION_INLIERS=8)",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "gate_accept_min_inliers",
@@ -230,7 +342,11 @@
       "value": "8",
       "unit": "",
       "source": "frozen gate spec \u2014 app.py (judge checklist), chandra_align/registration_transform.py (MIN_REGISTRATION_INLIERS=8)",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "gate_accept_min_entropy",
@@ -238,7 +354,11 @@
       "value": "0.75",
       "unit": "bits",
       "source": "frozen gate spec \u2014 app.py (judge checklist), chandra_align/registration_transform.py (MIN_REGISTRATION_INLIERS=8)",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "gate_accept_min_quadrants",
@@ -246,7 +366,11 @@
       "value": "3/4",
       "unit": "",
       "source": "frozen gate spec \u2014 app.py (judge checklist), chandra_align/registration_transform.py (MIN_REGISTRATION_INLIERS=8)",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "gate_coarse_rmse_px",
@@ -254,7 +378,11 @@
       "value": "2.50",
       "unit": "px",
       "source": "frozen gate spec \u2014 app.py (judge checklist), chandra_align/registration_transform.py (MIN_REGISTRATION_INLIERS=8)",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "gate_coarse_min_inliers",
@@ -262,7 +390,11 @@
       "value": "8",
       "unit": "",
       "source": "frozen gate spec \u2014 app.py (judge checklist), chandra_align/registration_transform.py (MIN_REGISTRATION_INLIERS=8)",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "gate_coarse_min_entropy",
@@ -270,7 +402,11 @@
       "value": "0.50",
       "unit": "bits",
       "source": "frozen gate spec \u2014 app.py (judge checklist), chandra_align/registration_transform.py (MIN_REGISTRATION_INLIERS=8)",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "gate_coarse_min_quadrants",
@@ -278,7 +414,11 @@
       "value": "2/4",
       "unit": "",
       "source": "frozen gate spec \u2014 app.py (judge checklist), chandra_align/registration_transform.py (MIN_REGISTRATION_INLIERS=8)",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "deform_stage_ohrc_01_gate_rmse",
@@ -286,7 +426,11 @@
       "value": "0.4312",
       "unit": "px",
       "source": "results/table_quota_12pair.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "deform_stage_ohrc_01_inliers",
@@ -294,7 +438,11 @@
       "value": "17",
       "unit": "",
       "source": "results/table_quota_12pair.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "deform_stage_ohrc_01_verdict",
@@ -302,7 +450,11 @@
       "value": "SUCCESS_SUBPIXEL",
       "unit": "",
       "source": "results/table_quota_12pair.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "deform_stage_ohrc_02_gate_rmse",
@@ -310,7 +462,11 @@
       "value": "0.4687",
       "unit": "px",
       "source": "results/table_quota_12pair.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "deform_stage_ohrc_02_inliers",
@@ -318,7 +474,11 @@
       "value": "23",
       "unit": "",
       "source": "results/table_quota_12pair.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "deform_stage_ohrc_02_verdict",
@@ -326,7 +486,11 @@
       "value": "SUCCESS_SUBPIXEL",
       "unit": "",
       "source": "results/table_quota_12pair.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "deform_stage_ohrc_03_gate_rmse",
@@ -334,7 +498,11 @@
       "value": "0.3427",
       "unit": "px",
       "source": "results/table_quota_12pair.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "deform_stage_ohrc_03_inliers",
@@ -342,7 +510,11 @@
       "value": "20",
       "unit": "",
       "source": "results/table_quota_12pair.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "deform_stage_ohrc_03_verdict",
@@ -350,7 +522,11 @@
       "value": "SUCCESS_SUBPIXEL",
       "unit": "",
       "source": "results/table_quota_12pair.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "lroc_field_1m_bound_m",
@@ -358,7 +534,11 @@
       "value": "1.7-2.3",
       "unit": "m",
       "source": "results/table_lroc_field.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     },
     {
       "metric": "lroc_field_3m_bound_m",
@@ -366,7 +546,11 @@
       "value": "2.0-2.5",
       "unit": "m",
       "source": "results/table_lroc_field.csv",
-      "verified": true
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     }
   ],
   "n_entries": 46,

@@ -28,9 +28,36 @@ DOCS_DIR = os.path.join(REPO_ROOT, "docs")
 SIDECAR_PATH = os.path.join(RESULTS_DIR, "table_canonical.json")
 
 UNVERIFIED = "UNVERIFIED"
+NOT_RECORDED = "not recorded"
+
+# Backend/hardware provenance, only where a repo source records it:
+# - Issue #1 LightGlue entries: docs/judge-qa-compute.md records the
+#   comparison ran locally on an NVIDIA RTX 5070, LightGlue on GPU.
+# - LoFTR entries: docs/phase9-loftr-addendum.md records torch CPU.
+# Everything else, and the command/commit of every entry, is not
+# recorded in any source and stays "not recorded" — never guessed.
+_PROVENANCE = {}
+for _m in (
+    "synthetic_lightglue_rmse",
+    "synthetic_lightglue_inliers",
+    "synthetic_lightglue_entropy",
+    "synthetic_lightglue_quadrants",
+    "synthetic_lightglue_verdict",
+    "ohrc_insample_rmse",
+    "tmc2_insample_rmse",
+):
+    _PROVENANCE[_m] = ("GPU", "NVIDIA RTX 5070")
+for _m in (
+    "loftr_correspondences",
+    "loftr_inliers",
+    "loftr_rmse",
+    "loftr_verdict",
+):
+    _PROVENANCE[_m] = ("CPU", NOT_RECORDED)
 
 
 def entry(metric, label, value, source, unit=""):
+    backend, hardware = _PROVENANCE.get(metric, (NOT_RECORDED, NOT_RECORDED))
     return {
         "metric": metric,
         "label": label,
@@ -38,6 +65,10 @@ def entry(metric, label, value, source, unit=""):
         "unit": unit,
         "source": source,
         "verified": value != UNVERIFIED,
+        "backend": backend,
+        "hardware": hardware,
+        "command": NOT_RECORDED,
+        "commit": NOT_RECORDED,
     }
 
 
