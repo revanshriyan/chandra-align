@@ -18,21 +18,63 @@ _VENDORED_RIFT2 = os.path.join(_ROOT, "vendored", "rift2")
 
 
 def _import_rift2():
-    """Import the vendored RIFT2 port with vendored/rift2 on sys.path.
+    """Load the vendored RIFT2 port deterministically, by file location.
 
-    The port does `from src.phase_congruency.phasecong import phasecong`, so the
-    vendored root must be on sys.path. Never modifies the vendored files.
+    The port expects a top-level ``src`` package (``src.RIFT2`` doing
+    ``from src.phase_congruency.phasecong import phasecong``), but the repo
+    has its own top-level ``src`` namespace package, so resolving the port
+    through ``sys.path``/``sys.modules`` depends on which ``src`` was
+    imported first and fails order-dependently. Instead the three vendored
+    modules are loaded explicitly with importlib under their expected
+    names, with any pre-existing ``src`` entries saved beforehand and
+    restored afterwards. The port binds its cross-imports at import time,
+    so the returned class keeps working after the restore. Never modifies
+    the vendored files or ``sys.path``.
     """
-    if _VENDORED_RIFT2 not in sys.path:
-        sys.path.insert(0, _VENDORED_RIFT2)
+    import importlib.util
+    from types import ModuleType
+
+    vendored_src = os.path.join(_VENDORED_RIFT2, "src")
+    package_dirs = {
+        "src": vendored_src,
+        "src.phase_congruency": os.path.join(vendored_src, "phase_congruency"),
+    }
+    module_files = {
+        "src.phase_congruency.tools": os.path.join(
+            vendored_src, "phase_congruency", "tools.py"
+        ),
+        "src.phase_congruency.phasecong": os.path.join(
+            vendored_src, "phase_congruency", "phasecong.py"
+        ),
+        "src.RIFT2": os.path.join(vendored_src, "RIFT2.py"),
+    }
+    names = list(package_dirs) + list(module_files)
+    saved = {name: sys.modules.pop(name) for name in names if name in sys.modules}
     try:
-        from src.RIFT2 import RIFT2 as _RIFT2Port  # vendored port's own layout
-        return _RIFT2Port
-    except ImportError as exc:
+        for name, directory in package_dirs.items():
+            package = ModuleType(name)
+            package.__path__ = [directory]
+            sys.modules[name] = package
+        port_module = None
+        for name, path in module_files.items():
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"cannot load vendored RIFT2 module from {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+            if name == "src.RIFT2":
+                port_module = module
+        return port_module.RIFT2
+    except (ImportError, OSError) as exc:
         raise ImportError(
             "vendored RIFT2 port not importable (vendored/rift2 missing or its deps "
             f"unavailable): {exc}"
         ) from exc
+    finally:
+        for name in names:
+            sys.modules.pop(name, None)
+        sys.modules.update(saved)
 
 
 class RIFT2Matcher:
