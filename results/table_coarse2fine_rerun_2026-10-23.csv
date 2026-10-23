@@ -1,0 +1,13 @@
+pair_id,engine_before,engine_after,verdict_before,verdict_after,verdict_movement,rmse_heldout_before,rmse_heldout_after,rmse_delta_px,rmse_in_sample_before,rmse_in_sample_after,inliers_before,inliers_after,runtime_before_s,runtime_after_s
+ohrc_01,SIFT + Brute-Force (RANSAC fallback),Fallback (SIFT),COARSE_ADVISORY,DEGENERATE_FAILURE,regressed,1.6445,2.7084,1.0639,1.392,1.474,19,10,19.09,23.91
+ohrc_02,SIFT + Brute-Force (RANSAC fallback),SIFT + Brute-Force (RANSAC fallback),COARSE_ADVISORY,COARSE_ADVISORY,unchanged,1.3041,1.1326,-0.1715,1.2537,1.4229,16,19,18.65,22.97
+ohrc_03,SIFT + Brute-Force (RANSAC fallback),SIFT + Brute-Force (RANSAC fallback),COARSE_ADVISORY,COARSE_ADVISORY,unchanged,1.1021,1.3571,0.255,1.292,0.8911,14,9,18.73,27.69
+ohrc_04,SIFT + Brute-Force (RANSAC fallback),SIFT + Brute-Force (RANSAC fallback),COARSE_ADVISORY,COARSE_ADVISORY,unchanged,1.7057,1.5527,-0.1529,2.0214,1.7253,16,17,16.42,22.46
+ohrc_05,SIFT + Brute-Force (RANSAC fallback),Fallback (SIFT),COARSE_ADVISORY,DEGENERATE_FAILURE,regressed,2.0549,2.9575,0.9026,1.5645,1.4839,10,12,17.0,21.87
+ohrc_06,SIFT + Brute-Force (RANSAC fallback),SIFT + Brute-Force (RANSAC fallback),COARSE_ADVISORY,COARSE_ADVISORY,unchanged,1.151,1.2271,0.0761,0.9533,0.8749,8,8,17.1,22.96
+tmc2_01,SIFT + Brute-Force (RANSAC fallback),SIFT + Brute-Force (RANSAC fallback),COARSE_ADVISORY,COARSE_ADVISORY,unchanged,2.309,1.5977,-0.7113,1.6262,1.8927,12,11,16.24,21.6
+tmc2_02,SIFT + Brute-Force (RANSAC fallback),SIFT + Brute-Force (RANSAC fallback),COARSE_ADVISORY,COARSE_ADVISORY,unchanged,1.8644,1.9733,0.1088,1.8364,1.1897,14,8,16.88,22.08
+tmc2_03,Fallback (SIFT),Fallback (SIFT),DEGENERATE_FAILURE,DEGENERATE_FAILURE,unchanged,8.4056,0.1,-8.3056,1.6287,0.8888,6,6,16.09,19.8
+tmc2_04,Fallback (SIFT),Fallback (SIFT),DEGENERATE_FAILURE,DEGENERATE_FAILURE,unchanged,1.7177,1.6515,-0.0662,1.3782,1.811,7,7,14.96,20.2
+tmc2_05,Fallback (SIFT),SIFT + Brute-Force (RANSAC fallback),DEGENERATE_FAILURE,COARSE_ADVISORY,improved,3.0307,0.9321,-2.0986,1.5159,1.2721,8,9,15.85,21.4
+tmc2_06,SIFT + Brute-Force (RANSAC fallback),SIFT + Brute-Force (RANSAC fallback),COARSE_ADVISORY,COARSE_ADVISORY,unchanged,1.8002,0.6388,-1.1614,1.3263,0.7729,9,8,16.7,22.46
