@@ -895,6 +895,46 @@ def _align_core(
         )
     else:
         raise ValueError("matching_mode must be 'single_scale' or 'coarse_to_fine'")
+    # ---- Opt-in arm-vs-fallback arbitration (CHANDRA_ARBITRATE=1) ----
+    # Only when an arm fired: also run the default matching path, score
+    # both point sets with chandra_align/matching/arbitration.py, and keep
+    # the winner. Flag unset: this block never runs and behavior is
+    # bit-identical. Fail-closed: any arbitration error keeps the arm's
+    # points (the historical behavior) and records the failure.
+    _arm_fired = any(
+        p is not None for p in (_ma_pts, _wm_pts, _am_pts, _xo_pts, _pc_pts)
+    )
+    if _arm_fired and os.environ.get(
+        "CHANDRA_ARBITRATE", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}:
+        try:
+            from chandra_align.matching.arbitration import arbitrate_point_sets
+
+            if matching_mode == "coarse_to_fine":
+                from chandra_align.matching.coarse_to_fine import coarse_to_fine_match
+
+                _fb_ref, _fb_sec, _fb_engine, _fb_diag = coarse_to_fine_match(
+                    match_ref, match_sec, match_pair_hf,
+                    ransac_threshold_px=ransac_threshold_px,
+                )
+            else:
+                _fb_ref, _fb_sec, _fb_engine, _fb_diag = match_pair_hf(
+                    match_ref, match_sec, ransac_threshold_px
+                )
+            _winner, _arb_info = arbitrate_point_sets(
+                (pts_ref, pts_sec), (_fb_ref, _fb_sec)
+            )
+            if _winner == "fallback":
+                pts_ref, pts_sec = _fb_ref, _fb_sec
+                _fb_diag["arbitration"] = _arb_info
+                engine_name, execution_diagnostics = _fb_engine, _fb_diag
+            else:
+                execution_diagnostics["arbitration"] = _arb_info
+        except Exception as _arb_exc:  # fail closed: keep the arm's points
+            execution_diagnostics["arbitration"] = {
+                "error": str(_arb_exc),
+                "winner": "arm",
+            }
     if ref_match_scale != 1.0:
         pts_ref = pts_ref / ref_match_scale
     if sec_match_scale != 1.0:
