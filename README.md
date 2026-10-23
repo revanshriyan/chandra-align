@@ -23,7 +23,7 @@ CHANDRA-ALIGN registers lunar imagery across sensor, illumination, and scale dif
 | --- | --- | --- |
 | Real-pair registration residual (self-consistency, not independent truth) | **0.27–0.45 px** on 9 pairs — 5 OHRC + 4 TMC-2 (17–24 inliers; rescue pairs use 740–2,162 admitted points). Non-circular 80/20 holdout verification on all 9 pairs: **0.25–0.36 px**, admitted fractions 8–32% of held-out matches (unconditional median residual 1.7–11.3 px, stated alongside; [`results/table_rescue_noncircular.csv`](results/table_rescue_noncircular.csv)). Stricter spatial-extrapolation score: **1.99–3.88 px** (harder benchmark, stated alongside). Independent landmark RMSE is OHRC 5.6510 px and TMC-2 27.3519 px (ChandraBench v0.1, canonical table). | Frozen gate, opt-in deformation-field stage + L1 field-guided rescue, held-out scoring |
 | Absolute accuracy vs LROC truth | **1.7–2.3 m** (1 m grid; 6.5–8.8 OHRC px at 0.26 m/px), **2.0–2.5 m** (3 m grid; 7.7–9.6 OHRC px) | Independent held-out check points, no leakage |
-| Synthetic control | 0.31–0.40 px, transforms recovered to ~0.1 px / 0.01° | Exact ground truth |
+| Synthetic control | 0.37–0.40 px | Exact ground truth |
 | Cross-modal (IIRS↔TMC-2) | 0.98 px COARSE_ADVISORY (XoFTR, W5, 23 inliers); 16/19 pairs COARSE_ADVISORY | Best single-window and broadest coverage to date |
 | Failure behavior | Fail-closed: rejects report reasons, never a transform | 45-run robustness battery + sun-angle envelope |
 
