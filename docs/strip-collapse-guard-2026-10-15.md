@@ -56,7 +56,50 @@ Evidence: `results/table_tmc2_deform_rescue_2026-10-15.csv`.
 
 ## Status
 - Metric + telemetry: shipped, always-on, additive.
-- Verdict downgrade: opt-in (`CHANDRA_STRIP_GUARD=1`), experimental.
+- Verdict downgrade: DEFAULT-ON since 2026-10-24 (opt-out via `CHANDRA_STRIP_GUARD=0`); see the 2026-10-24 addendum below. The "opt-in, not default" reasoning in the section above is the superseded 2026-10-15 decision, kept as history.
 - TMC-2 fore/nadir: root cause diagnosed; no remediation reaches the
   frozen gates. Wider landmark ground truth is the prerequisite for
   calibrating a default-ON guard.
+
+## Addendum 2026-10-24 — calibrated, default-ON
+
+The prerequisite above is now met. Revan human-verified 39 landmarks
+(ohrc_01: 21, ohrc_04: 18; `~/workspace/your_files/gt_ohrc_01_human_clicked.csv`,
+`gt_ohrc_04_human_clicked.csv`) and the calibration rig ran on them
+(`results/table_strip_guard_calibration_2026-10-24.csv`):
+ohrc_01 landmark RMSE 1.8869 px at minor_ratio 0.2428; ohrc_04 landmark
+RMSE 2.2591 px at minor_ratio 0.1926; both pipeline SUCCESS_SUBPIXEL on
+inlier RMSE (0.328 / 0.291 px), distinct from these landmark RMSEs.
+The old 0.25 threshold would have downgraded both pairs.
+The calibrated threshold is T* = (0.075 + 0.2428) / 2 = 0.1589 → 0.159,
+the midpoint of the rig's LABELED separation: the known-collapsed
+anchor (0.075) vs labeled-good ohrc_01 (0.2428, under the rig's
+< 2.0 px landmark-RMSE labeling bar). ohrc_04 is UNLABELED under that
+bar (2.2591 px) and thin-covered (18 < the ~20 protocol target): it sits
+above the threshold as a consistency observation, not a calibration
+point. (An earlier draft of this addendum misstated the derivation as
+the midpoint of 0.075 and 0.1926, which is 0.1338, not 0.159; the
+2026-10-25 Auditor review caught it, and this text is the correction.)
+Clean separation holds on every measured pair: all six OHRC regression
+pairs sit above 0.159 on both ratios, and all TMC-2 regression rows are
+already DEGENERATE_FAILURE, so the guard changes no TMC-2 verdict
+(tmc2_01's support measurement is valid with minor ratio 0.0, but its
+verdict is already DEGENERATE and a downgrade cannot change it).
+Change: `STRIP_SUPPORT_RATIO_MIN` 0.25 → 0.159 and the downgrade is
+DEFAULT-ON, opt-out via `CHANDRA_STRIP_GUARD=0`. Fragility on the
+record: the labeled calibration rests on the single pair ohrc_01,
+clearing the 2.0 px bar by 0.11 px; a third full-coverage pair would
+strengthen it further. Gate thresholds themselves are untouched; the
+guard only ever downgrades to DEGENERATE_FAILURE.
+
+## Approval record (2026-10-26)
+
+Decision (a) STRIP_SUPPORT_RATIO_MIN 0.25 → 0.159 and (b) the default
+flip to default-ON were delegated by Revan to the assistant on
+2026-10-26 ~02:24 IST, after the corrected derivation
+(T* = (0.075 + 0.2428) / 2 = 0.1589 → 0.159; ohrc_04 unlabeled) and the
+explicit (a)/(b) question were presented to him. The assistant's
+decision is to APPROVE both. This is recorded faithfully as delegation,
+not as a direct tap approval, for the Integrity Auditor to rule on.
+Merge awaits Auditor sign-off on this record plus the GitHub issue
+number (filing in progress at time of writing).

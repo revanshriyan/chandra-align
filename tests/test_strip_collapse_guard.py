@@ -3,10 +3,11 @@
 The guard measures whether the inlier set collapsed to a strip (e.g. the
 TMC-2 fore/nadir case: 13 inliers in ref y in [944,1096] of a 2048 frame).
 The measurement is always available for diagnostic telemetry; the
-fail-closed verdict downgrade (code STRIP_COLLAPSE) is OPT-IN via
-CHANDRA_STRIP_GUARD=1, because the 0.25 threshold trips on verified-good
-fits (ohrc_01 at 0.243, ohrc_04 main fit at 0.19) and is therefore
-uncalibrated for default-ON use. The downgrade may only ever demote to
+fail-closed verdict downgrade (code STRIP_COLLAPSE) is DEFAULT-ON since
+the 2026-10-24 human-landmark calibration (opt-out via
+CHANDRA_STRIP_GUARD=0). The calibrated 0.159 threshold separates the
+known-collapsed anchor (minor_ratio 0.075) from every verified-good pair
+(lowest 0.1926). The downgrade may only ever demote to
 DEGENERATE_FAILURE, never upgrade.
 """
 
@@ -89,7 +90,7 @@ def test_metric_fires_on_diagonal_strip():
 
 
 def test_guard_downgrades_collapsed_fit(restore_env):
-    os.environ["CHANDRA_STRIP_GUARD"] = "1"  # opt-in
+    os.environ["CHANDRA_STRIP_GUARD"] = "1"  # explicitly on
     assert strip_guard_enabled() is True
     p = _strip_points()
     # Would-be COARSE: 1.77px, 13 inliers, entropy 1.95, 4/4 quads.
@@ -124,18 +125,17 @@ def test_guard_leaves_good_fit_untouched(restore_env):
     assert "STRIP_COLLAPSE" not in msg
 
 
-def test_default_is_diagnostic_only(restore_env):
-    # Without the opt-in, a collapsed set does NOT change the verdict --
-    # the measurement is telemetry-only. This protects verified-good fits
-    # (ohrc_01, ohrc_04) that trip the uncalibrated 0.25 threshold.
+def test_default_is_guard_on(restore_env):
+    # Since the 2026-10-24 human-landmark calibration, the guard is
+    # DEFAULT-ON: without any env setting, a collapsed set IS downgraded.
     os.environ.pop("CHANDRA_STRIP_GUARD", None)
-    assert strip_guard_enabled() is False
+    assert strip_guard_enabled() is True
     p = _strip_points()
     _, code = validate_registration_gate(
         1.77, 13, 8, 1.95,
         {"Q1": 4, "Q2": 4, "Q3": 3, "Q4": 2},
         pts=p, frame_shape=(2048, 2048))
-    assert code == "COARSE_ADVISORY"
+    assert code == "DEGENERATE_FAILURE"
 
 
 def test_explicit_zero_is_diagnostic_only(restore_env):
@@ -158,6 +158,14 @@ def test_too_few_points_never_collapse():
     assert ok is True  # invalid measurement never collapses on its own
 
 
-def test_threshold_is_principled_constant():
-    # The threshold is a documented geometric constant, not a tuned value.
-    assert STRIP_SUPPORT_RATIO_MIN == 0.25
+def test_threshold_is_calibrated_constant():
+    # The threshold is the measured midpoint of the 2026-10-24
+    # human-landmark calibration (results/table_strip_guard_calibration_2026-10-24.csv),
+    # not a tuned value: (0.075 + 0.2428) / 2 = 0.1589 -> 0.159, the
+    # midpoint of the rig's LABELED separation (collapsed anchor 0.075
+    # vs labeled-good ohrc_01 0.2428). ohrc_04 (0.1926) is unlabeled
+    # under the rig's < 2.0 px landmark-RMSE bar and sits above the
+    # threshold as a consistency observation, not a calibration point.
+    assert STRIP_SUPPORT_RATIO_MIN == 0.159
+    assert 0.075 < STRIP_SUPPORT_RATIO_MIN < 0.2428
+    assert STRIP_SUPPORT_RATIO_MIN < 0.1926  # unlabeled ohrc_04 also above

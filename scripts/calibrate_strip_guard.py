@@ -4,11 +4,12 @@ Background
 ----------
 The strip-collapse guard (chandra_align/metrics/spatial_support.py) measures
 frame-normalized PCA support of the inlier cloud and can downgrade the verdict
-to STRIP_COLLAPSE when minor_ratio < 0.25. That downgrade is OPT-IN
-(CHANDRA_STRIP_GUARD=1) because the 12-pair regression showed 0.25 trips
-verified-good fits: ohrc_01 (minor_ratio 0.243, SUCCESS_SUBPIXEL 0.328 px) and
-ohrc_04's main fit (0.19, verified 0.29 px via L1 rescue). See
-docs/strip-collapse-guard-2026-10-15.md.
+to STRIP_COLLAPSE when minor_ratio < 0.159. That downgrade is DEFAULT-ON
+since the 2026-10-24 calibration (39 human-verified landmarks; the old 0.25
+threshold tripped verified-good fits ohrc_01 at 0.243 and ohrc_04 at 0.19).
+See docs/strip-collapse-guard-2026-10-15.md (2026-10-24 addendum). This
+script still forces CHANDRA_STRIP_GUARD=0 for its pipeline runs, so it
+measures the raw fit and strip metrics that the threshold analysis needs.
 
 Revan clicks ~20 landmarks per pair in
 ~/workspace/your_files/landmark_clicker_ohrc01_ohrc04.html ("algorithm proposes,

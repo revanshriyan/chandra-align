@@ -169,8 +169,16 @@ our gates are the treatment. Full account in
   did **not** catch it because the strip straddles the quadrant boundary.
 - **Diagnosis:** a distribution metric on fixed quadrants is blind to
   collapse along a boundary. Telemetry now always reports strip-support
-  metrics; the `STRIP_COLLAPSE` verdict downgrade ships opt-in
-  (`CHANDRA_STRIP_GUARD=1`) until human landmarks calibrate a threshold.
+  metrics; the `STRIP_COLLAPSE` verdict downgrade shipped opt-in
+  (`CHANDRA_STRIP_GUARD=1`) until human landmarks calibrated a threshold.
+- **Update 2026-10-24:** calibrated on 39 human-verified landmarks
+  (ohrc_01: 21, ohrc_04: 18; `results/table_strip_guard_calibration_2026-10-24.csv`).
+  Threshold 0.159 = (0.075 + 0.2428) / 2, the midpoint of the rig's
+  labeled separation (collapsed anchor 0.075 vs labeled-good ohrc_01
+  0.2428); ohrc_04 (0.1926) is unlabeled under the rig's < 2.0 px bar
+  and thin-covered (18 < ~20 target), a consistency observation above
+  the threshold, not a calibration point. The downgrade is now
+  DEFAULT-ON, opt-out via `CHANDRA_STRIP_GUARD=0`.
 - **Lesson:** Phase 11's rule, confirmed on real data: inlier
   self-consistency ≠ correctness.
 

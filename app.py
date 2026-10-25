@@ -603,8 +603,8 @@ def _compute_strip_support(inlier_points, img_shape):
 
     The strip-collapse measurement is always computed here for telemetry.
     The fail-closed verdict downgrade inside validate_registration_gate
-    is OPT-IN via CHANDRA_STRIP_GUARD=1 (default: diagnostic only), because
-    the 0.25 threshold is uncalibrated against wide ground truth.
+    is DEFAULT-ON since the 2026-10-24 human-landmark calibration
+    (opt-out via CHANDRA_STRIP_GUARD=0); the calibrated threshold is 0.159.
     Same contract as _compute_spatial_uniformity: never affects gates,
     invalid on failure.
     """
@@ -1236,8 +1236,8 @@ def _align_core(
         inlier_ref, ref_original.shape[:2]
     )
     # Strip-collapse support telemetry (diagnostic fields; the fail-closed
-    # verdict downgrade inside validate_registration_gate is opt-in via
-    # CHANDRA_STRIP_GUARD=1 and off by default).
+    # verdict downgrade inside validate_registration_gate is default-ON
+    # since the 2026-10-24 calibration, opt-out via CHANDRA_STRIP_GUARD=0).
     strip_support_metrics = _compute_strip_support(
         inlier_ref, ref_original.shape[:2]
     )

@@ -14,55 +14,82 @@ in every principal direction. It is a post-fit, fail-closed backstop:
 when enabled it may only DOWNGRADE a verdict to DEGENERATE_FAILURE (code
 STRIP_COLLAPSE), never upgrade. Frozen gate thresholds are untouched.
 
-2026-10-15 calibration decision: the backstop ships DIAGNOSTIC-ONLY by
-default (the measurement is always computed and reported in telemetry).
-The 0.25 threshold cleanly separates the TMC-2 pathology (minor_ratio
-0.075) from healthy frame-filling sets (0.72), BUT it also trips on two
-verified-good fits -- ohrc_01 (0.243, verified SUCCESS_SUBPIXEL 0.328px)
-and ohrc_04's main fit (0.19, verified 0.29px via L1 rescue) -- and it
-splits a tight cluster of healthy pairs (0.2428 vs 0.260/0.262). Without
-independent ground truth for those pairs, a verdict-changing default
-cannot be justified. The downgrade is therefore opt-in for experimentation
-via CHANDRA_STRIP_GUARD=1, clearly marked uncalibrated. Telemetry always
-carries the numbers so analysts see the red flag.
+2026-10-15 calibration decision (superseded 2026-10-24): the backstop
+shipped DIAGNOSTIC-ONLY by default because the principled 0.25 threshold
+tripped on two verified-good fits -- ohrc_01 (0.243) and ohrc_04's main
+fit (0.19) -- and no independent ground truth existed for those pairs.
 
-Threshold rationale (principled, not tuned): an inlier cloud whose extent
-along any principal direction covers less than one quarter of the frame
-in that direction leaves three quarters of the frame as pure
-extrapolation -- geometrically it cannot constrain a global 2D transform.
-STRIP_SUPPORT_RATIO_MIN = 0.25 is that constant.
+2026-10-24 calibration decision: with 39 human-verified landmarks
+(ohrc_01: 21, ohrc_04: 18; results/table_strip_guard_calibration_2026-10-24.csv)
+the threshold is now MEASURED, not guessed: T* = (0.075 + 0.2428) / 2 =
+0.1589 -> 0.159, the midpoint of the rig's labeled separation between
+the known-collapsed anchor (0.075) and labeled-good ohrc_01 (0.2428,
+landmark RMSE 1.8869 px under the rig's < 2.0 px bar). ohrc_04
+(minor_ratio 0.1926, landmark RMSE 2.2591 px) is unlabeled under that
+bar and thin-covered (18 < ~20 target): a consistency observation above
+the threshold, not a calibration point. The downgrade is therefore
+DEFAULT-ON, opt-out via CHANDRA_STRIP_GUARD=0. Telemetry always carries
+the numbers so analysts see the red flag.
+
+Threshold rationale (calibrated, not tuned to fit results): the value is
+the midpoint of the labeled separation, with 0.084 margin on both sides
+(0.159 - 0.075 above the collapsed anchor; 0.2428 - 0.159 below
+ohrc_01). Fragility, stated plainly: the labeled calibration rests on
+the single pair ohrc_01, clearing the 2.0 px bar by 0.11 px; a third
+full-coverage pair would strengthen it. It changes only on new landmark
+evidence.
 
 Frame-relative normalization is required: raw PCA axis ratios are
 confounded by naturally non-square frames (e.g. the OHRC 525x4096
 operating frame has raw axis ratio 0.10 even for a healthy, frame-filling
 inlier set). All ratios below are normalized by the frame dimensions.
 
-Opt-in: CHANDRA_STRIP_GUARD=1 enables the fail-closed verdict downgrade
-(default: diagnostic telemetry only).
+Default-ON since the 2026-10-24 calibration: CHANDRA_STRIP_GUARD=0 opts
+out of the fail-closed verdict downgrade (diagnostic telemetry is always
+computed regardless).
 """
 
 import os
 
 import numpy as np
 
-# Principled geometric constant: inliers must span >= 1/4 of the frame
-# along both principal directions. Frozen -- do not tune for optics.
-STRIP_SUPPORT_RATIO_MIN = 0.25
+# Calibrated constant (2026-10-24, human-landmark calibration
+# results/table_strip_guard_calibration_2026-10-24.csv): inliers must span
+# >= 0.159 of the frame along the minor principal direction. The value is
+# (0.075 + 0.2428) / 2 = 0.1589 -> 0.159, the midpoint of the rig's LABELED
+# separation -- known-collapsed TMC-2 fore/nadir anchor at minor_ratio
+# 0.075 vs labeled-good ohrc_01 at 0.2428 (landmark RMSE 1.8869 px, under
+# the rig's < 2.0 px labeling bar). ohrc_04 (minor_ratio 0.1926,
+# landmark RMSE 2.2591 px) is UNLABELED under that bar: a consistency
+# observation above the threshold, not a calibration point -- and its
+# coverage is thin (18 landmarks < the ~20 protocol target). It replaces
+# the 2026-10-15 principled 0.25 guess, which tripped verified-good fits.
+# Fragility on the record: the labeled calibration rests on the single
+# pair ohrc_01, clearing the 2.0 px bar by 0.11 px; a third full-coverage
+# pair would strengthen it. Change only on new landmark evidence, with
+# the calibration table updated alongside.
+STRIP_SUPPORT_RATIO_MIN = 0.159
 
 # Minimum inliers before the support measurement is meaningful.
 STRIP_SUPPORT_MIN_POINTS = 6
 
 
 def strip_guard_enabled():
-    """Opt-in: CHANDRA_STRIP_GUARD=1 enables the fail-closed verdict
-    downgrade. Default is diagnostic-only telemetry (the measurement is
-    always computed; the verdict is never changed unless opted in).
+    """Default-ON since the 2026-10-24 human-landmark calibration: the
+    fail-closed verdict downgrade applies unless explicitly opted out
+    with CHANDRA_STRIP_GUARD=0. The measurement is always computed for
+    diagnostic telemetry regardless.
 
-    Rationale (2026-10-15): the 0.25 threshold trips on verified-good
-    fits (ohrc_01 at 0.243, ohrc_04 main fit at 0.19), so a default-ON
-    downgrade is not justified without wider ground-truth calibration.
+    Rationale (2026-10-24): the calibrated 0.159 threshold cleanly
+    separates the known-collapsed anchor (minor_ratio 0.075) from the
+    labeled-good pair ohrc_01 (0.2428), with the unlabeled ohrc_04
+    observation (0.1926) also above the threshold, so default-ON is now
+    justified;
+    the failure mode it guards (a thin-strip fit with small inlier RMSE
+    but a large frame-wide error) is strictly worse than a conservative
+    rejection, which reports its reason.
     """
-    return os.environ.get("CHANDRA_STRIP_GUARD", "0") == "1"
+    return os.environ.get("CHANDRA_STRIP_GUARD", "1") != "0"
 
 
 def _convex_hull_area(pts):

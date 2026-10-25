@@ -30,11 +30,15 @@ def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad
     with code STRIP_COLLAPSE even if RMSE/entropy/quadrants would accept
     it (2026-10-15 TMC-2 lesson: 1.77 px inlier RMSE hid a 28 px frame-wide
     error). The backstop is fail-closed -- it may only downgrade to
-    DEGENERATE_FAILURE, never upgrade -- and OPT-IN via
-    CHANDRA_STRIP_GUARD=1 (default: the measurement is computed for
-    diagnostic telemetry only and the verdict is unchanged). The 0.25
-    support threshold is uncalibrated against wide ground truth (it trips
-    on verified-good fits ohrc_01/ohrc_04), hence opt-in, not default.
+    DEGENERATE_FAILURE, never upgrade -- and DEFAULT-ON since the
+    2026-10-24 human-landmark calibration (opt-out via
+    CHANDRA_STRIP_GUARD=0). The 0.159 support threshold is
+    (0.075 + 0.2428) / 2 = 0.1589 -> 0.159, the midpoint of the rig's
+    labeled separation between the known-collapsed anchor (minor_ratio
+    0.075) and labeled-good ohrc_01 (0.2428), from 39 human-verified
+    landmarks (ohrc_04 at 0.1926 is unlabeled under the rig's < 2.0 px
+    landmark-RMSE bar); see
+    results/table_strip_guard_calibration_2026-10-24.csv.
     """
     status_message, status_code = _validate_registration_gate(
         rmse, inliers, min_inliers, spatial_entropy, quad_counts
