@@ -89,6 +89,8 @@ The matcher measurements below are recorded in [`results/table_issue01_gpu_valid
 
 Backend and hardware for this table: the issue #1 comparison ran locally on an NVIDIA RTX 5070 (PyTorch 2.11.0+cu128; [`docs/judge-qa-compute.md`](docs/judge-qa-compute.md)). LightGlue/ALIKED ran on the GPU; SIFT and the vendored NumPy RIFT2 ran on the CPU of the same machine (CPU model not recorded).
 
+Update (2026-10-26, strip guard default-ON, main eb9fbc0): under the deployed default pipeline, the TMC-2 SIFT/RANSAC path above now reports DEGENERATE_FAILURE (STRIP_COLLAPSE) instead of COARSE — the guard catches the thin-strip inlier cloud (current-code reproduction: 13 inliers, 1.7654 px inlier RMSE, minor ratio 0.075). With the guard off (CHANDRA_STRIP_GUARD=0) the same fit still scores COARSE. The issue #1 row above is preserved as measured; it predates the default-ON guard. The LightGlue TMC-2 COARSE row (GPU) is unaffected.
+
 The independent ground-truth protocol is documented in [`docs/ground-truth-protocol.md`](docs/ground-truth-protocol.md), and its split-held-out versus independent-RMSE comparison is recorded in [`results/table_issue02_ground_truth.csv`](results/table_issue02_ground_truth.csv). The independent landmarks landed as ChandraBench v0.1: independent GT RMSE (OHRC 5.6510 px, TMC-2 27.3519 px in `table_canonical.json`) sits far above split-held-out RMSE (OHRC 1.5375 px, TMC-2 1.7950 px) — the gap between inlier self-consistency and true transform error remains an open, tracked limitation, not a closed one.
 
 Backend: not recorded · Hardware: not recorded.
