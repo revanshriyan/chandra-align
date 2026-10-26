@@ -1,7 +1,10 @@
-# ChandraBench v0.1
+# ChandraBench v0.2 (draft — not published)
 
-The first open benchmark of human-verified correspondences for lunar image
-registration. Two Chandrayaan-2 pairs, 40 landmarks, one fixed metric.
+Four Chandrayaan-2 pairs, 79 human-verified landmarks, one fixed metric.
+v0.2 adds the 39 landmarks human-verified on 2026-10-24 to the frozen
+v0.1 sets. This package is prepared for review; it is NOT a release until
+the maintainer approves and publishes it (Zenodo upload needs a human
+login — see `ZENODO_UPLOAD_CHECKLIST.md`).
 
 ## What is in this directory
 
@@ -9,8 +12,11 @@ registration. Two Chandrayaan-2 pairs, 40 landmarks, one fixed metric.
 |---|---|
 | `landmarks_ohrc_pair_v0.1.csv` | 20 human-verified landmarks, OHRC 12:09 vs 14:06 (Shiv Shakti Point) |
 | `landmarks_tmc2_fore_nadir_v0.1.csv` | 20 human-verified landmarks, TMC-2 fore vs nadir |
+| `landmarks_ohrc_01_v0.2.csv` | 21 human-verified landmarks, OHRC 12:09 vs 14:06, 2048×2048 crop |
+| `landmarks_ohrc_04_v0.2.csv` | 18 human-verified landmarks, OHRC 12:09 vs 14:06, 2048×2048 crop |
 | `eval.py` | One-command evaluator (only dependency: numpy) |
 | `LICENSE` | CC-BY-4.0 — the terms under which the landmark sets are released |
+| `CHANGELOG.md` | Version history, including the v0.1 pin correction below |
 
 ## The task (fixed)
 
@@ -36,6 +42,8 @@ python eval.py --pair ohrc_pair --matrix "a,b,c,d,e,f" \
     --i-declare-gt-not-used-for-fitting
 python eval.py --pair tmc2_fore_nadir --matrix-file my_transform.csv \
     --i-declare-gt-not-used-for-fitting --json report.json
+python eval.py --pair ohrc_01 --matrix "a,b,c,d,e,f" \
+    --i-declare-gt-not-used-for-fitting
 python eval.py --self-test   # evaluator self-consistency checks
 ```
 
@@ -71,6 +79,15 @@ reference_product, source_product, coordinate_space, caveat
   coordinates are in the audited 2048×2048 windows
   (fore `Window(col_off=361, row_off=93328)`,
   nadir `Window(col_off=416, row_off=101611)`).
+- **ohrc_01 / ohrc_04 (v0.2)**: same OHRC products as `ohrc_pair`
+  (`ch2_ohr_nrp_20240425T1209509264_d_img_d18` reference,
+  `ch2_ohr_nrp_20240425T1406019344_d_img_d18` source), but coordinates are
+  in the **2048×2048 benchmark crops**
+  (`data/benchmark_crops/ohrc_01_reference.png` /
+  `ohrc_01_source.png`, `ohrc_04_reference.png` / `ohrc_04_source.png`).
+  **Do not mix v0.2 crop coordinates with v0.1 full-resolution
+  coordinates.** The v0.2 CSVs state this in every row's
+  `coordinate_space` column.
 
 Products are available from the PRADAN/ISSDC archive.
 
@@ -92,10 +109,45 @@ Products are available from the PRADAN/ISSDC archive.
   disagreement is the point of an independent benchmark.
 - No absolute (LROC/SLDEM) controls yet; see the tech note for the roadmap.
 
+## v0.2 additions (39 landmarks, human-verified 2026-10-24)
+
+- **ohrc_01** (21 points): SIFT+RANSAC candidates (NCC≥0.96 gate,
+  spread-enforced, independent of the pipeline fit), every point verified
+  by a human in the landmark clicker; ncc column blank (the clicker export
+  carries no NCC values). Identity disparity 387.89 px; GT self-fit
+  residual 1.40 px. **Coverage caveat: LT quadrant holds 2 points, below
+  the ≥3/quadrant protocol floor — every eval report flags
+  `floor_pass=false` for this pair.** Also the labeled-good pair for the
+  strip-guard calibration (landmark RMSE 1.8869 px).
+- **ohrc_04** (18 points): same protocol. Identity disparity 126.90 px;
+  GT self-fit residual 1.51 px. **Coverage caveats: LB quadrant holds 2
+  points (floor_pass=false); thin coverage, 18 points below the ~20
+  target; UNLABELED for strip-guard calibration (landmark RMSE 2.2591 px
+  fails the <2.0 px bar).**
+- Both pairs are scored in **2048×2048 benchmark-crop coordinates**, not
+  full-resolution coordinates — see "Inputs" above. The v0.1 pairs are
+  unchanged and still score in their original spaces.
+- Self-test change (documented, not hidden): the self-test now gates on
+  evaluator arithmetic only (identity RMSE matches a direct computation;
+  GT self-fit beats identity and matches a brute-force recomputation).
+  Quadrant coverage is a property of the GT set, not of the evaluator, so
+  it is **reported** per pair (with an explicit COVERAGE CAVEAT line for
+  below-floor pairs) instead of gating the self-test. The per-pair
+  `floor_pass` flag in scoring reports is unchanged.
+
 ## Versioning
 
 v0.1 is frozen. The sha256 of each landmark CSV is pinned in `eval.py`; any
 future version gets new filenames, new pins, and a changelog entry here.
+
+**v0.1 pin correction (found while building v0.2, disclosed here): the
+sha256 pins shipped in v0.1 never matched the frozen CSVs.** The CSVs
+themselves are byte-identical to the `chandrabench-v0.1` tag — the frozen
+content is genuine — but the v0.1 evaluator aborted on its own
+circularity guard for both pairs. v0.2 corrects both pins to the true
+hashes of the frozen files (verified programmatically); the CSVs are
+untouched. If you ran the v0.1 evaluator and hit a sha256 mismatch, this
+is why; it was a pin error, not tampering.
 
 ## Citation
 
