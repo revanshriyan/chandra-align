@@ -1,8 +1,7 @@
-# Verdict rename mapping — PROPOSED, not yet approved (2026-10-28)
+# Verdict rename mapping — LANDED on main c0d5f684 (2026-10-28)
 
-**Status: draft for Integrity Auditor sign-off + human approval.
-Nothing here has landed on main. The rename lands, if approved, as
-one atomic commit carrying every site below.**
+**Status: landed on main as c0d5f684 (2026-10-28), with Integrity Auditor
+sign-off (2026-10-28 re-review) + explicit human approval. Thresholds unchanged.**
 
 ## Why
 
@@ -15,7 +14,7 @@ landmark RMSE. The top verdict's name must not claim what the gate
 does not measure. Thresholds, gate logic, and the other two verdicts
 do NOT change — this is a rename, not a threshold change.
 
-## Mapping (proposed)
+## Mapping
 
 | Old | New | Meaning (unchanged) |
 |-----|-----|---------------------|
