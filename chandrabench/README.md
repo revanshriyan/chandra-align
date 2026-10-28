@@ -12,8 +12,8 @@ login — see `ZENODO_UPLOAD_CHECKLIST.md`).
 |---|---|
 | `landmarks_ohrc_pair_v0.1.csv` | 20 human-verified landmarks, OHRC 12:09 vs 14:06 (Shiv Shakti Point) |
 | `landmarks_tmc2_fore_nadir_v0.1.csv` | 20 human-verified landmarks, TMC-2 fore vs nadir |
-| `landmarks_ohrc_01_v0.2.csv` | 21 human-verified landmarks, OHRC 12:09 vs 14:06, 2048×2048 crop |
-| `landmarks_ohrc_04_v0.2.csv` | 18 human-verified landmarks, OHRC 12:09 vs 14:06, 2048×2048 crop |
+| `landmarks_ohrc_01_v0.2.csv` | 21 human-verified landmarks, OHRC 12:09 vs 14:06, v0.1 space (loaded-4096) |
+| `landmarks_ohrc_04_v0.2.csv` | 18 human-verified landmarks, OHRC 12:09 vs 14:06, v0.1 space (loaded-4096) |
 | `eval.py` | One-command evaluator (only dependency: numpy) |
 | `LICENSE` | CC-BY-4.0 — the terms under which the landmark sets are released |
 | `CHANGELOG.md` | Version history, including the v0.1 pin correction below |
@@ -71,9 +71,10 @@ reference_product, source_product, coordinate_space, caveat
 ## Inputs (not included)
 
 - **ohrc_pair**: `ch2_ohr_nrp_20240425T1209509264_d_img_d18` (reference) and
-  `ch2_ohr_nrp_20240425T1406019344_d_img_d18` (source); coordinates are in the
-  canonical full-resolution pixel space with products loaded at
-  `max_dimension=4096`.
+  `ch2_ohr_nrp_20240425T1406019344_d_img_d18` (source); coordinates are in
+  v0.1 space (loaded-4096) — the strips loaded with `max_dimension=4096`
+  (the package's historical wording "canonical full-resolution pixel space"
+  means this loaded space, not native 12000×93693 strip pixels).
 - **tmc2_fore_nadir**: `ch2_tmc_ncf_20231101T0125121344_d_img_d18` (fore,
   reference) and `ch2_tmc_ncn_20231101T0125121377_d_img_d18` (nadir, source);
   coordinates are in the audited 2048×2048 windows
@@ -81,13 +82,18 @@ reference_product, source_product, coordinate_space, caveat
   nadir `Window(col_off=416, row_off=101611)`).
 - **ohrc_01 / ohrc_04 (v0.2)**: same OHRC products as `ohrc_pair`
   (`ch2_ohr_nrp_20240425T1209509264_d_img_d18` reference,
-  `ch2_ohr_nrp_20240425T1406019344_d_img_d18` source), but coordinates are
-  in the **2048×2048 benchmark crops**
+  `ch2_ohr_nrp_20240425T1406019344_d_img_d18` source), and coordinates
+  are now in the **same v0.1 space (loaded-4096) as `ohrc_pair`** —
+  the three OHRC pairs score in one unified space.
+  Historical note (2026-10-26 draft, superseded 2026-10-28): the v0.2
+  pairs were first prepared in **2048×2048 benchmark crops**
   (`data/benchmark_crops/ohrc_01_reference.png` /
-  `ohrc_01_source.png`, `ohrc_04_reference.png` / `ohrc_04_source.png`).
-  **Do not mix v0.2 crop coordinates with v0.1 full-resolution
-  coordinates.** The v0.2 CSVs state this in every row's
-  `coordinate_space` column.
+  `ohrc_01_source.png`, `ohrc_04_reference.png` / `ohrc_04_source.png`),
+  and the draft README warned against mixing crop coordinates with v0.1
+  coordinates. That split is now resolved: the 39 landmarks were
+  re-derived into v0.1 space on 2026-10-28 (see "v0.2 additions" and
+  `CHANGELOG.md`), and the re-derived CSVs state the unified space in
+  every row's `coordinate_space` column.
 
 Products are available from the PRADAN/ISSDC archive.
 
@@ -124,9 +130,23 @@ Products are available from the PRADAN/ISSDC archive.
   points (floor_pass=false); thin coverage, 18 points below the ~20
   target; UNLABELED for strip-guard calibration (landmark RMSE 2.2591 px
   fails the <2.0 px bar).**
-- Both pairs are scored in **2048×2048 benchmark-crop coordinates**, not
-  full-resolution coordinates — see "Inputs" above. The v0.1 pairs are
-  unchanged and still score in their original spaces.
+- **Coordinate unification (2026-10-28 amendment to this draft): the
+  three OHRC pairs now score in v0.1 space (loaded-4096).** The 39 v0.2
+  landmarks were re-derived from their 2048×2048 benchmark-crop
+  coordinates with `X_v01 = (origin_x + x_crop) × 4096/93693`,
+  `Y_v01 = (origin_y + y_crop) × 4096/93693`, using the committed crop
+  origins (ohrc_01 ref (593,1010), src (1630,2349); ohrc_04 ref
+  (5311,49009), src (5617,50688)) and the shared strip scale
+  4096/93693 (native strips 12000×93693 px, loaded at
+  `max_dimension=4096`). The v0.1 pairs and their CSVs are untouched;
+  the v0.2 CSVs' `coordinate_space` column now states the unified
+  space, and `eval.py` pins were updated to the re-derived files.
+  **Precision caveat (carried with the change):** average-resampling
+  downsampling means the native-to-loaded point map is a linear
+  convention good to ~half a loaded pixel (~11 native px) in the worst
+  case; cross-space landmark comparisons inherit that quantization.
+  Quadrant coverage is unchanged by re-derivation (ohrc_01 LT=2,
+  ohrc_04 LB=2, both still `floor_pass=false`).
 - Self-test change (documented, not hidden): the self-test now gates on
   evaluator arithmetic only (identity RMSE matches a direct computation;
   GT self-fit beats identity and matches a brute-force recomputation).

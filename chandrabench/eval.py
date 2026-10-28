@@ -22,14 +22,25 @@ Metric (fixed for v0.2):
     inverse RMSE  = sqrt(mean(|| M^-1 @ p_ref - p_src ||^2))
 Both are reported; neither is hidden. The headline score is forward RMSE.
 
-COORDINATE SPACES DIFFER BETWEEN VERSIONS — READ BEFORE SCORING:
-    * v0.1 pairs (ohrc_pair, tmc2_fore_nadir) use the coordinate spaces
-      stated in their CSVs (ohrc_pair: full-resolution; tmc2: audited
-      2048x2048 windows).
-    * v0.2 pairs (ohrc_01, ohrc_04) use 2048x2048 BENCHMARK-CROP pixel
-      coordinates. They are NOT full-resolution coordinates and must
-      never be mixed with v0.1 pairs. Each v0.2 CSV states its crop in
-      its coordinate_space column.
+COORDINATE SPACES — UNIFIED FOR THE OHRC PAIRS (2026-10-28 amendment):
+    * The three OHRC pairs (ohrc_pair, ohrc_01, ohrc_04) now score in
+      one unified v0.1 space (loaded-4096): the OHRC strips
+      (12000x93693 px) loaded with max_dimension=4096 (loaded space
+      525x4096 px). The package's historical wording "canonical
+      full-resolution pixel space" means this loaded space, not native
+      strip pixels.
+    * v0.2 pairs (ohrc_01, ohrc_04) were re-derived into v0.1 space on
+      2026-10-28 from their 2048x2048 benchmark-crop coordinates
+      (X_v01 = (origin_x + x_crop) x 4096/93693; origins in each CSV's
+      caveat and in README/CHANGELOG). Historical note: the v0.2 draft
+      as first prepared (2026-10-26) used crop coordinates; that split
+      is now resolved for the OHRC pairs.
+    * tmc2_fore_nadir keeps its audited 2048x2048 windows, as stated
+      in its CSV; it was never in OHRC space.
+    * Precision caveat: the native-to-loaded point map is a linear
+      convention good to ~half a loaded pixel (~11 native px) in the
+      worst case; cross-space landmark comparisons inherit that
+      quantization.
 
 Circularity guard (fail-closed):
     * The landmark CSVs are frozen at their version. Their sha256 is pinned
@@ -78,12 +89,12 @@ PAIRS = {
     },
     "ohrc_01": {
         "csv": "landmarks_ohrc_01_v0.2.csv",
-        "sha256": "0a3fc6294517417def1e246a90756d33b9876b781b475a9b85078f5e65864cf2",
+        "sha256": "c51326bbffccbf7e2ad3dabaf134ebee340f94820e42f518fd6398f77a9a59be",
         "n_points": 21,
     },
     "ohrc_04": {
         "csv": "landmarks_ohrc_04_v0.2.csv",
-        "sha256": "934c225b75f8b10e27604ad98655e3362e8115e9a75befe49c586c2fbf9821b5",
+        "sha256": "b98ad22bc3b4506b56cd53e72ce1389f591df72e68b1d4560207d79931c1165e",
         "n_points": 18,
     },
 }
