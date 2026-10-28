@@ -1,0 +1,115 @@
+pair,arm,rmse_gate_px,verdict,inliers,n_corr,match_s,notes,guard_fired,minor_ratio,pre_guard_verdict,verdict_changed_vs_oct15,attribution
+W5,default,,DEGENERATE_FAILURE,,,0.2,arm <8 correspondences,,,,no,UNCHANGED
+W5,xoftr,0.9791,COARSE_ADVISORY,23,33,0.5,COARSE ALIGNMENT (Regional Fit Advisory),no,0.182,COARSE_ADVISORY,no,UNCHANGED
+W5,loftr,1.1421,COARSE_ADVISORY,513,868,15.0,COARSE ALIGNMENT (Regional Fit Advisory),no,0.8,COARSE_ADVISORY,no,UNCHANGED
+N1,anymatch,1.2644,COARSE_ADVISORY,851,1417,14.4,COARSE ALIGNMENT (Regional Fit Advisory),no,1.0129,COARSE_ADVISORY,no,UNCHANGED
+N1,default,,DEGENERATE_FAILURE,,,0.3,arm <8 correspondences,,,,no,UNCHANGED
+N1,loftr,1.2851,COARSE_ADVISORY,673,1032,9.2,COARSE ALIGNMENT (Regional Fit Advisory),no,1.0012,COARSE_ADVISORY,no,UNCHANGED
+N1,matchanything,,DEGENERATE_FAILURE,,,2.4,arm <8 correspondences,,,,no,UNCHANGED
+N1,pc,,DEGENERATE_FAILURE,,,3.5,arm <8 correspondences,,,,no,UNCHANGED
+N1,xoftr,1.3036,COARSE_ADVISORY,86,275,2.2,COARSE ALIGNMENT (Regional Fit Advisory),no,0.6645,COARSE_ADVISORY,no,UNCHANGED
+N10,anymatch,1.2856,COARSE_ADVISORY,71,519,8.2,COARSE ALIGNMENT (Regional Fit Advisory),no,0.216,COARSE_ADVISORY,no,UNCHANGED
+N10,default,0.0,DEGENERATE_FAILURE,2,11,0.2,REJECTED (Insufficient Inlier Yield (2 < 8) | Degenerate Spatial Cluster (2/4 Active Quadrants)),no,0.0,DEGENERATE_FAILURE,no,UNCHANGED
+N10,loftr,1.3114,DEGENERATE_FAILURE,83,751,8.4,REJECTED (STRIP_COLLAPSE: inlier spatial support minor_ratio=0.148 major_ratio=0.802 < 0.16 of frame),yes,0.1475,COARSE_ADVISORY,yes,GUARD-CAUSED
+N10,matchanything,1.5024,DEGENERATE_FAILURE,20,106,3.6,REJECTED (STRIP_COLLAPSE: inlier spatial support minor_ratio=0.087 major_ratio=0.685 < 0.16 of frame),yes,0.0874,COARSE_ADVISORY,yes,GUARD-CAUSED
+N10,pc,,DEGENERATE_FAILURE,,,3.4,arm <8 correspondences,,,,no,UNCHANGED
+N10,xoftr,1.742,COARSE_ADVISORY,30,378,1.9,COARSE ALIGNMENT (Regional Fit Advisory),no,0.2284,COARSE_ADVISORY,no,UNCHANGED
+N12,anymatch,2.736,DEGENERATE_FAILURE,85,270,7.9,REJECTED (High Residual RMSE (coarse advisory limit exceeded: 2.7360 px > 2.50 px) | Low Spatial Distribution (Entropy 0.2527 < 0.75)),no,0.278,DEGENERATE_FAILURE,no,UNCHANGED
+N12,default,0.0,DEGENERATE_FAILURE,2,10,0.1,REJECTED (Insufficient Inlier Yield (2 < 8) | Degenerate Spatial Cluster (2/4 Active Quadrants)),no,0.0,DEGENERATE_FAILURE,no,UNCHANGED
+N12,loftr,1.3948,DEGENERATE_FAILURE,20,267,8.0,REJECTED (STRIP_COLLAPSE: inlier spatial support minor_ratio=0.153 major_ratio=0.727 < 0.16 of frame),yes,0.1529,COARSE_ADVISORY,yes,GUARD-CAUSED
+N12,matchanything,2.5682,DEGENERATE_FAILURE,11,54,3.8,REJECTED (High Residual RMSE (coarse advisory limit exceeded: 2.5682 px > 2.50 px) | Degenerate Spatial Cluster (1/4 Active Quadrants) | Low Spatial Distribution (Entropy 0.0000 < 0.75)),no,0.0916,DEGENERATE_FAILURE,no,UNCHANGED
+N12,pc,,DEGENERATE_FAILURE,,,3.1,arm <8 correspondences,,,,no,UNCHANGED
+N12,xoftr,1.5048,COARSE_ADVISORY,17,162,1.5,COARSE ALIGNMENT (Regional Fit Advisory),no,0.2255,COARSE_ADVISORY,no,UNCHANGED
+N13,anymatch,3.1155,DEGENERATE_FAILURE,42,107,8.0,REJECTED (High Residual RMSE (coarse advisory limit exceeded: 3.1155 px > 2.50 px) | Degenerate Spatial Cluster (2/4 Active Quadrants)),no,0.2201,DEGENERATE_FAILURE,no,UNCHANGED
+N13,default,,DEGENERATE_FAILURE,,,0.1,arm <8 correspondences,,,,no,UNCHANGED
+N13,loftr,1.6653,DEGENERATE_FAILURE,15,210,7.7,REJECTED (STRIP_COLLAPSE: inlier spatial support minor_ratio=0.118 major_ratio=0.782 < 0.16 of frame),yes,0.1177,COARSE_ADVISORY,yes,GUARD-CAUSED
+N13,matchanything,,DEGENERATE_FAILURE,,,4.1,arm <8 correspondences,,,,no,UNCHANGED
+N13,pc,,DEGENERATE_FAILURE,,,3.2,arm <8 correspondences,,,,no,UNCHANGED
+N13,xoftr,3.1326,DEGENERATE_FAILURE,13,61,1.4,REJECTED (High Residual RMSE (coarse advisory limit exceeded: 3.1326 px > 2.50 px) | Degenerate Spatial Cluster (1/4 Active Quadrants) | Low Spatial Distribution (Entropy 0.0000 < 0.75)),no,0.1756,DEGENERATE_FAILURE,no,UNCHANGED
+N14,anymatch,1.5497,COARSE_ADVISORY,43,203,8.0,COARSE ALIGNMENT (Regional Fit Advisory),no,0.1969,COARSE_ADVISORY,no,UNCHANGED
+N14,default,,DEGENERATE_FAILURE,,,0.1,arm <8 correspondences,,,,no,UNCHANGED
+N14,loftr,2.8304,DEGENERATE_FAILURE,21,228,7.8,REJECTED (High Residual RMSE (coarse advisory limit exceeded: 2.8304 px > 2.50 px) | Degenerate Spatial Cluster (2/4 Active Quadrants)),no,0.1905,DEGENERATE_FAILURE,no,UNCHANGED
+N14,matchanything,,DEGENERATE_FAILURE,,,3.7,arm <8 correspondences,,,,no,UNCHANGED
+N14,pc,,DEGENERATE_FAILURE,,,3.1,arm <8 correspondences,,,,no,UNCHANGED
+N14,xoftr,3.2985,DEGENERATE_FAILURE,14,135,1.8,REJECTED (High Residual RMSE (coarse advisory limit exceeded: 3.2985 px > 2.50 px) | Degenerate Spatial Cluster (2/4 Active Quadrants)),no,0.1793,DEGENERATE_FAILURE,no,UNCHANGED
+N2,anymatch,1.3227,COARSE_ADVISORY,231,1024,8.8,COARSE ALIGNMENT (Regional Fit Advisory),no,0.4054,COARSE_ADVISORY,no,UNCHANGED
+N2,default,0.0,DEGENERATE_FAILURE,2,8,0.3,REJECTED (Insufficient Inlier Yield (2 < 8) | Degenerate Spatial Cluster (2/4 Active Quadrants)),no,0.0,DEGENERATE_FAILURE,no,UNCHANGED
+N2,loftr,1.4083,COARSE_ADVISORY,180,785,8.2,COARSE ALIGNMENT (Regional Fit Advisory),no,0.5087,COARSE_ADVISORY,no,UNCHANGED
+N2,matchanything,,DEGENERATE_FAILURE,,,3.7,arm <8 correspondences,,,,no,UNCHANGED
+N2,pc,,DEGENERATE_FAILURE,,,3.5,arm <8 correspondences,,,,no,UNCHANGED
+N2,xoftr,1.6014,COARSE_ADVISORY,40,315,1.8,COARSE ALIGNMENT (Regional Fit Advisory),no,0.6293,COARSE_ADVISORY,no,UNCHANGED
+N3,anymatch,1.466,COARSE_ADVISORY,765,1824,9.8,COARSE ALIGNMENT (Regional Fit Advisory),no,0.947,COARSE_ADVISORY,no,UNCHANGED
+N3,default,,DEGENERATE_FAILURE,,,0.3,arm <8 correspondences,,,,no,UNCHANGED
+N3,loftr,1.2827,COARSE_ADVISORY,808,1512,9.4,COARSE ALIGNMENT (Regional Fit Advisory),no,0.8182,COARSE_ADVISORY,no,UNCHANGED
+N3,matchanything,1.3901,COARSE_ADVISORY,78,178,4.0,COARSE ALIGNMENT (Regional Fit Advisory),no,0.5402,COARSE_ADVISORY,no,UNCHANGED
+N3,pc,,DEGENERATE_FAILURE,,,3.6,arm <8 correspondences,,,,no,UNCHANGED
+N3,xoftr,1.2177,COARSE_ADVISORY,162,467,2.2,COARSE ALIGNMENT (Regional Fit Advisory),no,0.7167,COARSE_ADVISORY,no,UNCHANGED
+N4,anymatch,1.2901,COARSE_ADVISORY,210,947,8.8,COARSE ALIGNMENT (Regional Fit Advisory),no,0.2821,COARSE_ADVISORY,no,UNCHANGED
+N4,default,,DEGENERATE_FAILURE,,,0.3,arm <8 correspondences,,,,no,UNCHANGED
+N4,loftr,1.4402,COARSE_ADVISORY,218,1067,9.5,COARSE ALIGNMENT (Regional Fit Advisory),no,0.2227,COARSE_ADVISORY,no,UNCHANGED
+N4,matchanything,1.1946,DEGENERATE_FAILURE,10,49,3.7,REJECTED (High Residual RMSE (sub-pixel limit exceeded: 1.1946 px > 0.50 px) | Degenerate Spatial Cluster (2/4 Active Quadrants) | Low Spatial Distribution (Entropy 0.4690 < 0.75)),no,0.0811,DEGENERATE_FAILURE,no,UNCHANGED
+N4,pc,,DEGENERATE_FAILURE,,,3.5,arm <8 correspondences,,,,no,UNCHANGED
+N4,xoftr,1.5799,COARSE_ADVISORY,70,504,2.1,COARSE ALIGNMENT (Regional Fit Advisory),no,0.1796,COARSE_ADVISORY,no,UNCHANGED
+N5,anymatch,1.2763,COARSE_ADVISORY,465,1447,9.3,COARSE ALIGNMENT (Regional Fit Advisory),no,0.3538,COARSE_ADVISORY,no,UNCHANGED
+N5,default,,DEGENERATE_FAILURE,,,0.2,arm <8 correspondences,,,,no,UNCHANGED
+N5,loftr,1.4054,COARSE_ADVISORY,312,1083,8.7,COARSE ALIGNMENT (Regional Fit Advisory),no,0.3205,COARSE_ADVISORY,no,UNCHANGED
+N5,matchanything,1.5157,COARSE_ADVISORY,21,92,3.6,COARSE ALIGNMENT (Regional Fit Advisory),no,0.1709,COARSE_ADVISORY,no,UNCHANGED
+N5,pc,,DEGENERATE_FAILURE,,,3.4,arm <8 correspondences,,,,no,UNCHANGED
+N5,xoftr,1.8162,COARSE_ADVISORY,57,274,1.8,COARSE ALIGNMENT (Regional Fit Advisory),no,0.2551,COARSE_ADVISORY,no,UNCHANGED
+N6,anymatch,1.192,COARSE_ADVISORY,144,911,9.7,COARSE ALIGNMENT (Regional Fit Advisory),no,0.222,COARSE_ADVISORY,no,UNCHANGED
+N6,default,0.0,DEGENERATE_FAILURE,2,10,0.2,REJECTED (Insufficient Inlier Yield (2 < 8) | Degenerate Spatial Cluster (2/4 Active Quadrants)),no,0.0,DEGENERATE_FAILURE,no,UNCHANGED
+N6,loftr,1.4809,COARSE_ADVISORY,84,704,8.3,COARSE ALIGNMENT (Regional Fit Advisory),no,0.4763,COARSE_ADVISORY,no,UNCHANGED
+N6,matchanything,3.5275,DEGENERATE_FAILURE,20,72,3.8,REJECTED (High Residual RMSE (coarse advisory limit exceeded: 3.5275 px > 2.50 px)),no,0.1769,DEGENERATE_FAILURE,no,UNCHANGED
+N6,pc,,DEGENERATE_FAILURE,,,3.3,arm <8 correspondences,,,,no,UNCHANGED
+N6,xoftr,1.697,COARSE_ADVISORY,27,207,1.5,COARSE ALIGNMENT (Regional Fit Advisory),no,0.2931,COARSE_ADVISORY,no,UNCHANGED
+N7,anymatch,1.4685,COARSE_ADVISORY,332,1479,9.5,COARSE ALIGNMENT (Regional Fit Advisory),no,0.4032,COARSE_ADVISORY,no,UNCHANGED
+N7,default,,DEGENERATE_FAILURE,,,0.2,arm <8 correspondences,,,,no,UNCHANGED
+N7,loftr,1.3813,COARSE_ADVISORY,215,1165,9.1,COARSE ALIGNMENT (Regional Fit Advisory),no,0.6268,COARSE_ADVISORY,no,UNCHANGED
+N7,matchanything,3.0799,DEGENERATE_FAILURE,41,111,3.8,REJECTED (High Residual RMSE (coarse advisory limit exceeded: 3.0799 px > 2.50 px)),no,0.3868,DEGENERATE_FAILURE,no,UNCHANGED
+N7,pc,,DEGENERATE_FAILURE,,,3.4,arm <8 correspondences,,,,no,UNCHANGED
+N7,xoftr,1.7083,COARSE_ADVISORY,30,274,1.6,COARSE ALIGNMENT (Regional Fit Advisory),no,0.1851,COARSE_ADVISORY,no,UNCHANGED
+N8,anymatch,1.2249,COARSE_ADVISORY,138,873,8.7,COARSE ALIGNMENT (Regional Fit Advisory),no,0.1907,COARSE_ADVISORY,no,UNCHANGED
+N8,default,,DEGENERATE_FAILURE,,,0.2,arm <8 correspondences,,,,no,UNCHANGED
+N8,loftr,1.344,COARSE_ADVISORY,93,747,8.4,COARSE ALIGNMENT (Regional Fit Advisory),no,0.1618,COARSE_ADVISORY,no,UNCHANGED
+N8,matchanything,2.9556,DEGENERATE_FAILURE,22,84,4.0,REJECTED (High Residual RMSE (coarse advisory limit exceeded: 2.9556 px > 2.50 px) | Degenerate Spatial Cluster (2/4 Active Quadrants)),no,0.1635,DEGENERATE_FAILURE,no,UNCHANGED
+N8,pc,,DEGENERATE_FAILURE,,,3.4,arm <8 correspondences,,,,no,UNCHANGED
+N8,xoftr,1.8544,DEGENERATE_FAILURE,20,264,1.8,REJECTED (STRIP_COLLAPSE: inlier spatial support minor_ratio=0.149 major_ratio=0.840 < 0.16 of frame),yes,0.1489,COARSE_ADVISORY,yes,GUARD-CAUSED
+N9,anymatch,1.3967,COARSE_ADVISORY,215,1062,9.2,COARSE ALIGNMENT (Regional Fit Advisory),no,0.3726,COARSE_ADVISORY,no,UNCHANGED
+N9,default,1.0021,DEGENERATE_FAILURE,3,16,0.2,REJECTED (High Residual RMSE (sub-pixel limit exceeded: 1.0021 px > 0.50 px) | Insufficient Inlier Yield (3 < 8) | Degenerate Spatial Cluster (2/4 Active Quadrants)),no,0.0,DEGENERATE_FAILURE,no,UNCHANGED
+N9,loftr,1.3082,COARSE_ADVISORY,142,965,9.5,COARSE ALIGNMENT (Regional Fit Advisory),no,0.2183,COARSE_ADVISORY,no,UNCHANGED
+N9,matchanything,1.351,COARSE_ADVISORY,35,174,3.7,COARSE ALIGNMENT (Regional Fit Advisory),no,0.17,COARSE_ADVISORY,no,UNCHANGED
+N9,pc,,DEGENERATE_FAILURE,,,3.3,arm <8 correspondences,,,,no,UNCHANGED
+N9,xoftr,1.6573,COARSE_ADVISORY,53,356,1.8,COARSE ALIGNMENT (Regional Fit Advisory),no,0.2358,COARSE_ADVISORY,no,UNCHANGED
+W0,anymatch,1.6088,COARSE_ADVISORY,441,959,6.7,COARSE ALIGNMENT (Regional Fit Advisory),no,0.6338,COARSE_ADVISORY,no,UNCHANGED
+W0,default,0.0,DEGENERATE_FAILURE,2,13,1.1,REJECTED (Insufficient Inlier Yield (2 < 8) | Degenerate Spatial Cluster (1/4 Active Quadrants) | Low Spatial Distribution (Entropy 0.0000 < 0.75)),no,0.0,DEGENERATE_FAILURE,no,UNCHANGED
+W0,matchanything,,DEGENERATE_FAILURE,,,25.8,arm <8 correspondences,,,,no,UNCHANGED
+W0,pc,2.1848,COARSE_ADVISORY,11,12,13.3,COARSE ALIGNMENT (Regional Fit Advisory),no,0.5055,COARSE_ADVISORY,no,UNCHANGED
+W0,xoftr,,DEGENERATE_FAILURE,,,1.9,arm <8 correspondences,,,,no,UNCHANGED
+W1,anymatch,1.3744,COARSE_ADVISORY,759,1918,17.9,COARSE ALIGNMENT (Regional Fit Advisory),no,0.678,COARSE_ADVISORY,no,UNCHANGED
+W1,default,,DEGENERATE_FAILURE,,,0.5,arm <8 correspondences,,,,no,UNCHANGED
+W1,loftr,1.3678,COARSE_ADVISORY,729,1656,15.7,COARSE ALIGNMENT (Regional Fit Advisory),no,0.9036,COARSE_ADVISORY,no,UNCHANGED
+W1,matchanything,,DEGENERATE_FAILURE,,,6.6,arm <8 correspondences,,,,no,UNCHANGED
+W1,pc,,DEGENERATE_FAILURE,,,4.8,arm <8 correspondences,,,,no,UNCHANGED
+W1,xoftr,1.2307,COARSE_ADVISORY,39,95,0.8,COARSE ALIGNMENT (Regional Fit Advisory),no,0.4671,COARSE_ADVISORY,no,UNCHANGED
+W2,anymatch,1.3515,COARSE_ADVISORY,744,1332,11.5,COARSE ALIGNMENT (Regional Fit Advisory),no,0.7603,COARSE_ADVISORY,no,UNCHANGED
+W2,default,,DEGENERATE_FAILURE,,,0.2,arm <8 correspondences,,,,no,UNCHANGED
+W2,loftr,1.3271,COARSE_ADVISORY,608,1080,11.2,COARSE ALIGNMENT (Regional Fit Advisory),no,0.815,COARSE_ADVISORY,no,UNCHANGED
+W2,matchanything,1.4172,COARSE_ADVISORY,29,31,4.6,COARSE ALIGNMENT (Regional Fit Advisory),no,0.5316,COARSE_ADVISORY,no,UNCHANGED
+W2,pc,,DEGENERATE_FAILURE,,,4.1,arm <8 correspondences,,,,no,UNCHANGED
+W2,xoftr,1.5011,COARSE_ADVISORY,49,110,0.9,COARSE ALIGNMENT (Regional Fit Advisory),no,0.3583,COARSE_ADVISORY,no,UNCHANGED
+W3,anymatch,1.1972,COARSE_ADVISORY,984,1924,12.1,COARSE ALIGNMENT (Regional Fit Advisory),no,0.8169,COARSE_ADVISORY,no,UNCHANGED
+W3,default,,DEGENERATE_FAILURE,,,0.3,arm <8 correspondences,,,,no,UNCHANGED
+W3,loftr,1.1638,COARSE_ADVISORY,774,1582,12.3,COARSE ALIGNMENT (Regional Fit Advisory),no,0.795,COARSE_ADVISORY,no,UNCHANGED
+W3,matchanything,,DEGENERATE_FAILURE,,,6.3,arm <8 correspondences,,,,no,UNCHANGED
+W3,pc,,DEGENERATE_FAILURE,,,4.2,arm <8 correspondences,,,,no,UNCHANGED
+W3,xoftr,1.1088,COARSE_ADVISORY,63,118,0.7,COARSE ALIGNMENT (Regional Fit Advisory),no,0.3467,COARSE_ADVISORY,no,UNCHANGED
+W4,anymatch,1.1298,COARSE_ADVISORY,1618,1990,12.0,COARSE ALIGNMENT (Regional Fit Advisory),no,0.8622,COARSE_ADVISORY,no,UNCHANGED
+W4,default,0.0,DEGENERATE_FAILURE,2,8,0.3,REJECTED (Insufficient Inlier Yield (2 < 8) | Degenerate Spatial Cluster (1/4 Active Quadrants) | Low Spatial Distribution (Entropy 0.0000 < 0.75)),no,0.0,DEGENERATE_FAILURE,no,UNCHANGED
+W4,loftr,1.1774,COARSE_ADVISORY,1036,1323,10.8,COARSE ALIGNMENT (Regional Fit Advisory),no,0.8044,COARSE_ADVISORY,no,UNCHANGED
+W4,matchanything,,DEGENERATE_FAILURE,,,3.1,arm <8 correspondences,,,,no,UNCHANGED
+W4,pc,,DEGENERATE_FAILURE,,,3.5,arm <8 correspondences,,,,no,UNCHANGED
+W4,xoftr,1.0686,COARSE_ADVISORY,28,41,0.8,COARSE ALIGNMENT (Regional Fit Advisory),no,0.2183,COARSE_ADVISORY,no,UNCHANGED
+W5,anymatch,1.3324,COARSE_ADVISORY,1223,1481,11.5,COARSE ALIGNMENT (Regional Fit Advisory),no,0.9247,COARSE_ADVISORY,no,UNCHANGED
+W5,matchanything,1.5223,COARSE_ADVISORY,50,55,4.6,COARSE ALIGNMENT (Regional Fit Advisory),no,0.6287,COARSE_ADVISORY,no,UNCHANGED
+W5,pc,,DEGENERATE_FAILURE,,,3.3,arm <8 correspondences,,,,no,UNCHANGED
+W0,loftr,1.3022,COARSE_ADVISORY,1606,2595,53.7,COARSE ALIGNMENT (Regional Fit Advisory),no,0.7744,COARSE_ADVISORY,yes,OTHER (investigate)
