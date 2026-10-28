@@ -39,7 +39,7 @@ Every number links to its run output below. Caveats are stated with the claims, 
 
 ![Matcher cascade: LightGlue/ALIKED primary, RIFT2 opt-in only, SIFT/RANSAC CPU fallback](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/pipeline-cascade.svg)
 
-- **LightGlue/ALIKED (GPU primary)** — the validated deep-learning path: synthetic ACCEPTED (Sub-Pixel Precision) at inlier RMSE 0.3695 px / 43 inliers; competitive real-pair results at inlier RMSE 1.7961 px (OHRC) and 1.5558 px (TMC-2).
+- **LightGlue/ALIKED (GPU primary)** — the validated deep-learning path: synthetic ACCEPTED (Self-Consistent, Sub-Pixel) at inlier RMSE 0.3695 px / 43 inliers; competitive real-pair results at inlier RMSE 1.7961 px (OHRC) and 1.5558 px (TMC-2).
 - **RIFT2 (non-functional, under investigation; not the primary matcher):** RIFT2 (vendored NumPy, CPU) returned 0 to 1 correspondences per pair on the issue #1 comparison machine, with no valid fits. Vendored but disabled unless `CHANDRA_ENABLE_RIFT2=1`. See [`results/table_issue01_gpu_validation.csv`](results/table_issue01_gpu_validation.csv).
 - **SIFT + Brute-Force RANSAC (CPU fallback)** — estimates the transform as the validated CPU fallback.
 - **Sub-pixel refinement** attempts NCC/parabolic refinement of the RANSAC estimate. If too few correspondences survive refinement, the pipeline retains the RANSAC model rather than promoting an unsupported refined fit.
@@ -59,7 +59,7 @@ Gate verdict names — the display string and status code are exactly what the c
 
 | Display string | Status code | Meaning |
 | --- | --- | --- |
-| ACCEPTED (Sub-Pixel Precision) | `SUCCESS_SUBPIXEL` | passed the sub-pixel gate |
+| ACCEPTED (Self-Consistent, Sub-Pixel) | `SELF_CONSISTENT_SUBPIXEL` | passed the sub-pixel gate |
 | COARSE ALIGNMENT (Regional Fit Advisory) | `COARSE_ADVISORY` | regional fit advisory, not sub-pixel |
 | REJECTED (reasons listed) | `DEGENERATE_FAILURE` | no valid registration; transform telemetry masked |
 
@@ -78,8 +78,8 @@ The matcher measurements below are recorded in [`results/table_issue01_gpu_valid
 | Pair | Matcher | Correspondences | Inlier RMSE (px) | Inliers | Entropy | Quadrants | Gate | Runtime (s) | Backend | Hardware |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | synthetic_gentle | RIFT2 | 0 | N/A | 0 | 0.0000 | 0/4 (0,0,0,0) | REJECTED: Only 0 correspondences | 22.6662 | CPU | CPU (model not recorded); machine has an RTX 5070 |
-| synthetic_gentle | LightGlue_ALIKED | 1276 | 0.3695 | 43 | 1.9988 | 4/4 (11,10,11,11) | ACCEPTED (Sub-Pixel Precision) | 17.7092 | GPU | NVIDIA RTX 5070 |
-| synthetic_gentle | SIFT_RANSAC | 150 | 0.3980 | 54 | 1.9513 | 4/4 (17,8,15,14) | ACCEPTED (Sub-Pixel Precision) | 2.0875 | CPU | CPU (model not recorded); machine has an RTX 5070 |
+| synthetic_gentle | LightGlue_ALIKED | 1276 | 0.3695 | 43 | 1.9988 | 4/4 (11,10,11,11) | ACCEPTED (Self-Consistent, Sub-Pixel) | 17.7092 | GPU | NVIDIA RTX 5070 |
+| synthetic_gentle | SIFT_RANSAC | 150 | 0.3980 | 54 | 1.9513 | 4/4 (17,8,15,14) | ACCEPTED (Self-Consistent, Sub-Pixel) | 2.0875 | CPU | CPU (model not recorded); machine has an RTX 5070 |
 | OHRC_pair | RIFT2 | 1 | N/A | 0 | 0.0000 | 0/4 (0,0,0,0) | REJECTED: Only 1 correspondences | 42.0472 | CPU | CPU (model not recorded); machine has an RTX 5070 |
 | OHRC_pair | LightGlue_ALIKED | 553 | 1.7961 | 34 | 1.9367 | 4/4 (6,6,11,11) | COARSE ALIGNMENT (Regional Fit Advisory) | 2.2815 | GPU | NVIDIA RTX 5070 |
 | OHRC_pair | SIFT_RANSAC | 104 | 1.5425 | 9 | 0.9864 | 3/4 (7,0,1,1) | COARSE ALIGNMENT (Regional Fit Advisory) | 4.3942 | CPU | CPU (model not recorded); machine has an RTX 5070 |
@@ -129,8 +129,8 @@ Backend: not recorded · Hardware: not recorded.
 
 | Ratio | Inliers | Truth RMSE (px) | Inlier RMSE (px) | Gate |
 | --- | --- | --- | --- | --- |
-| 1:1 | 1711 | 0.0097 | 0.2593 | SUCCESS_SUBPIXEL |
-| 2:1 | 1372 | 0.0083 | 0.3580 | SUCCESS_SUBPIXEL |
+| 1:1 | 1711 | 0.0097 | 0.2593 | SELF_CONSISTENT_SUBPIXEL |
+| 2:1 | 1372 | 0.0083 | 0.3580 | SELF_CONSISTENT_SUBPIXEL |
 | 4:1 | 993 | 0.0097 | 0.5276 | COARSE_ADVISORY |
 | 8:1 | 701 | 0.0502 | 0.9416 | COARSE_ADVISORY |
 | 16:1 | 143 | 0.8868 | 1.5871 | COARSE_ADVISORY |
@@ -164,13 +164,13 @@ Backend: not recorded · Hardware: not recorded.
 **The stage.** Wired into the pipeline as an opt-in stage (`CHANDRA_DEFORM_FIELD=1`, default off; [`chandra_align/deform_field.py`](chandra_align/deform_field.py), [`docs/deform-field-pipeline-stage-2026-10-08.md`](docs/deform-field-pipeline-stage-2026-10-08.md)): affine → field (λ chosen per-pair by internal held-out) → the *same frozen gates* re-run on field-corrected residuals. Two safety findings shaped the design:
 
 - The keypoint cap that starved the stage is lifted **only when the stage flag is on** ([`docs/matcher-cap-sweep-2026-10-08.md`](docs/matcher-cap-sweep-2026-10-08.md)): quotas 128/256 let the *default* pipeline lock onto catastrophically wrong transforms, so the cap stays at 64 for the default path and flag-off remains bit-identical.
-- 12-pair validation with the flag-gated quota ([`docs/quota-12pair-validation-2026-10-08.md`](docs/quota-12pair-validation-2026-10-08.md), [`results/table_quota_12pair.csv`](results/table_quota_12pair.csv)): **zero verdict downgrades, 3 upgrades** — the cratered-rim, massif-slope, and hummocky-relief OHRC windows reach **SUCCESS_SUBPIXEL** at **0.43/0.47/0.34 px** with 17–23 inliers. Re-measured at the correct TMC-2 pixel scale (5.0 m/px; [`docs/tmc2-correct-scale-rerun-2026-10-08.md`](docs/tmc2-correct-scale-rerun-2026-10-08.md), [`results/table_tmc2_correct_scale.csv`](results/table_tmc2_correct_scale.csv)): **two more SUCCESS_SUBPIXEL** — the large-shadowed-crater-walls and isolated-crater TMC-2 windows at **0.46/0.42 px** with 23 inliers each — plus two DEGENERATE_FAILURE→COARSE_ADVISORY upgrades, **zero downgrades**. The stage's smoothing grid now reaches λ=0.01/0.03 ([`docs/ohrc-blocker-levers-2026-10-08.md`](docs/ohrc-blocker-levers-2026-10-08.md)): the mixed-crater low-sun OHRC window crosses to **SUCCESS_SUBPIXEL at 0.45 px / 24 inliers** through the true pipeline, **zero downgrades**, flag-off bit-identical. Six SUCCESS_SUBPIXEL gate verdicts in-pipeline (inlier RMSE of field-corrected residuals on 17 to 24 inliers per window; not independently verified), all reproducible. (A prototype field-guided rescue also takes ohrc_04 to SUCCESS_SUBPIXEL at 0.36 px / 4 quadrants, but it is an experiment, not a wired pipeline stage — documented honestly in the same doc.)
+- 12-pair validation with the flag-gated quota ([`docs/quota-12pair-validation-2026-10-08.md`](docs/quota-12pair-validation-2026-10-08.md), [`results/table_quota_12pair.csv`](results/table_quota_12pair.csv)): **zero verdict downgrades, 3 upgrades** — the cratered-rim, massif-slope, and hummocky-relief OHRC windows reach **SELF_CONSISTENT_SUBPIXEL** at **0.43/0.47/0.34 px** with 17–23 inliers. Re-measured at the correct TMC-2 pixel scale (5.0 m/px; [`docs/tmc2-correct-scale-rerun-2026-10-08.md`](docs/tmc2-correct-scale-rerun-2026-10-08.md), [`results/table_tmc2_correct_scale.csv`](results/table_tmc2_correct_scale.csv)): **two more SELF_CONSISTENT_SUBPIXEL** — the large-shadowed-crater-walls and isolated-crater TMC-2 windows at **0.46/0.42 px** with 23 inliers each — plus two DEGENERATE_FAILURE→COARSE_ADVISORY upgrades, **zero downgrades**. The stage's smoothing grid now reaches λ=0.01/0.03 ([`docs/ohrc-blocker-levers-2026-10-08.md`](docs/ohrc-blocker-levers-2026-10-08.md)): the mixed-crater low-sun OHRC window crosses to **SELF_CONSISTENT_SUBPIXEL at 0.45 px / 24 inliers** through the true pipeline, **zero downgrades**, flag-off bit-identical. Six SELF_CONSISTENT_SUBPIXEL gate verdicts in-pipeline (inlier RMSE of field-corrected residuals on 17 to 24 inliers per window; not independently verified), all reproducible. (A prototype field-guided rescue also takes ohrc_04 to SELF_CONSISTENT_SUBPIXEL at 0.36 px / 4 quadrants, but it is an experiment, not a wired pipeline stage — documented honestly in the same doc.)
 
 **The export.** When the stage applies, the download carries the field: a dense `cv2.remap` of the fitted field (fixed-point-inverted, fail-closed to affine; [`docs/deform-field-export-2026-10-08.md`](docs/deform-field-export-2026-10-08.md)), independently verified photometrically — patch NCC on a check grid the fit never saw: the field-remapped export wins 76–82% of patches at 2–4× mean NCC vs affine-only.
 
-**Corrections, kept visible.** An earlier tmc2_04 0.47 px SUCCESS_SUBPIXEL did not reproduce in a fresh independent run (harness artifact) and is **withdrawn**, not footnoted. The 0.41 px rich-set number came from a standalone 842-inlier set the true pipeline never produces — documented in [`docs/deform-stage-multipair-2026-10-08.md`](docs/deform-stage-multipair-2026-10-08.md), not hidden.
+**Corrections, kept visible.** An earlier tmc2_04 0.47 px SELF_CONSISTENT_SUBPIXEL did not reproduce in a fresh independent run (harness artifact) and is **withdrawn**, not footnoted. The 0.41 px rich-set number came from a standalone 842-inlier set the true pipeline never produces — documented in [`docs/deform-stage-multipair-2026-10-08.md`](docs/deform-stage-multipair-2026-10-08.md), not hidden.
 
-**Honest caveats, stated plainly.** The stricter spatial-extrapolation score is 1.99–3.88 px and stands as the harder benchmark — the verdicts above are scored on interpolation-like held-out. The LROC field result was applied as a library (the adjudication is a standalone script), not through the deployed pipeline. Three OHRC windows remain COARSE_ADVISORY with known blockers ([`docs/blocker-diagnosis-2026-10-08.md`](docs/blocker-diagnosis-2026-10-08.md)). **Correction, resolved:** the six TMC-2 DEGENERATE_FAILURE verdicts in the 12-pair benchmark were measured with a misconfigured harness (`pixel_scale_m` defaulted to 0.25 instead of 5.0, forcing a ~20× asymmetric downsample of the reference; [`docs/tmc2-matching-collapse-2026-10-08.md`](docs/tmc2-matching-collapse-2026-10-08.md)). Re-run at the correct scale: 2 SUCCESS_SUBPIXEL, 3 COARSE_ADVISORY, 1 DEGENERATE_FAILURE (honest coverage refusal — 22 inliers in one quadrant). The withdrawn numbers are superseded, not footnoted.
+**Honest caveats, stated plainly.** The stricter spatial-extrapolation score is 1.99–3.88 px and stands as the harder benchmark — the verdicts above are scored on interpolation-like held-out. The LROC field result was applied as a library (the adjudication is a standalone script), not through the deployed pipeline. Three OHRC windows remain COARSE_ADVISORY with known blockers ([`docs/blocker-diagnosis-2026-10-08.md`](docs/blocker-diagnosis-2026-10-08.md)). **Correction, resolved:** the six TMC-2 DEGENERATE_FAILURE verdicts in the 12-pair benchmark were measured with a misconfigured harness (`pixel_scale_m` defaulted to 0.25 instead of 5.0, forcing a ~20× asymmetric downsample of the reference; [`docs/tmc2-matching-collapse-2026-10-08.md`](docs/tmc2-matching-collapse-2026-10-08.md)). Re-run at the correct scale: 2 SELF_CONSISTENT_SUBPIXEL, 3 COARSE_ADVISORY, 1 DEGENERATE_FAILURE (honest coverage refusal — 22 inliers in one quadrant). The withdrawn numbers are superseded, not footnoted.
 
 Backend: not recorded · Hardware: not recorded.
 
@@ -180,7 +180,7 @@ Backend and hardware: the issue #1 validation runs — see the Benchmark Status 
 
 ![LightGlue/ALIKED accepted synthetic-pair checklist](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/gate-checklist-accepted.png)
 
-LightGlue/ALIKED on the calibrated synthetic pair — inlier RMSE 0.3695 px, 43 inliers, entropy 1.9988, 4/4 quadrants: ACCEPTED (Sub-Pixel Precision), measured on RTX 5070.
+LightGlue/ALIKED on the calibrated synthetic pair — inlier RMSE 0.3695 px, 43 inliers, entropy 1.9988, 4/4 quadrants: ACCEPTED (Self-Consistent, Sub-Pixel), measured on RTX 5070.
 
 ![RIFT2 rejected synthetic-pair checklist](https://raw.githubusercontent.com/revanshriyan/chandra-align/main/docs/images/gate-checklist-rejected.png)
 
@@ -201,7 +201,7 @@ Backend: not recorded · Hardware: not recorded.
 | Layer | Result |
 | --- | --- |
 | Independent pixel verification (Phase 10) | 100% cells verified on true transforms, ≤18.75% on wrong ones; synthetic triplet loop closure 0 px |
-| Robustness battery (Phase 11) | 45 deterministic runs: 34 SUCCESS_SUBPIXEL / 10 COARSE_ADVISORY / 1 DEGENERATE_FAILURE |
+| Robustness battery (Phase 11) | 45 deterministic runs: 34 SELF_CONSISTENT_SUBPIXEL / 10 COARSE_ADVISORY / 1 DEGENERATE_FAILURE |
 | Confident-but-wrong detection (Phase 11) | `sun_flip` case: 0.87 px inlier RMSE yet 485.8 px off truth — inlier self-consistency ≠ correctness |
 | Confidence calibration (Phase 12) | Fitted Brier 0.1198 vs 0.2197 heuristic baseline; verdict NOT CALIBRATED — calibration never touches gate decisions |
 | Systematic window tiling (Phase 13) | 84 deterministic windows, every one reported: OHRC 41/42 COARSE (median 2158 inliers, 1.49 px among COARSE windows), TMC-2 fore/nadir 21/42 COARSE (median 514 inliers, 1.64 px among COARSE windows) — full table in [`results/table_phase13_windows.csv`](results/table_phase13_windows.csv) |

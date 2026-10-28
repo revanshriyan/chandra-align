@@ -166,7 +166,7 @@ def run_one_ratio(ref, mov, M_gt, ratio):
     # Frozen gate.
     if (rmse_inl <= _GATE_ACCEPT_RMSE and n_inl >= _MIN_INLIERS
             and entropy >= _GATE_ACCEPT_ENTROPY and quads >= _GATE_ACCEPT_QUADS):
-        verdict = "SUCCESS_SUBPIXEL"
+        verdict = "SELF_CONSISTENT_SUBPIXEL"
     elif (rmse_inl <= _GATE_COARSE_RMSE and n_inl >= _MIN_INLIERS
             and entropy >= _GATE_COARSE_ENTROPY and quads >= _GATE_COARSE_QUADS):
         verdict = "COARSE_ADVISORY"

@@ -87,7 +87,7 @@ def test_gate_model_backstop_rejects_degenerate():
 def test_gate_without_model_unchanged():
     msg, code = validate_registration_gate(
         0.3, 20, 8, 1.5, {"Q1": 5, "Q2": 5, "Q3": 5, "Q4": 5})
-    assert code == "SUCCESS_SUBPIXEL"
+    assert code == "SELF_CONSISTENT_SUBPIXEL"
 
 
 def test_lk_keeps_and_does_not_hurt(shifted):

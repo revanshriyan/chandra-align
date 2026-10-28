@@ -5,7 +5,7 @@ def _assessment(status):
     return build_confidence_assessment(
         status_code=status,
         status_message="Gate rejected: low spatial spread",
-        rmse_px=0.4 if status == "SUCCESS_SUBPIXEL" else 1.2,
+        rmse_px=0.4 if status == "SELF_CONSISTENT_SUBPIXEL" else 1.2,
         inlier_count=20,
         correspondence_count=25,
         entropy=1.4,
@@ -22,7 +22,7 @@ def _assessment(status):
 
 
 def test_assessment_has_fields_for_accepted_coarse_and_rejected_verdicts():
-    for verdict in ("SUCCESS_SUBPIXEL", "COARSE_ADVISORY", "DEGENERATE_FAILURE"):
+    for verdict in ("SELF_CONSISTENT_SUBPIXEL", "COARSE_ADVISORY", "DEGENERATE_FAILURE"):
         assessment = _assessment(verdict)
         assert 0 <= assessment["confidence_score"] <= 100
         assert "not a calibrated probability" in assessment["confidence_basis"]
@@ -34,8 +34,8 @@ def test_assessment_has_fields_for_accepted_coarse_and_rejected_verdicts():
 def test_telemetry_prints_assessment_for_accepted_and_rejected_runs():
     from app import format_telemetry_report
 
-    assessment = _assessment("SUCCESS_SUBPIXEL")
-    for verdict, rmse in (("SUCCESS_SUBPIXEL", 0.4), ("DEGENERATE_FAILURE", None)):
+    assessment = _assessment("SELF_CONSISTENT_SUBPIXEL")
+    for verdict, rmse in (("SELF_CONSISTENT_SUBPIXEL", 0.4), ("DEGENERATE_FAILURE", None)):
         text = format_telemetry_report(
             verdict, 20, 25, 80, 1.4, [5, 5, 5, 5], rmse=rmse,
             confidence_assessment=assessment,

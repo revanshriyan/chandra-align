@@ -68,8 +68,8 @@ def _registration_rejected(inlier_count=None, min_inliers=8, status=None) -> boo
     if status is not None:
         normalized = str(status).strip().upper()
         if normalized not in (
-            "SUCCESS", "SUCCESS_SUBPIXEL", "COARSE_ADVISORY",
-            "REGISTRATION ACCEPTED", "ACCEPTED (SUB-PIXEL PRECISION)",
+            "SUCCESS", "SELF_CONSISTENT_SUBPIXEL", "COARSE_ADVISORY",
+            "REGISTRATION ACCEPTED", "ACCEPTED (SELF-CONSISTENT, SUB-PIXEL)",
             "COARSE ALIGNMENT (REGIONAL FIT ADVISORY)",
         ):
             return True

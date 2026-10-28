@@ -91,7 +91,7 @@ def test_calibrated_pair_keeps_subpixel_registration_after_raster_loading():
         global_metrics = metrics["global_metrics"]
 
         assert len(outputs) == 14
-        assert "ACCEPTED (Sub-Pixel Precision)" in outputs[4]
+        assert "ACCEPTED (Self-Consistent, Sub-Pixel)" in outputs[4]
         assert global_metrics["inlier_count"] > 30
         assert global_metrics["rmse_pixels"] <= 0.50
         assert global_metrics["spatial_entropy_score"] >= 0.75

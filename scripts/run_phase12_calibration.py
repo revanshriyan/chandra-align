@@ -1,4 +1,4 @@
-"""Phase 12: calibrate confidence -> P(SUCCESS_SUBPIXEL | features).
+"""Phase 12: calibrate confidence -> P(SELF_CONSISTENT_SUBPIXEL | features).
 
 Builds a calibration set from:
   (a) synthetic pairs run through the REAL pipeline (SIFT -> Lowe ->
@@ -67,7 +67,7 @@ def run_pipeline_case(img_ref, img_mov):
                                                    entropy, qm_counts, model=M)
         n_inl = int(len(ia))
     feats = confidence_features(n_inl, n_corr, entropy, rmse, MIN_INLIERS)
-    label = 1 if verdict == "SUCCESS_SUBPIXEL" else 0
+    label = 1 if verdict == "SELF_CONSISTENT_SUBPIXEL" else 0
     return feats, label, {"verdict": verdict, "n_inliers": n_inl,
                          "n_corr": n_corr, "rmse": rmse, "entropy": entropy}
 
@@ -120,7 +120,8 @@ def canonical_rows():
             except (ValueError, TypeError):
                 continue
             v = (r["verdict"] or "").upper()
-            label = 1 if ("ACCEPTED" in v or "SUCCESS_SUBPIXEL" in v) else 0
+            label = 1 if ("ACCEPTED" in v or "SUCCESS_SUBPIXEL" in v
+                            or "SELF_CONSISTENT_SUBPIXEL" in v) else 0
             feats = confidence_features(inl, corr, ent, rmse, MIN_INLIERS)
             out.append((f"canonical:{r['benchmark']}/{r['pair']}/{r['matcher']}",
                         feats, label,

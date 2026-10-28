@@ -113,7 +113,7 @@ def test_batch_runner_blank_window_is_row_not_exception():
     row = run_window("testpair", FakeMM(), FakeMM(), win, (0, 0))
     assert set(row.keys()) == set(COLUMNS)
     assert row["verdict"] in ("ABSTAIN", "DEGENERATE_FAILURE", "ERROR",
-                              "COARSE_ADVISORY", "SUCCESS_SUBPIXEL")
+                              "COARSE_ADVISORY", "SELF_CONSISTENT_SUBPIXEL")
     assert row["window_id"] == "testpair_w0000"
     assert float(row["runtime_s"]) >= 0
 

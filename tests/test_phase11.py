@@ -83,7 +83,7 @@ def test_measure_pair_schema_and_clean_baseline():
     # runner adds base_pair/perturbation/params/seed; measure_pair provides the rest
     assert (REQUIRED_FIELDS - {"base_pair", "perturbation", "params", "seed"}
             ).issubset(rec.keys())
-    assert rec["verdict"] == "SUCCESS_SUBPIXEL"
+    assert rec["verdict"] == "SELF_CONSISTENT_SUBPIXEL"
     assert rec["median_resid_px"] is not None
     assert 0.0 <= rec["overlap_coverage"] <= 1.0
     assert rec["overlap_coverage"] > 0.8

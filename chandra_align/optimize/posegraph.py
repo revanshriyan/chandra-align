@@ -24,7 +24,7 @@ least squares) via the only scipy path that supports both.
 Safety
 ------
 Gates run BEFORE the optimizer. Every edge must carry a verdict in
-GATED_VERDICTS (SUCCESS_SUBPIXEL or COARSE_ADVISORY, the two passing codes
+GATED_VERDICTS (SELF_CONSISTENT_SUBPIXEL or COARSE_ADVISORY, the two passing codes
 of validate_registration_gate). Anything else — DEGENERATE_FAILURE,
 ABSTAIN codes, a missing matrix — is refused with ValueError. Garbage in,
 jointly optimized garbage out is not acceptable: the optimizer never sees
@@ -39,7 +39,7 @@ from ..trust.loop_closure import loop_closure
 # The two passing verdicts of validate_registration_gate
 # (chandra_align/metrics/quadrant.py). Frozen; the optimizer does not
 # define its own acceptance criteria.
-GATED_VERDICTS = {"SUCCESS_SUBPIXEL", "COARSE_ADVISORY"}
+GATED_VERDICTS = {"SELF_CONSISTENT_SUBPIXEL", "COARSE_ADVISORY"}
 
 
 def _as_h(M):

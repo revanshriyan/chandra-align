@@ -119,7 +119,7 @@ def _ncc_wrapper(img_a, img_b, pts_a, pts_b, ncc_window=11, search_range_px=1):
 appmod._estimate_partial_affine_with_threshold = _est_wrapper
 appmod.refine_subpixel_ncc = _ncc_wrapper
 
-_VERDICT_RANK = {"SUCCESS_SUBPIXEL": 2, "COARSE_ADVISORY": 1, "DEGENERATE_FAILURE": 0}
+_VERDICT_RANK = {"SELF_CONSISTENT_SUBPIXEL": 2, "COARSE_ADVISORY": 1, "DEGENERATE_FAILURE": 0}
 
 
 # --------------------------------------------------------------------------
@@ -375,7 +375,7 @@ def main():
         dg = [n for n in PAIRS
               if _VERDICT_RANK[by_pair[n][tag]["verdict"]]
               < _VERDICT_RANK[by_pair[n]["old_off"]["verdict"]]]
-        sp = [n for n in PAIRS if by_pair[n][tag]["verdict"] == "SUCCESS_SUBPIXEL"]
+        sp = [n for n in PAIRS if by_pair[n][tag]["verdict"] == "SELF_CONSISTENT_SUBPIXEL"]
         jf = all((by_pair[n][tag].get("min_jac_det") or 1.0) >= 0.5 for n in PAIRS)
         print(f"  Part {tag}: downgrades={dg or 'none'} | SUBPIXEL={sp or 'none'} | "
               f"no-folding={'HOLD' if jf else 'FAIL'}", flush=True)

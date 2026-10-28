@@ -124,7 +124,7 @@ def test_align_core_synthetic():
     )
 
     assert not result["rejected"]
-    assert result["status_code"] == "SUCCESS_SUBPIXEL"
+    assert result["status_code"] == "SELF_CONSISTENT_SUBPIXEL"
     assert result["inlier_cnt"] > 20
     assert result["mae_in_sample_px"] >= 0
     assert result["mae_heldout_px"] >= 0
@@ -160,7 +160,7 @@ def test_process_alignment_synthetic():
     assert len(outputs) == 14
     assert all(isinstance(image, Image.Image) for image in outputs[:4])
     assert outputs[0].size == (ref.shape[1], ref.shape[0])
-    assert "ACCEPTED (Sub-Pixel Precision)" in outputs[4]
+    assert "ACCEPTED (Self-Consistent, Sub-Pixel)" in outputs[4]
     global_metrics = outputs[5]["global_metrics"]
     assert global_metrics["inlier_count"] >= MIN_REGISTRATION_INLIERS
     assert global_metrics["rmse_pixels"] <= 0.50
@@ -250,7 +250,7 @@ def test_process_wrapper_marks_zero_gpu_success(monkeypatch):
 def _wrapper_output_fixture(image_type):
     blank = np.zeros((2, 2, 3), dtype=np.uint8)
     report = (
-        "✅ ACCEPTED (Sub-Pixel Precision)\n"
+        "✅ ACCEPTED (Self-Consistent, Sub-Pixel)\n"
         "Sensor Pair Mode: Optical <-> Optical\n"
         "Verified Inliers: 56 / 100 (56.0%)\n"
         "  RMSE: 0.33 px\n"
@@ -258,7 +258,7 @@ def _wrapper_output_fixture(image_type):
     )
     return (
         *(image_type.new("RGB", (2, 2)) for _ in range(4)),
-        report, {"status_code": "SUCCESS_SUBPIXEL"},
+        report, {"status_code": "SELF_CONSISTENT_SUBPIXEL"},
         "Hardware Runtime Mode : CPU", (blank, blank),
         "a.csv", "b.json", "c.tif", "d.png", "e.png", "f.zip",
     )

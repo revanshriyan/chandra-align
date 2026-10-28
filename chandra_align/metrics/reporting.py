@@ -56,7 +56,7 @@ def build_confidence_assessment(
     ), 2)
 
     code = str(status_code or "UNKNOWN").upper()
-    if code == "SUCCESS_SUBPIXEL":
+    if code == "SELF_CONSISTENT_SUBPIXEL":
         decision_reason = (
             f"Passed sub-pixel gate: gate RMSE {rmse:.4f} px <= 0.50 px; "
             f"{inliers} inliers >= {int(min_inliers)}; entropy {entropy_value:.4f} >= 0.75; "

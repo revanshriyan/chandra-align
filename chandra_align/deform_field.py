@@ -505,7 +505,7 @@ def build_field_remap_maps(sec_shape, ref_shape, M_hook, field,
 # (<1 px) correspondences the global affine could not see past; the stage is
 # then REFIT on the admitted set (same machinery, same grid, same held-out
 # guardrail). Validated in docs/ohrc-blocker-levers-2026-10-08.md: ohrc_04
-# goes from COARSE (2 quadrants) to SUCCESS_SUBPIXEL (0.357 px held-out,
+# goes from COARSE (2 quadrants) to SELF_CONSISTENT_SUBPIXEL (0.357 px held-out,
 # entropy 0.96, 4 quadrants) under the frozen gate.
 #
 # The rescue is evaluated as a SECOND OPINION: the caller gates the refit

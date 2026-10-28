@@ -49,7 +49,7 @@ _CFG_MATCHER = {
                          "min_inlier_pairs": 4},
 }
 
-ACCEPT_CODES = {"SUCCESS_SUBPIXEL", "COARSE_ADVISORY"}
+ACCEPT_CODES = {"SELF_CONSISTENT_SUBPIXEL", "COARSE_ADVISORY"}
 REJECT_CODES = {"DEGENERATE_FAILURE"}
 
 
@@ -157,7 +157,7 @@ def _assert_honest(result):
     a REJECT carries no transform telemetry."""
     code = result["status_code"]
     if code in ACCEPT_CODES:
-        limit = 0.50 if code == "SUCCESS_SUBPIXEL" else 2.50
+        limit = 0.50 if code == "SELF_CONSISTENT_SUBPIXEL" else 2.50
         assert result["rmse_px"] is not None, "ACCEPT with masked RMSE"
         assert result["rmse_px"] <= limit, (
             f"fabricated {code}: rmse {result['rmse_px']} exceeds {limit}")
@@ -244,7 +244,7 @@ class TestAdversarialPairs:
         r = _run_pipeline(tex, tex.copy())
         # A genuinely perfect alignment may honestly ACCEPT; the RMSE must
         # actually support the tier (no fabricated success).
-        assert r["status_code"] == "SUCCESS_SUBPIXEL"
+        assert r["status_code"] == "SELF_CONSISTENT_SUBPIXEL"
         assert r["rmse_px"] <= 0.50
         _assert_honest(r)
 
@@ -464,7 +464,7 @@ class TestGateHonesty:
             0.1, 100, _MIN_INLIERS, 1.9,
             {"Q1": 25, "Q2": 25, "Q3": 25, "Q4": 25},
             model=np.eye(2, 3))
-        assert code == "SUCCESS_SUBPIXEL"
+        assert code == "SELF_CONSISTENT_SUBPIXEL"
 
     def test_conditioning_fail_closed(self):
         ok, _ = check_transform_conditioning(None)

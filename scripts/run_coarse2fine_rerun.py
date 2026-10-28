@@ -30,7 +30,7 @@ PAIRS = (
     + [(f"tmc2_{i:02d}", "TMC-2", 5.0) for i in range(1, 7)]
 )
 
-TIER = {"DEGENERATE_FAILURE": 0, "COARSE_ADVISORY": 1, "SUCCESS_SUBPIXEL": 2}
+TIER = {"DEGENERATE_FAILURE": 0, "COARSE_ADVISORY": 1, "SELF_CONSISTENT_SUBPIXEL": 2}
 
 
 def run_arm(ref, sec, sensor, scale, mode):

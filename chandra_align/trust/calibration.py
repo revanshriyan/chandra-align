@@ -4,7 +4,7 @@ The 0-100 confidence heuristic in chandra_align/metrics/reporting.py is an
 evidence index with guessed weights (30/25/20/25), explicitly documented as
 NOT a probability. This module calibrates it: fit a logistic map from the
 same four features to measured ACCEPT outcomes, so the output means
-P(SUCCESS_SUBPIXEL | features).
+P(SELF_CONSISTENT_SUBPIXEL | features).
 
 Hard rule preserved: calibration NEVER influences gate decisions. The gates
 in chandra_align/metrics decide; this module only scores reported outcomes

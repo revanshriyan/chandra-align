@@ -217,7 +217,7 @@ def validate_registration_gate(rmse, inliers, min_inliers, spatial_entropy, quad
     has_spatial_spread = entropy_value >= 0.750
     has_quadrant_balance = active_quadrants >= 3
     if is_subpixel and has_enough_inliers and has_spatial_spread and has_quadrant_balance:
-        return "ACCEPTED (Sub-Pixel Precision)", "SUCCESS_SUBPIXEL"
+        return "ACCEPTED (Self-Consistent, Sub-Pixel)", "SELF_CONSISTENT_SUBPIXEL"
     if (
         rmse_value <= 2.500
         and has_enough_inliers
@@ -293,7 +293,7 @@ def build_judge_metrics_summary(
     status_message, status_code = validate_registration_gate(
         rmse_pixels, inliers, min_inliers, spatial_entropy_score, counts_dict
     )
-    is_accepted = status_code in ("SUCCESS_SUBPIXEL", "COARSE_ADVISORY")
+    is_accepted = status_code in ("SELF_CONSISTENT_SUBPIXEL", "COARSE_ADVISORY")
 
     return {
         "registration_status": status_code,
@@ -301,6 +301,11 @@ def build_judge_metrics_summary(
         "quadrant_counts": quadrant_counts,
         "status_message": status_message,
         "status_code": status_code,
+        # The gate verdict rests on inlier/holdout metrics only; no
+        # landmark cross-check is attached at gate time. A predicted
+        # verdict must likewise stay at self_consistency, never
+        # independent_landmarks (see docs/verdict-rename-mapping.md).
+        "evidence_tier": "self_consistency",
         "global_metrics": {
             "rmse_pixels": _finite_float(rmse_pixels) if is_accepted else None,
             "inlier_count": inliers,

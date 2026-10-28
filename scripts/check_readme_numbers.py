@@ -38,7 +38,7 @@ def num(value):
 
 # (readme_regex, benchmark, pair, matcher, canonical_column, label)
 CHECKS = [
-    (r"synthetic ACCEPTED \(Sub-Pixel Precision\) at inlier RMSE ([\d.]+) px / (\d+) inliers",
+    (r"synthetic ACCEPTED \((?:Sub-Pixel Precision|Self-Consistent, Sub-Pixel)\) at inlier RMSE ([\d.]+) px / (\d+) inliers",
      "gpu_validation", "synthetic_gentle", "LightGlue_ALIKED",
      [("rmse_px", 0), ("inliers", 1)], "synthetic LightGlue"),
     (r"competitive real-pair results at inlier RMSE ([\d.]+) px \(OHRC\) and ([\d.]+) px \(TMC-2\)",

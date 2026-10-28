@@ -87,7 +87,7 @@ def gates():
     box(ax, 50, 82, 60, 10,
         "RANSAC fit: RMSE · inliers (≥ 8) · entropy · quadrant spread", ACCENT, fs=8.5)
     box(ax, 22, 58, 36, 20,
-        "ACCEPT\nSub-pixel precision\n\nRMSE ≤ 0.50 px\ninliers ≥ 8\nentropy ≥ 0.75\n≥ 3 / 4 quadrants",
+        "ACCEPTED\nSelf-Consistent, Sub-Pixel\n\nRMSE ≤ 0.50 px\ninliers ≥ 8\nentropy ≥ 0.75\n≥ 3 / 4 quadrants",
         GREEN, fs=8)
     box(ax, 50, 58, 36, 20,
         "COARSE ADVISORY\nRegional fit — not sub-pixel\n\nRMSE ≤ 2.50 px\ninliers ≥ 8\nentropy ≥ 0.50\n≥ 2 / 4 quadrants",

@@ -125,7 +125,7 @@ def test_consistent_triplet_barely_moves():
     # Perfectly consistent edges: optimizer should return ~chained init.
     T_true = [np.eye(2, 3), rt_affine(1.0, 10.0, 5.0), rt_affine(-1.0, -8.0, 3.0)]
     edges = [{"i": i, "j": j, "M": true_M(T_true, i, j), "weight": 1.0,
-              "verdict": "SUCCESS_SUBPIXEL"} for i, j in [(0, 1), (1, 2), (2, 0)]]
+              "verdict": "SELF_CONSISTENT_SUBPIXEL"} for i, j in [(0, 1), (1, 2), (2, 0)]]
     res = optimize_posegraph(edges, 3)
     assert res["misclosure_after_px"] < 1e-6
     for got, want in zip(res["T"], T_true):
@@ -133,4 +133,4 @@ def test_consistent_triplet_barely_moves():
 
 
 def test_gated_verdicts_are_the_frozen_two():
-    assert GATED_VERDICTS == {"SUCCESS_SUBPIXEL", "COARSE_ADVISORY"}
+    assert GATED_VERDICTS == {"SELF_CONSISTENT_SUBPIXEL", "COARSE_ADVISORY"}

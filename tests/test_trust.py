@@ -94,7 +94,7 @@ def test_heldout_rmse_is_explicit_in_gate_telemetry_and_dossier():
     from chandra_align.visualization import create_combined_visualization
 
     telemetry = format_telemetry_report(
-        status="SUCCESS_SUBPIXEL", inliers=20, total_pts=25,
+        status="SELF_CONSISTENT_SUBPIXEL", inliers=20, total_pts=25,
         inlier_ratio=80.0, spatial_entropy=1.4, quad_counts=[5, 5, 5, 5],
         rmse=0.42, rmse_in_sample=0.31, rmse_heldout=0.42,
         mae_in_sample=0.28, mae_heldout=0.36,
@@ -126,7 +126,7 @@ def test_heldout_rmse_is_explicit_in_gate_telemetry_and_dossier():
         plt.close(fig)
 
     fallback_telemetry = format_telemetry_report(
-        status="SUCCESS_SUBPIXEL", inliers=4, total_pts=4,
+        status="SELF_CONSISTENT_SUBPIXEL", inliers=4, total_pts=4,
         inlier_ratio=100.0, spatial_entropy=1.2, quad_counts=[1, 1, 1, 1],
         rmse=0.31, rmse_in_sample=0.31, rmse_heldout=None,
         heldout_count=0,

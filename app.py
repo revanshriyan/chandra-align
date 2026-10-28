@@ -1289,13 +1289,13 @@ def _align_core(
         quadrant_spatial_entropy, quadrant_metrics,
         pts=inlier_ref, frame_shape=ref_original.shape[:2],
     )
-    # L1 rescue second opinion: if the rescue refit reached SUCCESS_SUBPIXEL
+    # L1 rescue second opinion: if the rescue refit reached SELF_CONSISTENT_SUBPIXEL
     # under the frozen gate while the normal path did not, adopt the rescue
     # verdict. Strict upgrade only -- never a downgrade or lateral move.
     _ri = deform_field_info.get("rescue_info") or {}
-    if (_ri.get("rescue_gate_code") == "SUCCESS_SUBPIXEL"
-            and status_code != "SUCCESS_SUBPIXEL"):
-        status_code = "SUCCESS_SUBPIXEL"
+    if (_ri.get("rescue_gate_code") == "SELF_CONSISTENT_SUBPIXEL"
+            and status_code != "SELF_CONSISTENT_SUBPIXEL"):
+        status_code = "SELF_CONSISTENT_SUBPIXEL"
         status_message = "REGISTRATION ACCEPTED (L1 field-guided rescue)"
         rmse_px = float(_ri["rescue_gate_rmse_px"])
         rmse_gate_px = rmse_px
@@ -1567,7 +1567,7 @@ def format_telemetry_report(
 ):
     """Render three-tier checklist; hide transform values for rejected fits."""
     code = str(status).strip().upper()
-    tier1 = code in ("SUCCESS", "SUCCESS_SUBPIXEL", "REGISTRATION ACCEPTED")
+    tier1 = code in ("SUCCESS", "SELF_CONSISTENT_SUBPIXEL", "REGISTRATION ACCEPTED")
     tier2 = code in ("COARSE_ADVISORY", "COARSE ALIGNMENT (REGIONAL FIT ADVISORY)")
     accepted = tier1 or tier2
     counts = list(quad_counts or [0, 0, 0, 0])[:4]
@@ -1584,7 +1584,7 @@ def format_telemetry_report(
     if status_message:
         status_text = status_message
     elif tier1:
-        status_text = "ACCEPTED (Sub-Pixel Precision)"
+        status_text = "ACCEPTED (Self-Consistent, Sub-Pixel)"
     elif tier2:
         status_text = "COARSE ALIGNMENT (Regional Fit Advisory)"
     elif inliers == 0:
@@ -1892,7 +1892,7 @@ def process_alignment(
         notice_block = ("\n".join(f"⚠️ **NOTICE:** {n}" for n in large_image_notices) + "\n\n") if large_image_notices else ""
         report = (
             f"{notice_block}"
-            f"{'✅' if status_code == 'SUCCESS_SUBPIXEL' else '🟠' if status_code == 'COARSE_ADVISORY' else '❌'} {status_message}\n"
+            f"{'✅' if status_code == 'SELF_CONSISTENT_SUBPIXEL' else '🟠' if status_code == 'COARSE_ADVISORY' else '❌'} {status_message}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"Matcher Engine: {engine_name}\n"
             f"Registration Transform: 4-DOF Partial Affine (2x3), RANSAC threshold {result['ransac_threshold_px']:.1f} px\n"
@@ -1994,8 +1994,11 @@ def process_alignment(
         ).tolist()
         transform_payload["homography_matrix"] = np.asarray(H, dtype=np.float64).tolist()
         transform_payload["judge_metrics_summary"] = judge_metrics
-        transform_payload["safety_gate_passed"] = status_code == "SUCCESS_SUBPIXEL"
+        transform_payload["safety_gate_passed"] = status_code == "SELF_CONSISTENT_SUBPIXEL"
         transform_payload["coarse_advisory"] = status_code == "COARSE_ADVISORY"
+        # The downloadable payload carries the gate verdict, which rests
+        # on inlier metrics only; no landmark cross-check is attached.
+        transform_payload["evidence_tier"] = "self_consistency"
         transform_payload["transformation_telemetry"] = affine_telemetry
         transform_payload["engine_used"] = result["engine_used"]
         transform_payload["execution_device"] = result["execution_device"]

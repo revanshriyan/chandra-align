@@ -233,7 +233,7 @@ def test_flag_on_end_to_end_frozen_tiers():
             os.environ.pop("CHANDRA_DEFORM_FIELD", None)
         else:
             os.environ["CHANDRA_DEFORM_FIELD"] = old
-    assert out["status_code"] in ("SUCCESS_SUBPIXEL", "COARSE_ADVISORY",
+    assert out["status_code"] in ("SELF_CONSISTENT_SUBPIXEL", "COARSE_ADVISORY",
                                   "DEGENERATE_FAILURE")
     info = out["judge_metrics"]["deform_field_stage"]
     assert isinstance(info["applied"], bool)
@@ -265,14 +265,14 @@ def test_flag_on_degenerate_pair_no_crash():
             os.environ.pop("CHANDRA_DEFORM_FIELD", None)
         else:
             os.environ["CHANDRA_DEFORM_FIELD"] = old
-    assert out["status_code"] in ("SUCCESS_SUBPIXEL", "COARSE_ADVISORY",
+    assert out["status_code"] in ("SELF_CONSISTENT_SUBPIXEL", "COARSE_ADVISORY",
                                   "DEGENERATE_FAILURE")
 
 
 def test_flag_on_pre_balance_hook_ohrc01_improves():
     """Flag ON, pre-balance hook: stage applies in-pipeline and improves ohrc_01.
 
-    A16 Part B's SUCCESS_SUBPIXEL (0.45 px) was measured on A14's standalone
+    A16 Part B's SELF_CONSISTENT_SUBPIXEL (0.45 px) was measured on A14's standalone
     842-inlier match set; the true _align_core's match_pair_hf caps keypoints
     (618 raw -> ~100 RANSAC inliers), so the stage's internal held-out reads
     higher here. This test pins what IS true in-pipeline: the stage applies
@@ -301,7 +301,7 @@ def test_flag_on_pre_balance_hook_ohrc01_improves():
     # affine in-sample fit.
     assert out_on["judge_metrics"]["rmse_gate_basis"] == \
         "held-out (deform-field stage internal stride 80/20 split)"
-    assert out_on["status_code"] in ("SUCCESS_SUBPIXEL", "COARSE_ADVISORY",
+    assert out_on["status_code"] in ("SELF_CONSISTENT_SUBPIXEL", "COARSE_ADVISORY",
                                      "DEGENERATE_FAILURE")
     # The relocation must improve (or at worst preserve) the gate RMSE.
     gate_on = float(out_on["judge_metrics"]["rmse_gate_px"])

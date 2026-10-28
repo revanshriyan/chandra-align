@@ -6,7 +6,7 @@ frozen gate (chandra_align.metrics.quadrant.validate_registration_gate).
 
 L1: fit the field on ohrc_04's Q3/Q4 hook inliers (flag-on path), re-score ALL
 raw matches under the field, admit field-consistent matches, re-run the FROZEN
-gates on the rescued set. Win = SUCCESS_SUBPIXEL under existing thresholds.
+gates on the rescued set. Win = SELF_CONSISTENT_SUBPIXEL under existing thresholds.
 
 L2: extend the stage's lambda grid below 0.1 (0.03, 0.01) via the existing
 stage machinery. Win = ohrc_05 crosses 0.50px held-out with zero downgrades.
@@ -164,8 +164,8 @@ def run_l1(pair="ohrc_04"):
         g["refit_min_jac"] = st.get("min_jacobian_det")
         results[tag] = g
     out["rescue"] = results
-    # Win condition: the conservative (<1px) set reaches SUCCESS_SUBPIXEL.
-    win = results.get("1px", {}).get("status_code") == "SUCCESS_SUBPIXEL"
+    # Win condition: the conservative (<1px) set reaches SELF_CONSISTENT_SUBPIXEL.
+    win = results.get("1px", {}).get("status_code") == "SELF_CONSISTENT_SUBPIXEL"
     out["outcome"] = "WIN" if win else "no_upgrade"
     return out
 
@@ -204,7 +204,7 @@ def run_l2(pair):
            "df_min_jac_det": df.get("min_jacobian_det"),
            "df_sweep": df.get("lambda_sweep")}
     # Win = verdict upgrade vs the flag-on baseline in table_quota_12pair.csv.
-    out["outcome"] = ("WIN" if out["status_code"] == "SUCCESS_SUBPIXEL"
+    out["outcome"] = ("WIN" if out["status_code"] == "SELF_CONSISTENT_SUBPIXEL"
                       else "no_upgrade")
     return out
 

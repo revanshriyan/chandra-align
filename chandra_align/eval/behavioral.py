@@ -73,7 +73,7 @@ def rotation_directional_large():
     a, b, M = make_pair_shift(shape=(512, 512), dx=7.3, dy=-3.9, seed=7)
     b2 = _p(perturb_small_rotation, b, 45.0, seed=11)
     r = measure_pair(a, b2, M)
-    worse = {"SUCCESS_SUBPIXEL": 0, "COARSE_ADVISORY": 1,
+    worse = {"SELF_CONSISTENT_SUBPIXEL": 0, "COARSE_ADVISORY": 1,
              "DEGENERATE_FAILURE": 2, "ABSTAIN": 3}
     return {"expectation_met": worse.get(r["verdict"], 3) >= worse.get(base["verdict"], 0),
             "measured": {"baseline": base["verdict"], "rotated45": r["verdict"]}}
@@ -83,7 +83,7 @@ def rotation_minimum_functionality():
     """Identity pair must register sub-pixel (sanity)."""
     a, b, M = make_pair_shift(shape=(512, 512), dx=0.0, dy=0.0, seed=7)
     r = measure_pair(a, b, M)
-    return {"expectation_met": r["verdict"] == "SUCCESS_SUBPIXEL",
+    return {"expectation_met": r["verdict"] == "SELF_CONSISTENT_SUBPIXEL",
             "measured": {"verdict": r["verdict"], "rmse": r["rmse_px"]}}
 
 
@@ -118,7 +118,7 @@ def illumination_minimum_functionality():
     a, b, M = make_pair_illumination(shape=(512, 512), dx=5.0, dy=2.0,
                                      gamma=1.6, gain=1.25, seed=7)
     r = measure_pair(a, b, M)
-    return {"expectation_met": r["verdict"] in ("SUCCESS_SUBPIXEL", "COARSE_ADVISORY"),
+    return {"expectation_met": r["verdict"] in ("SELF_CONSISTENT_SUBPIXEL", "COARSE_ADVISORY"),
             "measured": {"verdict": r["verdict"], "rmse": r["rmse_px"]}}
 
 
@@ -126,13 +126,13 @@ def illumination_minimum_functionality():
 def xmodal_directional_polarity():
     """Full polarity inversion (crude cross-modal proxy): the pipeline must
     NOT hold its sub-pixel verdict — expect a predicted degradation
-    (measured 2026-10-07: inversion degrades SUCCESS_SUBPIXEL to
+    (measured 2026-10-07: inversion degrades SELF_CONSISTENT_SUBPIXEL to
     COARSE_ADVISORY rather than failing outright; the expectation encodes
     the direction, not the exact tier)."""
     a, b, M = make_pair_shift(shape=(512, 512), dx=7.3, dy=-3.9, seed=7)
     b2 = 255.0 - np.asarray(b, dtype=np.float64)
     r = measure_pair(a, b2, M)
-    return {"expectation_met": r["verdict"] != "SUCCESS_SUBPIXEL",
+    return {"expectation_met": r["verdict"] != "SELF_CONSISTENT_SUBPIXEL",
             "measured": {"verdict": r["verdict"], "abstain": r["abstain"],
                          "rmse": r["rmse_px"]}}
 
@@ -141,7 +141,7 @@ def xmodal_minimum_functionality():
     """Same-sensor control for the cross-modal cell: must succeed."""
     a, b, M = make_pair_shift(shape=(512, 512), dx=7.3, dy=-3.9, seed=7)
     r = measure_pair(a, b, M)
-    return {"expectation_met": r["verdict"] == "SUCCESS_SUBPIXEL",
+    return {"expectation_met": r["verdict"] == "SELF_CONSISTENT_SUBPIXEL",
             "measured": {"verdict": r["verdict"]}}
 
 
@@ -172,7 +172,7 @@ def lowtexture_minimum_functionality():
     """Textured control: the same harness must succeed on real texture."""
     a, b, M = make_pair_shift(shape=(512, 512), dx=7.3, dy=-3.9, seed=7)
     r = measure_pair(a, b, M)
-    return {"expectation_met": r["verdict"] == "SUCCESS_SUBPIXEL",
+    return {"expectation_met": r["verdict"] == "SELF_CONSISTENT_SUBPIXEL",
             "measured": {"verdict": r["verdict"], "n_inliers": r["inliers"]}}
 
 
@@ -195,7 +195,7 @@ def shift_minimum_functionality():
     a, b, M = make_pair_shift(shape=(512, 512), dx=12.0, dy=-8.0, seed=7)
     r = measure_pair(a, b, M)
     ia = r["independent_accuracy_px"]
-    return {"expectation_met": r["verdict"] == "SUCCESS_SUBPIXEL"
+    return {"expectation_met": r["verdict"] == "SELF_CONSISTENT_SUBPIXEL"
             and ia is not None and ia < 1.0,
             "measured": {"verdict": r["verdict"],
                          "independent_accuracy": ia}}
@@ -247,7 +247,7 @@ def shift_invariance_seed():
     a2, b2, M2 = make_pair_shift(shape=(512, 512), dx=7.3, dy=-3.9, seed=21)
     r1 = measure_pair(a1, b1, M1)
     r2 = measure_pair(a2, b2, M2)
-    return {"expectation_met": r1["verdict"] == r2["verdict"] == "SUCCESS_SUBPIXEL",
+    return {"expectation_met": r1["verdict"] == r2["verdict"] == "SELF_CONSISTENT_SUBPIXEL",
             "measured": {"seed7": r1["verdict"], "seed21": r2["verdict"]}}
 
 

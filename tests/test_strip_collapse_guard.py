@@ -121,7 +121,7 @@ def test_guard_leaves_good_fit_untouched(restore_env):
         0.40, 200, 8, 1.90,
         {"Q1": 50, "Q2": 50, "Q3": 50, "Q4": 50},
         pts=p, frame_shape=(2048, 2048))
-    assert code == "SUCCESS_SUBPIXEL"
+    assert code == "SELF_CONSISTENT_SUBPIXEL"
     assert "STRIP_COLLAPSE" not in msg
 
 

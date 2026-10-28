@@ -68,7 +68,7 @@ def main():
         kind_a = out_a["judge_metrics"]["warp_export_kind"]
         assert kind_f == "field_remap", (pair, kind_f)
         assert kind_a.startswith("affine (field remap failed"), (pair, kind_a)
-        assert out_f["status_code"] == out_a["status_code"] == "SUCCESS_SUBPIXEL"
+        assert out_f["status_code"] == out_a["status_code"] == "SELF_CONSISTENT_SUBPIXEL"
         wf = out_f["warped_sec"]
         wa = out_a["warped_sec"]
         ref = out_f["ref_original"]

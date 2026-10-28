@@ -138,7 +138,7 @@ def quadrants(p2_inl, r_inl):
 
 def gate_tier(rmse, n_inl, entropy, n_quads):
     if rmse <= 0.50 and n_inl >= 8 and entropy >= 0.75 and n_quads >= 3:
-        return 'SUCCESS_SUBPIXEL'
+        return 'SELF_CONSISTENT_SUBPIXEL'
     if rmse <= 2.50 and n_inl >= 8 and entropy >= 0.50 and n_quads >= 2:
         return 'COARSE_ADVISORY'
     return 'DEGENERATE_FAILURE'
