@@ -177,7 +177,7 @@ def _mutual_nn(des_a, des_b, kp_a, kp_b, lowes_ratio=0.75):
               if m.distance < lowes_ratio * n.distance}
     pts_a, pts_b, matches = [], [], []
     for m in good_a:
-        if (m.queryIdx, m.trainIdx) in good_b:
+        if (m.trainIdx, m.queryIdx) in good_b:
             pts_a.append(kp_a[m.queryIdx].pt)
             pts_b.append(kp_b[m.trainIdx].pt)
             matches.append(m)

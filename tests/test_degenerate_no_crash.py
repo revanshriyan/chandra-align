@@ -99,11 +99,11 @@ def _single_quadrant_texture(shape=(256, 256), seed=7):
     return img
 
 
-def _shift(img, dx, dy):
+def _shift(img, dx, dy, border_mode=cv2.BORDER_REFLECT):
     M = np.array([[1.0, 0.0, dx], [0.0, 1.0, dy]], np.float32)
     h, w = img.shape[:2]
     return cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_LINEAR,
-                         borderMode=cv2.BORDER_REFLECT)
+                         borderMode=border_mode)
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +226,15 @@ class TestAdversarialPairs:
 
     def test_no_overlap_shift_rejects_honestly(self):
         tex = _textured()
-        r = _run_pipeline(tex, _shift(tex, 500.0, 500.0))
+        # A 500 px shift on a 256 px frame must leave NO overlapping
+        # content. BORDER_REFLECT would wrap the shift into a genuine
+        # (-12, -12) translation (measured interior-identical), so the
+        # test would silently stop testing no-overlap; BORDER_CONSTANT
+        # leaves a blank frame, which the premise assert below pins.
+        shifted = _shift(tex, 500.0, 500.0,
+                         border_mode=cv2.BORDER_CONSTANT)
+        assert shifted.max() == 0  # premise: truly no overlap
+        r = _run_pipeline(tex, shifted)
         assert r["status_code"] == "DEGENERATE_FAILURE"
         _assert_honest(r)
 
