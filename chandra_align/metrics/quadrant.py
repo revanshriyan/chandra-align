@@ -266,6 +266,53 @@ def _quadrant_count(value):
     return value.get("inlier_count", 0) if isinstance(value, dict) else value
 
 
+def _normalize_independent_landmark(value):
+    """Normalize an independent-landmark cross-check into the payload block.
+
+    The gate never computes this: it is populated only by an evaluation
+    path that actually has human-verified landmarks. Any missing or
+    malformed input fails closed to an explicit null + reason — never a
+    blank, never a borrowed number, never a fabricated zero.
+    """
+    default_reason = "no human-verified landmarks for this pair"
+    if value is None:
+        return {"rmse_px": None, "reason": default_reason}
+    if not isinstance(value, dict):
+        return {"rmse_px": None, "reason": "cross-check not run"}
+    rmse = value.get("rmse_px")
+    if rmse is None:
+        reason = value.get("reason") or default_reason
+        return {"rmse_px": None, "reason": str(reason)}
+    try:
+        rmse_value = float(rmse)
+    except (TypeError, ValueError, OverflowError):
+        return {"rmse_px": None, "reason": "cross-check not run"}
+    if not np.isfinite(rmse_value):
+        return {"rmse_px": None, "reason": "cross-check not run"}
+    try:
+        n_points = max(0, int(value.get("n_points", 0)))
+    except (TypeError, ValueError, OverflowError):
+        n_points = 0
+    block = {
+        "rmse_px": rmse_value,
+        "n_points": n_points,
+        "source": str(value.get("source", "not recorded")),
+        "evidence_tier": "independent_landmarks",
+    }
+    rmse_m = value.get("rmse_m")
+    if rmse_m is not None:
+        try:
+            rmse_m_value = float(rmse_m)
+        except (TypeError, ValueError, OverflowError):
+            rmse_m_value = None
+        if rmse_m_value is not None and np.isfinite(rmse_m_value):
+            block["rmse_m"] = rmse_m_value
+    floor_note = value.get("floor_note")
+    if floor_note:
+        block["floor_note"] = str(floor_note)
+    return block
+
+
 def build_judge_metrics_summary(
     rmse_pixels,
     inlier_count,
@@ -273,6 +320,7 @@ def build_judge_metrics_summary(
     spatial_entropy_score,
     quadrant_metrics,
     min_inliers=8,
+    independent_landmark=None,
 ):
     """Build the strict, fixed-key JSON summary used by the evaluation UI."""
     try:
@@ -305,7 +353,11 @@ def build_judge_metrics_summary(
         # landmark cross-check is attached at gate time. A predicted
         # verdict must likewise stay at self_consistency, never
         # independent_landmarks (see docs/verdict-rename-mapping.md).
+        # The independent_landmark block below is a reporting cross-check
+        # populated by an evaluation path that has landmarks; it never
+        # feeds the gate and never promotes this verdict's tier.
         "evidence_tier": "self_consistency",
+        "independent_landmark": _normalize_independent_landmark(independent_landmark),
         "global_metrics": {
             "rmse_pixels": _finite_float(rmse_pixels) if is_accepted else None,
             "inlier_count": inliers,

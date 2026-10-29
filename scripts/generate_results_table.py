@@ -327,6 +327,113 @@ def main():
                                  f"{label} independent held-out absolute bound (field stage)",
                                  UNVERIFIED, src9b))
 
+    # ---- 10. Dual metrics: independent landmark RMSE (human-verified) ----
+    # Sourced ONLY from results/table_strip_guard_calibration_2026-10-24.csv.
+    # Anchor rows map to their pairs (OHRC_pair_anchor -> ohrc_pair,
+    # TMC2_fore_nadir_anchor -> tmc2_fore_nadir). A pair with no row gets an
+    # explicit null + reason, never UNVERIFIED-by-silence and never a
+    # neighbouring pair's number. Metres use the OHRC sensor GSD (0.25 m/px,
+    # config/ohrc.yaml) ONLY for the calibration rows, whose pixel space the
+    # design example confirms; anchor rows omit metres because their pixel
+    # space (loaded-4096 / window) does not take the sensor GSD directly —
+    # naive multiplication would contradict the published ~32.5 m / ~125 m
+    # figures for the same pixel values, so no metre figure is published
+    # for anchors rather than a wrong one. If the source file itself is
+    # missing, the entries read UNVERIFIED per the generator's standing rule.
+    src10 = "results/table_strip_guard_calibration_2026-10-24.csv"
+    cal_rows = read_csv(os.path.join(REPO_ROOT, src10))
+    landmark = {}
+    if cal_rows:
+        for r in cal_rows:
+            key = r.get("pair", "")
+            if key.endswith("_anchor"):
+                key = key[: -len("_anchor")].lower()
+            try:
+                landmark[key] = {
+                    "rmse_px": float(r["landmark_rmse_px"]),
+                    "n_points": int(r["n_verified_landmarks"]),
+                    "source": r.get("source", "") or "not recorded",
+                    "notes": r.get("notes", "") or "",
+                }
+            except (ValueError, TypeError, KeyError):
+                pass
+    for key, label in [
+        ("ohrc_pair", "OHRC real pair"),
+        ("tmc2_fore_nadir", "TMC-2 fore/nadir real pair"),
+        ("ohrc_01", "OHRC cratered-rim window"),
+        ("ohrc_02", "OHRC massif-slope window"),
+        ("ohrc_03", "OHRC hummocky-relief window"),
+        ("ohrc_04", "OHRC window ohrc_04"),
+    ]:
+        metric = f"dual_landmark_{key}_rmse_px"
+        if cal_rows is None:
+            entries.append(entry(metric, f"Independent landmark RMSE ({label})",
+                                 UNVERIFIED, src10, "px"))
+            continue
+        row = landmark.get(key)
+        if row is None:
+            e = entry(metric, f"Independent landmark RMSE ({label})",
+                      "null — no human-verified landmarks for this pair", src10, "")
+            e["independent_landmark"] = {
+                "rmse_px": None,
+                "reason": "no human-verified landmarks for this pair",
+            }
+            entries.append(e)
+            continue
+        rmse = row["rmse_px"]
+        is_calibration_row = key in ("ohrc_01", "ohrc_04")
+        rmse_m = round(rmse * 0.25, 2) if is_calibration_row else None
+        floor_note = None
+        if row["n_points"] < 20:
+            floor_note = (f"{row['n_points']} verified points, "
+                          "below the 20-point target")
+        block = {
+            "rmse_px": rmse,
+            "rmse_m": rmse_m,
+            "n_points": row["n_points"],
+            "source": row["source"],
+        }
+        if row["notes"]:
+            block["notes"] = row["notes"]
+        if floor_note:
+            block["floor_note"] = floor_note
+        value = f"{rmse:.4f} px ({row['n_points']} points"
+        if rmse_m is not None:
+            value += f", {rmse_m:.2f} m"
+        if floor_note:
+            value += f"; {floor_note}"
+        value += ")"
+        e = entry(metric, f"Independent landmark RMSE ({label})", value, src10, "")
+        e["independent_landmark"] = block
+        entries.append(e)
+
+    # ---- 11. Dual metrics: non-circular held-out range + admitted fractions ----
+    # Sourced ONLY from results/table_rescue_noncircular.csv (9 pairs). The
+    # README headline states these exact ranges; the checker guards them.
+    src11 = "results/table_rescue_noncircular.csv"
+    nc_rows = read_csv(os.path.join(REPO_ROOT, src11))
+    dual_range = [
+        ("dual_heldout_rmse_min_px", "Non-circular held-out RMSE, minimum over 9 pairs", "px"),
+        ("dual_heldout_rmse_max_px", "Non-circular held-out RMSE, maximum over 9 pairs", "px"),
+        ("dual_admitted_frac_min_pct", "Non-circular admitted fraction of held-out matches, minimum over 9 pairs", "%"),
+        ("dual_admitted_frac_max_pct", "Non-circular admitted fraction of held-out matches, maximum over 9 pairs", "%"),
+    ]
+    if nc_rows:
+        try:
+            held = [float(r["noncircular_rmse_px"]) for r in nc_rows
+                    if r.get("noncircular_rmse_px")]
+            adm = [float(r["noncircular_admitted_frac_hold"]) for r in nc_rows
+                   if r.get("noncircular_admitted_frac_hold")]
+            values = [fmt(min(held)), fmt(max(held)),
+                      fmt(min(adm) * 100, 2), fmt(max(adm) * 100, 2)]
+        except (ValueError, TypeError):
+            values = None
+    else:
+        values = None
+    for (metric, label, unit), value in zip(
+            dual_range, values if values is not None else [UNVERIFIED] * 4):
+        entries.append(entry(metric, label, value, src11, unit))
+
     # ---- Markdown table to stdout ----
     lines = []
     lines.append("# CHANDRA-ALIGN canonical results table")

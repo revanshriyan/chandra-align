@@ -551,8 +551,165 @@
       "hardware": "not recorded",
       "command": "not recorded",
       "commit": "not recorded"
+    },
+    {
+      "metric": "dual_landmark_ohrc_pair_rmse_px",
+      "label": "Independent landmark RMSE (OHRC real pair)",
+      "value": "5.4713 px (20 points)",
+      "unit": "",
+      "source": "results/table_strip_guard_calibration_2026-10-24.csv",
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded",
+      "independent_landmark": {
+        "rmse_px": 5.471325,
+        "rmse_m": null,
+        "n_points": 20,
+        "source": "2026-10-15 landmark rerun",
+        "notes": "known-healthy: no collapse; 5.47px is ~60% non-projective parallax"
+      }
+    },
+    {
+      "metric": "dual_landmark_tmc2_fore_nadir_rmse_px",
+      "label": "Independent landmark RMSE (TMC-2 fore/nadir real pair)",
+      "value": "28.0317 px (20 points)",
+      "unit": "",
+      "source": "results/table_strip_guard_calibration_2026-10-24.csv",
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded",
+      "independent_landmark": {
+        "rmse_px": 28.031705,
+        "rmse_m": null,
+        "n_points": 20,
+        "source": "2026-10-15 landmark rerun",
+        "notes": "known-collapsed: 13 SIFT inliers in thin strip; 28.03px landmark RMSE"
+      }
+    },
+    {
+      "metric": "dual_landmark_ohrc_01_rmse_px",
+      "label": "Independent landmark RMSE (OHRC cratered-rim window)",
+      "value": "1.8869 px (21 points, 0.47 m)",
+      "unit": "",
+      "source": "results/table_strip_guard_calibration_2026-10-24.csv",
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded",
+      "independent_landmark": {
+        "rmse_px": 1.8869,
+        "rmse_m": 0.47,
+        "n_points": 21,
+        "source": "benchmark_crops+_align_core",
+        "notes": "landmarks from gt_ohrc_01_human_clicked.csv"
+      }
+    },
+    {
+      "metric": "dual_landmark_ohrc_02_rmse_px",
+      "label": "Independent landmark RMSE (OHRC massif-slope window)",
+      "value": "null \u2014 no human-verified landmarks for this pair",
+      "unit": "",
+      "source": "results/table_strip_guard_calibration_2026-10-24.csv",
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded",
+      "independent_landmark": {
+        "rmse_px": null,
+        "reason": "no human-verified landmarks for this pair"
+      }
+    },
+    {
+      "metric": "dual_landmark_ohrc_03_rmse_px",
+      "label": "Independent landmark RMSE (OHRC hummocky-relief window)",
+      "value": "null \u2014 no human-verified landmarks for this pair",
+      "unit": "",
+      "source": "results/table_strip_guard_calibration_2026-10-24.csv",
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded",
+      "independent_landmark": {
+        "rmse_px": null,
+        "reason": "no human-verified landmarks for this pair"
+      }
+    },
+    {
+      "metric": "dual_landmark_ohrc_04_rmse_px",
+      "label": "Independent landmark RMSE (OHRC window ohrc_04)",
+      "value": "2.2591 px (18 points, 0.56 m; 18 verified points, below the 20-point target)",
+      "unit": "",
+      "source": "results/table_strip_guard_calibration_2026-10-24.csv",
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded",
+      "independent_landmark": {
+        "rmse_px": 2.2591,
+        "rmse_m": 0.56,
+        "n_points": 18,
+        "source": "benchmark_crops+_align_core",
+        "notes": "thin coverage: 18 verified (< 20)",
+        "floor_note": "18 verified points, below the 20-point target"
+      }
+    },
+    {
+      "metric": "dual_heldout_rmse_min_px",
+      "label": "Non-circular held-out RMSE, minimum over 9 pairs",
+      "value": "0.2459",
+      "unit": "px",
+      "source": "results/table_rescue_noncircular.csv",
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
+    },
+    {
+      "metric": "dual_heldout_rmse_max_px",
+      "label": "Non-circular held-out RMSE, maximum over 9 pairs",
+      "value": "0.3631",
+      "unit": "px",
+      "source": "results/table_rescue_noncircular.csv",
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
+    },
+    {
+      "metric": "dual_admitted_frac_min_pct",
+      "label": "Non-circular admitted fraction of held-out matches, minimum over 9 pairs",
+      "value": "8.16",
+      "unit": "%",
+      "source": "results/table_rescue_noncircular.csv",
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
+    },
+    {
+      "metric": "dual_admitted_frac_max_pct",
+      "label": "Non-circular admitted fraction of held-out matches, maximum over 9 pairs",
+      "value": "32.25",
+      "unit": "%",
+      "source": "results/table_rescue_noncircular.csv",
+      "verified": true,
+      "backend": "not recorded",
+      "hardware": "not recorded",
+      "command": "not recorded",
+      "commit": "not recorded"
     }
   ],
-  "n_entries": 46,
+  "n_entries": 56,
   "n_unverified": 0
 }

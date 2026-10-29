@@ -1558,12 +1558,50 @@ def _failed_judge_metrics_summary(inlier_count: int = 0, total_correspondences: 
     return summary
 
 
+def _format_independent_landmark_line(block):
+    """One dual-metrics line: gate figure beside independent truth, or the reason.
+
+    Never replaces the gate figure; when no landmark cross-check exists the
+    line states the reason plainly instead of leaving a blank.
+    """
+    if not isinstance(block, dict):
+        return "Independent landmark RMSE: unavailable — no human-verified landmarks for this pair"
+    rmse = block.get("rmse_px")
+    if rmse is None:
+        reason = block.get("reason") or "no human-verified landmarks for this pair"
+        return f"Independent landmark RMSE: unavailable — {reason}"
+    try:
+        rmse_value = float(rmse)
+    except (TypeError, ValueError):
+        return "Independent landmark RMSE: unavailable — cross-check not run"
+    if not math.isfinite(rmse_value):
+        return "Independent landmark RMSE: unavailable — cross-check not run"
+    try:
+        n_points = int(block.get("n_points", 0))
+    except (TypeError, ValueError):
+        n_points = 0
+    text = f"Independent landmark RMSE: {rmse_value:.4f} px ({n_points} points"
+    rmse_m = block.get("rmse_m")
+    if rmse_m is not None:
+        try:
+            text += f", {float(rmse_m):.2f} m"
+        except (TypeError, ValueError):
+            pass
+    text += f"; source: {block.get('source', 'not recorded')}"
+    floor_note = block.get("floor_note")
+    if floor_note:
+        text += f"; {floor_note}"
+    text += ") — independent truth; does not replace the gate figure"
+    return text
+
+
 def format_telemetry_report(
     status, inliers, total_pts, inlier_ratio, spatial_entropy,
     quad_counts, rmse=None, affine_telemetry=None, engine="N/A", device="N/A",
     status_message=None, active_quadrants=None, notices=None,
     rmse_in_sample=None, rmse_heldout=None, heldout_count=0, rmse_gate_basis="held-out",
     mae_in_sample=None, mae_heldout=None, confidence_assessment=None,
+    independent_landmark=None,
 ):
     """Render three-tier checklist; hide transform values for rejected fits."""
     code = str(status).strip().upper()
@@ -1617,6 +1655,7 @@ def format_telemetry_report(
         f"In-sample MAE (fit residuals): {mae_in_sample:.4f} px" if mae_in_sample is not None else "In-sample MAE (fit residuals): N/A",
         f"Held-out MAE ({int(heldout_count)} check points): {mae_heldout:.4f} px" if mae_heldout is not None else "Held-out MAE: UNAVAILABLE",
         f"Gate RMSE: {rmse_value:.4f} px ({rmse_gate_basis})" if rmse is not None and math.isfinite(rmse_value) else f"Gate RMSE: N/A ({rmse_gate_basis})",
+        _format_independent_landmark_line(independent_landmark),
         f"[{check(rmse_pass)}] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: {rmse_value:.4f} px)" if (accepted and rmse is not None and math.isfinite(rmse_value)) else "[✗] Sub-Pixel Precision  : RMSE <= 0.50 px (Measured: N/A)",
         f"[{check(entropy_pass)}] Spatial Spread Score : Entropy >= 0.75 (Measured: {entropy_value:.4f} / 2.00)",
         f"[{check(quadrant_pass)}] Quadrant Distribution: Active Quads >= 3 (Measured: {active} / 4)",
@@ -1679,6 +1718,7 @@ def _rejected_output_tuple(summary, status_message=None, image_shape=(768, 1024)
         heldout_count=metrics.get("heldout_check_points", 0),
         rmse_gate_basis=metrics.get("rmse_gate_basis", "held-out unavailable"),
         status_message=message, notices=notices, confidence_assessment=metrics,
+        independent_landmark=metrics.get("independent_landmark"),
     )
     return (
         banner_pil, banner_pil, banner_pil, banner_pil,
@@ -1917,6 +1957,7 @@ def process_alignment(
             f"  In-sample MAE (fit residuals): {mae_in_sample_px:.4f} px\n"
             f"  Held-out MAE ({heldout_error.get('n_check_points', 0)} check points): {heldout_mae_display}\n"
             f"  Gate RMSE: {rmse_px:.4f} px ({rmse_gate_basis})\n"
+            f"  {_format_independent_landmark_line(judge_metrics.get('independent_landmark'))}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"GROUND METRICS (at {pixel_scale_m} m/px):\n"
             f"  RMSE: {rmse_m:.4f} m\n"
@@ -1940,6 +1981,7 @@ def process_alignment(
             status_message=status_message,
             notices=large_image_notices,
             confidence_assessment=result["confidence_assessment"],
+            independent_landmark=judge_metrics.get("independent_landmark"),
         )
         report += (
             "\n<!--QUADRANT_METRICS_START-->"
@@ -1997,7 +2039,10 @@ def process_alignment(
         transform_payload["safety_gate_passed"] = status_code == "SELF_CONSISTENT_SUBPIXEL"
         transform_payload["coarse_advisory"] = status_code == "COARSE_ADVISORY"
         # The downloadable payload carries the gate verdict, which rests
-        # on inlier metrics only; no landmark cross-check is attached.
+        # on inlier metrics only. An independent_landmark block inside
+        # judge_metrics_summary, when present, is a reporting cross-check
+        # populated by an evaluation path with landmarks; it never feeds
+        # the gate, and the verdict tier stays self_consistency.
         transform_payload["evidence_tier"] = "self_consistency"
         transform_payload["transformation_telemetry"] = affine_telemetry
         transform_payload["engine_used"] = result["engine_used"]

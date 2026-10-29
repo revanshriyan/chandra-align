@@ -9,6 +9,7 @@ prose are not checked here.
 """
 
 import csv
+import json
 import re
 import sys
 from pathlib import Path
@@ -120,12 +121,68 @@ def main():
                 failures.append(f"[issue03] no canonical aggregate for {matcher}")
         # if the prose pattern is absent, nothing to check
 
+    # Dual-metrics check-set: new headline figures vs the generator sidecar.
+    # The v1 checks above stay untouched; this set guards only the figures
+    # the dual-metrics headline rewrite added (independent landmark RMSEs
+    # for ohrc_01/ohrc_04, the exact held-out range, the exact admitted
+    # fractions). Same 1e-3 tolerance, same fail-closed exit 1. The sidecar
+    # must be regenerated first (scripts/generate_results_table.py); a
+    # stale sidecar without the dual entries fails here rather than passing
+    # silently.
+    sidecar_path = ROOT / "results" / "table_canonical.json"
+    by_metric = {}
+    if not sidecar_path.exists():
+        failures.append("[dual] generator sidecar missing: run scripts/generate_results_table.py first")
+    else:
+        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        by_metric = {e["metric"]: e for e in sidecar.get("entries", [])}
+
+    dual_checks = [
+        (r"ohrc_01 ([\d.]+) px \((\d+) points",
+         "dual_landmark_ohrc_01_rmse_px", "landmark", "ohrc_01 landmark"),
+        (r"ohrc_04 ([\d.]+) px \((\d+) points",
+         "dual_landmark_ohrc_04_rmse_px", "landmark", "ohrc_04 landmark"),
+        (r"Non-circular 80/20 holdout verification on all 9 pairs: \*\*([\d.]+)–([\d.]+) px\*\*, admitted fractions ([\d.]+)–([\d.]+)%",
+         ("dual_heldout_rmse_min_px", "dual_heldout_rmse_max_px",
+          "dual_admitted_frac_min_pct", "dual_admitted_frac_max_pct"),
+         "range", "held-out + admitted"),
+    ]
+    for pattern, metric, kind, label in dual_checks:
+        match = re.search(pattern, text)
+        if not match:
+            failures.append(f"[dual {label}] pattern not found in README")
+            continue
+        if kind == "landmark":
+            block = by_metric.get(metric, {}).get("independent_landmark") or {}
+            readme_rmse = num(match.group(1))
+            readme_n = num(match.group(2))
+            side_rmse = num(block.get("rmse_px"))
+            side_n = block.get("n_points")
+            if readme_rmse is None or side_rmse is None or abs(readme_rmse - side_rmse) > TOL:
+                failures.append(
+                    f"[dual {label}] README rmse={match.group(1)} != sidecar {block.get('rmse_px')}"
+                )
+            if readme_n is None or side_n is None or int(readme_n) != int(side_n):
+                failures.append(
+                    f"[dual {label}] README n_points={match.group(2)} != sidecar {side_n}"
+                )
+        else:
+            for group, metric_name in enumerate(metric, start=1):
+                readme_val = num(match.group(group))
+                side_val = num(by_metric.get(metric_name, {}).get("value"))
+                if readme_val is None or side_val is None:
+                    failures.append(f"[dual {label}] non-numeric {metric_name}")
+                elif abs(readme_val - side_val) > TOL:
+                    failures.append(
+                        f"[dual {label}] README {metric_name}={readme_val} != sidecar {side_val}"
+                    )
+
     if failures:
         print("README number check FAILED:")
         for failure in failures:
             print("  -", failure)
         return 1
-    print(f"README number check passed ({len(CHECKS)} patterns).")
+    print(f"README number check passed ({len(CHECKS)} patterns + {len(dual_checks)} dual patterns).")
     return 0
 
 
