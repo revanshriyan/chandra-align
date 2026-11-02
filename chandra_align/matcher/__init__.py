@@ -1,7 +1,8 @@
 """Default LightGlue→SIFT matcher cascade.
 
 RIFT2 is permitted only with an explicit ``rift2_opt_in: true`` setting because
-its measured output is non-functional and its redistribution license is unclear.
+its redistribution license is unclear. It is functional (2026-11-02 GPU
+bench) but is not a default-path matcher.
 Verification and refinement still happen after matching.
 SuperPoint = disclosed research-license fallback. RoMa/EfficientLoFTR = offline
 benchmarking only, never wired here.

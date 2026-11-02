@@ -1,5 +1,13 @@
 # Vendored RIFT2 license review
 
+> **Update 2026-11-02:** the GPU bench at main 95d64c2f
+> (`docs/gpu-bench-2026-11-02.md`) measured RIFT2 as functional —
+> the "non-functional" premise in the removal discussion below came
+> from a since-fixed mutual-nearest-neighbour bug and is superseded.
+> The license finding itself is unchanged: the vendored code's
+> license is still unresolved, RIFT2 stays opt-in and disabled by
+> default, and the removal question now turns on the license alone.
+
 ## Finding
 
 The repository does not currently have enough licensing evidence to add a license notice for the entire `vendored/rift2/` tree. The upstream project is [LJY-RS/RIFT2-multimodal-matching-rotation](https://github.com/LJY-RS/RIFT2-multimodal-matching-rotation), which contains Python and MATLAB implementations and cites the RIFT2 paper, but no explicit license for the RIFT2 implementation was located in its repository metadata or the checked source files. The RIFT2 paper is [arXiv:2303.00319](https://arxiv.org/abs/2303.00319). A public copy of Peter Kovesi's phase-congruency algorithm includes permission to redistribute with attribution, and the Python `phasecong.py` file in this repository identifies Kovesi as the original MATLAB author and Alistair Muldal as the Python translator. That permission applies to the phase-congruency component; it does not establish a license for RIFT2 itself or every file in this vendor subtree.

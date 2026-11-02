@@ -51,8 +51,11 @@ DEGENERATE_FAILURE. Rejected fits mask transform telemetry.
   *the* true one. Treat real-pair outputs as advisories, not measurements.
 - **IIRS↔TMC-2 cross-modal: no successful registration yet.** Both matchers hit
   DEGENERATE_FAILURE on the verified-overlap crop.
-- **RIFT2 is non-functional** in this codebase (0–1 correspondences per pair).
-  It is vendored but disabled by default.
+- **RIFT2 is functional but opt-in.** The 2026-11-02 GPU bench measured
+  ACCEPTED on synthetic (inlier RMSE 0.1398 px) and COARSE on OHRC
+  (2.0185 px); the earlier 0–1 correspondence readings came from a
+  since-fixed mutual-nearest-neighbour bug. It is vendored but disabled
+  by default because its license is unresolved.
 - Held-out RMSE is computed on 3–25 check points depending on the pair; small
   held-out sets are noisy — see the per-table `n_heldout_points` columns.
 

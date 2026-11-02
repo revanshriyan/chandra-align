@@ -69,3 +69,42 @@ never touched by a fallback.
 - Landmark CLICKING stays human-only. This document, the clicker
   tooling, and any candidate pre-placement are preparation only and
   create no verified landmarks.
+
+## Amendments
+
+### Amendment 2026-11-02 — Sun-angle source; T4–T6 sourcing and screening outcome
+
+(a) **Sun angles are computed** from each product's label UTC time
+coordinates plus its footprint geometry, for all Phase 2 pairs. The
+delivered PDS4 labels and geometry products were verified on disk to
+carry no illumination angles (the geometry CSV columns are Longitude,
+Latitude, Pixel, Scan only), so reading angles from the labels is not
+available and is closed as the primary source. Visible shadow
+direction in the imagery is the recorded cross-check; a shadow
+estimator is the per-product fallback only where time or footprint is
+unusable, flagged in the pair record. SPICE remains parked with the
+deferred 3D work.
+
+(b) **T4–T6 are sourced via archive fetches** (the team's explicit
+choice, superseding the region-diverse fallback as the current plan;
+the fallback remains the contingency if the fetches fail). Pairs must
+be the archives' own published files, not pairs manufactured from the
+team's data. Screening outcome, 2026-11-02:
+
+- **Q3 — SELENE TC via JAXA DARTS open listings: one slot filled.**
+  Morning/evening MAP pair `TCO_MAPm04_N12E339N09E342SC` +
+  `TCO_MAPe04_N12E339N09E342SC` (Copernicus region, lat 9–12°N,
+  lon 339–342°E, 7.4 m/px, identical grid), each 301,989,888 B,
+  downloaded and hash-verified. A real cross-illumination pair.
+- **Q1 — LROC NAC EDR via ODE: blocked.** Candidate pairs were
+  screened (e.g. Hadley `M157934151L` × `M113941548L`, incidence
+  35° vs 59°), but the ODE REST validator returns "Invalid IIPT" for
+  EDRNAC product queries, so no files could be fetched. Retry path is
+  the ODE web search UI; it has not been approved or attempted yet.
+- **Q2 — SELENE TC via JAXA SOAC: blocked.** The route works but is
+  account-gated; no account was created. Creating one is a human
+  decision, not a workaround item.
+
+Two of the three T4–T6 slots remain open pending Q1/Q2 unblocking or
+a later dated amendment substituting screened alternates (Tycho and
+Kepler TC morning/evening tiles via Q3 are already screened).

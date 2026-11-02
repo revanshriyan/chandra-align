@@ -2,6 +2,12 @@
 
 Date: 2026-10-07. Read-only research; no repo changes made.
 
+> **Update 2026-11-02:** this review's aside that RIFT2 "is
+> non-functional here" is superseded — the 2026-11-02 GPU bench
+> (`docs/gpu-bench-2026-11-02.md`) measured it functional on the
+> fixed mutual-nearest-neighbour code. The license posture recorded
+> below is unchanged: opt-in only, disabled by default.
+
 ## (a) Upstream source and license
 
 - **Canonical upstream:** `LJY-RS/RIFT2-multimodal-matching-rotation`

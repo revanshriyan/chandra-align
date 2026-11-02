@@ -611,7 +611,7 @@ class TestExtremeSolarIllumination:
         matcher = RIFT2Matcher(npt=4000, lowes_ratio=0.75)
         pts_a, pts_b = matcher.match(ref, mov)
         
-        # No correspondence-yield claim is made for this non-functional matcher.
+        # No correspondence-yield claim is made for this opt-in matcher here.
         assert pts_a.shape[1] == 2 if pts_a.shape[0] > 0 else True
         assert pts_b.shape[1] == 2 if pts_b.shape[0] > 0 else True
     

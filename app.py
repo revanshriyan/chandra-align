@@ -438,8 +438,9 @@ def match_pair_hf(
         fallback_error=lightglue_error,
     )
 
-    # RIFT2 remains callable only by explicit operator opt-in. Its license is
-    # unresolved and its measured correspondence yield is non-functional.
+    # RIFT2 remains callable only by explicit operator opt-in. Its license
+    # is unresolved; it is functional (2026-11-02 GPU bench) but is not a
+    # default-path matcher.
     rift2_error = "not attempted (opt-in disabled)"
     if diagnostics["rift2_opt_in"]:
         try:
@@ -2549,8 +2550,9 @@ def build_interface():
                 "learned matching improves robustness in difficult polar/cross-modal cases.\n\n"
                 "**CHANDRA-ALIGN implementation:** LightGlue/ALIKED is the default matcher, "
                 "with SIFT + RANSAC as the CPU fallback when learned matching is unavailable "
-                "or its geometric fit is weak. RIFT2 is non-functional in current validation "
-                "and is attempted only when the operator explicitly sets "
+                "or its geometric fit is weak. RIFT2 is functional but opt-in "
+                "(license unresolved) and is attempted only when the operator "
+                "explicitly sets "
                 "`CHANDRA_ENABLE_RIFT2=1`. The report records matcher selection, fallback "
                 "reason, in-sample and held-out RMSE/MAE, and gate telemetry."
             )

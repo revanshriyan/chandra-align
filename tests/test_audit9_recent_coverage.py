@@ -1,4 +1,4 @@
-"""Tests for Claude audit item #9 — coverage for recent work.
+"""Tests for audit item #9 — coverage for recent work.
 
 1. Non-circular rescue scorer (_noncircular_rescue_score): verifies the
    80/20 split, determinism, fail-closed guards, and — critically — that
