@@ -526,6 +526,119 @@ def test_iirs_qub_decode_failure_has_actionable_upload_fallback():
     assert "matching .hdr" in message
 
 
+def test_engine_used_label_pc_frontend_is_not_rift2():
+    import app
+
+    label = app._engine_used_label("pc_frontend")
+    assert "Phase Congruency" in label
+    assert "RIFT2" not in label
+
+
+def test_engine_used_label_rift2_names_rift2():
+    import app
+
+    assert app._engine_used_label("RIFT2 (Phase Congruency; opt-in)") == "Opt-in (RIFT2)"
+
+
+def test_engine_used_label_known_engines():
+    import app
+
+    assert app._engine_used_label("SIFT + Brute-Force (RANSAC fallback)") == "Fallback (SIFT)"
+    assert app._engine_used_label("LightGlue/ALIKED (LightGlue_ALIKED)") == "Primary (LightGlue/ALIKED)"
+    assert app._engine_used_label("matchanything_eloftr") == "Opt-in (MatchAnything/ELoFTR)"
+    assert app._engine_used_label("wildmatch_loftr") == "Opt-in (WildMatch/LoFTR)"
+    assert app._engine_used_label("anymatch_loftr") == "Opt-in (AnyMatch/LoFTR)"
+    assert app._engine_used_label("xoftr_640") == "Opt-in (XoFTR)"
+
+
+def test_engine_used_label_unknown_engine_uses_its_own_name():
+    import app
+
+    assert app._engine_used_label("some_future_engine") == "Opt-in (some_future_engine)"
+
+
+def test_execution_device_from_recorded_cuda_matcher(monkeypatch):
+    import app
+
+    monkeypatch.setattr(app, "_zerogpu_runtime_enabled", lambda: False)
+    label = app._execution_device_label(
+        "LightGlue/ALIKED (LightGlue_ALIKED)", {"matcher_device": "cuda"}
+    )
+    assert label == "GPU (CUDA)"
+
+
+def test_execution_device_recorded_cpu_matcher(monkeypatch):
+    import app
+
+    monkeypatch.setattr(app, "_zerogpu_runtime_enabled", lambda: False)
+    monkeypatch.setattr(app, "TORCH_CUDA_AVAILABLE", True)
+    label = app._execution_device_label(
+        "LightGlue/ALIKED (LightGlue_ALIKED)", {"matcher_device": "cpu"}
+    )
+    assert label == "CPU"
+
+
+def test_execution_device_zerogpu_preserved(monkeypatch):
+    import app
+
+    monkeypatch.setattr(app, "_zerogpu_runtime_enabled", lambda: True)
+    assert app._execution_device_label("pc_frontend", {}) == "GPU (ZeroGPU)"
+    assert app._execution_device_label(
+        "LightGlue/ALIKED (LightGlue_ALIKED)", {"matcher_device": "cpu"}
+    ) == "GPU (ZeroGPU)"
+
+
+def test_execution_device_classical_engines_are_cpu(monkeypatch):
+    import app
+
+    monkeypatch.setattr(app, "_zerogpu_runtime_enabled", lambda: False)
+    monkeypatch.setattr(app, "TORCH_CUDA_AVAILABLE", True)
+    # Classical engines run on CPU even on a CUDA-capable host, and a
+    # device recorded by an earlier cascade stage must not relabel them
+    # (the SIFT fit that supersedes a LightGlue candidate is CPU work).
+    assert app._execution_device_label("pc_frontend", {"matcher_device": "cuda"}) == "CPU"
+    assert app._execution_device_label(
+        "SIFT + Brute-Force (RANSAC fallback)", {"matcher_device": "cuda"}
+    ) == "CPU"
+    assert app._execution_device_label("RIFT2 (Phase Congruency; opt-in)", {}) == "CPU"
+
+
+def test_execution_device_xoftr_follows_local_cuda(monkeypatch):
+    import app
+
+    monkeypatch.setattr(app, "_zerogpu_runtime_enabled", lambda: False)
+    monkeypatch.setattr(app, "TORCH_CUDA_AVAILABLE", True)
+    assert app._execution_device_label("xoftr_640", {}) == "GPU (CUDA)"
+    monkeypatch.setattr(app, "TORCH_CUDA_AVAILABLE", False)
+    assert app._execution_device_label("xoftr_640", {}) == "CPU"
+
+
+def test_local_execution_status_reflects_local_cuda(monkeypatch):
+    import app
+
+    monkeypatch.setattr(app, "TORCH_CUDA_AVAILABLE", True)
+    assert app._local_execution_status() == "💻 Execution Mode: GPU (Local CUDA)"
+    monkeypatch.setattr(app, "TORCH_CUDA_AVAILABLE", False)
+    assert app._local_execution_status() == "💻 Execution Mode: CPU (Local Runtime)"
+
+
+def test_process_wrapper_marks_local_cuda_success(monkeypatch):
+    import app
+    from PIL import Image
+
+    expected = _wrapper_output_fixture(Image)
+    monkeypatch.setattr(app, "run_alignment_on_gpu", lambda *args, **kwargs: expected)
+    monkeypatch.setattr(app, "_zerogpu_runtime_enabled", lambda: False)
+    monkeypatch.setattr(app, "TORCH_CUDA_AVAILABLE", True)
+
+    result = app.process_wrapper("ref", "sec", "OHRC", "TMC-2", "Optical <-> Optical",
+                                 True, 0.25, True, 3.0, True, False, 128.0, 50.0)
+
+    assert len(result) == 14
+    assert "GPU (Local CUDA)" in result[4]
+    assert "Hardware Runtime Mode : GPU (Local CUDA)" in result[6]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 

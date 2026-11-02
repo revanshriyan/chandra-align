@@ -422,11 +422,18 @@ def match_pair_hf(
     }
     try:
         from chandra_align.matching.deep_matchers import DeepMatcherChain, LightGlueALIKEDMatcher
-        result = DeepMatcherChain(matchers=[LightGlueALIKEDMatcher(max_keypoints=2048)]).match(
+        lg_matcher = LightGlueALIKEDMatcher(max_keypoints=2048)
+        result = DeepMatcherChain(matchers=[lg_matcher]).match(
             img1, img2, min_matches=4
         )
         if len(result.pts_src) >= 4:
             diagnostics["registration_engine"] = f"LightGlue/ALIKED ({result.matcher_name})"
+            lg_device = getattr(lg_matcher, "_device", None)
+            if lg_device is not None:
+                # Record the device this matcher actually loaded onto, so
+                # result telemetry reports the device that ran instead of
+                # guessing from the runtime mode.
+                diagnostics["matcher_device"] = str(lg_device)
             return result.pts_src, result.pts_ref, diagnostics["registration_engine"], diagnostics
         lightglue_error = result.error_msg or "LightGlue/ALIKED returned fewer than four correspondences"
     except Exception as exc:
@@ -448,6 +455,7 @@ def match_pair_hf(
             src_pts, dst_pts = RIFT2Matcher(npt=2048).match(img1, img2)
             if len(src_pts) >= 4:
                 diagnostics["registration_engine"] = "RIFT2 (Phase Congruency; opt-in)"
+                diagnostics["matcher_device"] = "cpu"  # numpy phase congruency
                 return src_pts, dst_pts, diagnostics["registration_engine"], diagnostics
             rift2_error = f"RIFT2 returned {len(src_pts)} correspondences (< 4 required)"
         except Exception as exc:
@@ -535,6 +543,7 @@ def match_pair_hf(
         if best is not None:
             _, candidate_ref, candidate_sec, variant_name, ratio = best
             diagnostics["registration_engine"] = "SIFT + Brute-Force (RANSAC fallback)"
+            diagnostics["matcher_device"] = "cpu"  # OpenCV SIFT fallback
             diagnostics["sift_variant"] = variant_name
             diagnostics["sift_ratio"] = ratio
             diagnostics["lightglue_error"] = lightglue_error
@@ -650,6 +659,82 @@ def _jsonable_deform_field_info(info):
             value = repr(value)
         safe[key] = value
     return safe
+
+
+def _local_cuda_available() -> bool:
+    """Whether this local runtime can run torch on CUDA.
+
+    Reads the import-time probe (TORCH_CUDA_AVAILABLE) that the runtime
+    badge already uses; defined later in the module, resolved at call time.
+    """
+    return bool(TORCH_CUDA_AVAILABLE)
+
+
+def _engine_used_label(engine_name: str) -> str:
+    """Human-facing label for the engine that produced a run's matches.
+
+    Every engine that can reach result assembly is mapped explicitly, and
+    an unrecognized engine falls back to its own name so it can never
+    borrow another engine's label (the phase-congruency front-end was
+    previously reported as RIFT2 by the catch-all branch).
+    """
+    engine_lower = (engine_name or "").lower()
+    if "sift" in engine_lower:
+        return "Fallback (SIFT)"
+    if "lightglue" in engine_lower or "aliked" in engine_lower:
+        return "Primary (LightGlue/ALIKED)"
+    if "rift2" in engine_lower:
+        return "Opt-in (RIFT2)"
+    if engine_lower == "pc_frontend" or "phase_congruency" in engine_lower \
+            or "phase congruency" in engine_lower:
+        return "Opt-in (Phase Congruency front-end)"
+    if "matchanything" in engine_lower:
+        return "Opt-in (MatchAnything/ELoFTR)"
+    if "wildmatch" in engine_lower:
+        return "Opt-in (WildMatch/LoFTR)"
+    if "anymatch" in engine_lower:
+        return "Opt-in (AnyMatch/LoFTR)"
+    if "xoftr" in engine_lower:
+        return "Opt-in (XoFTR)"
+    return f"Opt-in ({engine_name})"
+
+
+def _execution_device_label(engine_name: str, diagnostics: dict | None = None) -> str:
+    """Device label for the engine that produced a run's matches.
+
+    Derived from what actually executed, not the runtime mode: ZeroGPU
+    runs keep their label; classical engines (SIFT, phase congruency,
+    RIFT2) are CPU by construction; otherwise the device recorded in the
+    run diagnostics by the matcher itself wins; XoFTR's vendored inference
+    calls .cuda() directly (shimmed to a no-op without CUDA), so it ran
+    on GPU exactly when local CUDA is available. Torch front-end arms
+    whose loaders never move the model off CPU (MatchAnything, WildMatch,
+    AnyMatch) fall through to CPU.
+    """
+    if _zerogpu_runtime_enabled():
+        return "GPU (ZeroGPU)"
+    engine_lower = (engine_name or "").lower()
+    if "sift" in engine_lower or "rift" in engine_lower \
+            or engine_lower == "pc_frontend" or "phase" in engine_lower \
+            or engine_lower in ("", "failed"):
+        return "CPU"
+    recorded = (diagnostics or {}).get("matcher_device")
+    if recorded:
+        return "GPU (CUDA)" if str(recorded).strip().lower().startswith("cuda") else "CPU"
+    if "xoftr" in engine_lower:
+        return "GPU (CUDA)" if _local_cuda_available() else "CPU"
+    return "CPU"
+
+
+def _local_execution_status() -> str:
+    """Startup status line for local (non-ZeroGPU) runs.
+
+    Names the local device class honestly: a CUDA-capable local runtime
+    must not claim CPU just because it is not a ZeroGPU Space.
+    """
+    if _local_cuda_available():
+        return "💻 Execution Mode: GPU (Local CUDA)"
+    return "💻 Execution Mode: CPU (Local Runtime)"
 
 
 def _align_core(
@@ -1176,6 +1261,7 @@ def _align_core(
                             inlier_cnt = int(inliers.sum())
                             engine_name = "SIFT + Brute-Force (RANSAC fallback)"
                             execution_diagnostics["registration_engine"] = engine_name
+                            execution_diagnostics["matcher_device"] = "cpu"
                 if execution_diagnostics["registration_engine"] != engine_name:
                     execution_diagnostics["fallback_error"] = "SIFT/RANSAC did not yield a valid partial affine with the required inlier count"
             except Exception as exc:
@@ -1368,14 +1454,8 @@ def _align_core(
     )
     judge_metrics.update(confidence_assessment)
 
-    engine_lower = engine_name.lower()
-    if "sift" in engine_lower:
-        engine_used = "Fallback (SIFT)"
-    elif "lightglue" in engine_lower or "aliked" in engine_lower:
-        engine_used = "Primary (LightGlue/ALIKED)"
-    else:
-        engine_used = "Opt-in (RIFT2 phase congruency)"
-    execution_device = "GPU (ZeroGPU)" if _zerogpu_runtime_enabled() else "CPU"
+    engine_used = _engine_used_label(engine_name)
+    execution_device = _execution_device_label(engine_name, execution_diagnostics)
 
     if status_code == "DEGENERATE_FAILURE":
         banner_bgr = create_rejection_banner(ref_original.shape[:2])
@@ -2148,10 +2228,15 @@ def _append_execution_status(outputs, status: str):
     report = values[4] if isinstance(values[4], str) else ""
     values[4] = f"{report.rstrip()}\n\n{status}".strip()
     telemetry = values[6] if isinstance(values[6], str) else ""
-    device = "GPU (ZeroGPU)" if "ZeroGPU" in status else "CPU"
+    if "ZeroGPU" in status:
+        hardware = "GPU (ZeroGPU Active)"
+    elif "Local CUDA" in status:
+        hardware = "GPU (Local CUDA)"
+    else:
+        hardware = "CPU Fallback"
     telemetry = re.sub(
         r"(?m)^Hardware Runtime Mode\s*:\s*.*$",
-        f"Hardware Runtime Mode : {'GPU (ZeroGPU Active)' if 'ZeroGPU' in status else 'CPU Fallback'}",
+        f"Hardware Runtime Mode : {hardware}",
         telemetry,
     )
     values[6] = telemetry
@@ -2206,7 +2291,7 @@ def process_wrapper(
                 ref, sec, sensor, secondary_sensor, pair_mode, enforce_uniform,
                 px_scale, clahe, clip, shadow, wallis, wallis_m, wallis_s
             )
-            status = GPU_EXECUTION_STATUS if _zerogpu_runtime_enabled() else "💻 Execution Mode: CPU (Local Runtime)"
+            status = GPU_EXECUTION_STATUS if _zerogpu_runtime_enabled() else _local_execution_status()
         except Exception:
             print("ZeroGPU allocation/execution failed; retrying alignment on CPU.", file=sys.stderr, flush=True)
             print(traceback.format_exc(), file=sys.stderr, flush=True)
