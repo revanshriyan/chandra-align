@@ -54,6 +54,9 @@ echo "== [2/4] ChandraBench v0.1 evaluator self-test =="
 "$VPY" chandrabench/eval.py --self-test
 
 echo "== [3/4] fast deterministic test subset =="
+# pytest is not in requirements-cpu.txt (CI installs it separately); the
+# test subset cannot run without it, so install it into the repro venv.
+"$VPY" -m pip install --quiet pytest
 "$VPY" -m pytest -q -p no:cacheprovider \
     tests/test_canonical_table.py \
     tests/test_results_one_pager_drift.py \
