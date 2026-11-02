@@ -1,2 +1,4 @@
 examples/benchmarks/*.png filter=lfs diff=lfs merge=lfs -text
 docs/assets/examples/*.png filter=lfs diff=lfs merge=lfs -text
+results/** -text
+chandrabench/*.csv -text

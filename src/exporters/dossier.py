@@ -173,6 +173,8 @@ def _parse_matcher_tier(matcher: Optional[str]) -> MatcherTier:
         return MatcherTier.TIER2_LIGHTGLUE_ALIKED
     elif 'lightglue' in matcher_lower and 'disk' in matcher_lower:
         return MatcherTier.TIER2_LIGHTGLUE_DISK
+    elif 'sift_fallback' in matcher_lower:
+        return MatcherTier.SIFT_FALLBACK
     elif 'sift' in matcher_lower:
         return MatcherTier.TIER2_SIFT
     elif 'rift2' in matcher_lower:

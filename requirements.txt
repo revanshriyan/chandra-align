@@ -1,5 +1,14 @@
 --extra-index-url https://download.pytorch.org/whl/cu128
 torch==2.11.0+cu128
+# GPU matcher tier for the API/app (LightGlue + ALIKED). CPU installs
+# (requirements-cpu.txt) omit these on purpose: the matcher cascade
+# falls back to SIFT when the GPU stack is not installed.
+# Upstream LightGlue is not distributed on PyPI; its documented install
+# is a source install, so the exact upstream commit is pinned below
+# (resolved 2026-11-03 via `git ls-remote https://github.com/cvg/LightGlue.git HEAD`).
+# kornia is pinned to the version installed and importable on this VM.
+git+https://github.com/cvg/LightGlue.git@5a650c444718caffc2669dc0094cde908f42dd73
+kornia==0.8.3
 opencv-python-headless==5.0.0.93
 numpy==2.5.3
 scipy

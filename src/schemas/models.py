@@ -57,6 +57,7 @@ class MatcherTier(str, Enum):
     TIER2_LIGHTGLUE_ALIKED = "lightglue_aliked"
     TIER2_LIGHTGLUE_DISK = "lightglue_disk"
     TIER2_SIFT = "sift"  # synthetic fallback
+    SIFT_FALLBACK = "sift_fallback"  # GPU stack missing: tier-1 fell back to SIFT
 
 
 class TransformationMode(str, Enum):

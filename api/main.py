@@ -158,11 +158,105 @@ def _safe_upload_name(filename: Optional[str]) -> str:
     return name
 
 
+def _max_upload_bytes() -> int:
+    """Per-file upload cap in bytes (env CHANDRA_MAX_UPLOAD_MB, default 1024)."""
+    try:
+        mb = int(os.environ.get("CHANDRA_MAX_UPLOAD_MB", "1024"))
+    except ValueError:
+        mb = 1024
+    return max(0, mb) * 1024 * 1024
+
+
+def _max_image_pixels() -> int:
+    """Per-image pixel cap (env CHANDRA_MAX_IMAGE_PIXELS, default 100_000_000)."""
+    try:
+        return int(os.environ.get("CHANDRA_MAX_IMAGE_PIXELS", "100000000"))
+    except ValueError:
+        return 100_000_000
+
+
 def _write_upload(upload: UploadFile, tmp_dir: Path) -> str:
+    """Stream an upload to disk in chunks under a per-file size cap.
+
+    The previous implementation buffered the whole file in RAM and had
+    no size limit, so a single upload could exhaust host memory. Bytes
+    are counted as they stream; exceeding the cap aborts with 413 and
+    the partial file is removed.
+    """
     dest = tmp_dir / _safe_upload_name(upload.filename)
-    with open(dest, "wb") as f:
-        f.write(upload.file.read())
+    cap = _max_upload_bytes()
+    total = 0
+    try:
+        with open(dest, "wb") as f:
+            while True:
+                chunk = upload.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > cap:
+                    raise HTTPException(
+                        413,
+                        f"upload exceeds the per-file size cap "
+                        f"({cap // (1024 * 1024)} MB)",
+                    )
+                f.write(chunk)
+    except HTTPException:
+        dest.unlink(missing_ok=True)
+        raise
     return str(dest)
+
+
+def _validate_run_config(cfg: dict, shape) -> None:
+    """Reject uploaded-config values that make a run unbounded (422).
+
+    The config file is caller-supplied, so the numeric fields that size
+    the compute must be range-checked before any stage runs: tile size
+    and the implied tile count (the tile stage is linear in tile
+    count), the matcher grid, the tile overlap, and the warp blend
+    width. Values from the shipped modality profiles pass unchanged.
+    """
+    def _fail(msg):
+        raise HTTPException(422, f"invalid config: {msg}")
+
+    try:
+        tile_h, tile_w = (int(v) for v in cfg["tile_size"])
+    except (KeyError, TypeError, ValueError):
+        _fail("tile_size must be a [height, width] pair")
+    if tile_h < 128 or tile_w < 128:
+        _fail("tile_size dimensions must be at least 128 px")
+
+    try:
+        overlap = float(cfg.get("tile_overlap", 0.0))
+    except (TypeError, ValueError):
+        _fail("tile_overlap must be a number")
+    if not 0.0 <= overlap < 1.0:
+        _fail("tile_overlap must be in [0, 1)")
+
+    img_h, img_w = int(shape[0]), int(shape[1])
+
+    def _tile_count(dim, tile):
+        if dim <= tile:
+            return 1
+        step = max(1, int(tile * (1.0 - overlap)))
+        return 1 + -(-(dim - tile) // step)
+
+    n_tiles = _tile_count(img_h, tile_h) * _tile_count(img_w, tile_w)
+    if n_tiles > 10_000:
+        _fail(f"tile_size implies {n_tiles} tiles (limit 10000)")
+
+    try:
+        grid_h, grid_w = (int(v) for v in cfg["matcher"]["grid"])
+    except (KeyError, TypeError, ValueError):
+        _fail("matcher.grid must be a [rows, cols] pair")
+    if not (1 <= grid_h <= 64 and 1 <= grid_w <= 64):
+        _fail("matcher.grid dimensions must be within 1..64")
+
+    try:
+        blend = int(cfg["warp"]["blend_width_px"])
+    except (KeyError, TypeError, ValueError):
+        _fail("warp.blend_width_px must be an integer")
+    if not 0 <= blend <= 512:
+        _fail("warp.blend_width_px must be within 0..512")
 
 
 @app.post("/register")
@@ -199,6 +293,18 @@ async def register(
         # Stage 1: ingest + CRS guard
         band_a, band_b, meta_a, meta_b, crs = assert_pair_same_crs(ref_path, mov_path)
 
+        # Resource guards: reject oversize images and unbounded config
+        # values before any matching compute starts. Matching and the
+        # refinement stage scale super-linearly with pixel count, and
+        # the config is caller-supplied.
+        pixel_cap = _max_image_pixels()
+        if band_a.size > pixel_cap or band_b.size > pixel_cap:
+            raise HTTPException(
+                413,
+                f"image exceeds the per-image pixel cap ({pixel_cap} px)",
+            )
+        _validate_run_config(cfg, band_a.shape)
+
         # photometry mask (geometry-from-metadata; approximation flagged downstream)
         mask = shadow_saturation_mask(band_b, **{
             k: v for k, v in cfg["photometry"].items()
@@ -219,7 +325,7 @@ async def register(
         # Stage 4: uniformity + warp + outputs
         shape = band_a.shape
         uni = uniformity_score(ref_a, shape, grid=tuple(cfg["matcher"]["grid"]))
-        M_fit, rm = evaluate(ref_a, ref_b)  # circularity-guarded held-out RMSE
+        M_fit, rm = evaluate(M_raw, ref_a, ref_b)  # circularity-guarded held-out RMSE
 
         tile_affines = fit_tile_affines(shape, ref_a, ref_b,
                                         tile_size=tuple(cfg["tile_size"]),
@@ -319,6 +425,8 @@ def _parse_matcher_tier(matcher: Optional[str]):
         return MatcherTier.TIER2_LIGHTGLUE_ALIKED
     elif 'lightglue' in matcher_lower and 'disk' in matcher_lower:
         return MatcherTier.TIER2_LIGHTGLUE_DISK
+    elif 'sift_fallback' in matcher_lower:
+        return MatcherTier.SIFT_FALLBACK
     elif 'sift' in matcher_lower:
         return MatcherTier.TIER2_SIFT
     elif 'rift2' in matcher_lower:

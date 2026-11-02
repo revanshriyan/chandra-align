@@ -238,7 +238,10 @@ class LightGlueMatcher:
             ) from e
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        max_kp = int(self.cfg.get("tier2_escalation", {}).get("max_keypoints", 4096))
+        # Hard cap regardless of config: the refinement stage builds an
+        # n x n distance matrix over the matched points, so an unchecked
+        # keypoint budget is a memory-exhaustion vector.
+        max_kp = min(int(self.cfg.get("tier2_escalation", {}).get("max_keypoints", 4096)), 8000)
         extractor = ALIKED(max_num_keypoints=max_kp).eval().to(device)
         lg = LightGlue(features="aliked").eval().to(device)
         self._model = (torch, extractor, lg, device)
@@ -271,7 +274,17 @@ def run_cascade(img_a, img_b, cfg_matcher: dict, uniformity_score=None):
     Returns (pts_a, pts_b, matcher_name, escalated: bool).
     """
     t1 = make_matcher(cfg_matcher, "tier1")
-    pts_a, pts_b = t1.match(img_a, img_b)
+    try:
+        pts_a, pts_b = t1.match(img_a, img_b)
+        primary_name = t1.name
+    except RuntimeError:
+        # Primary matcher unavailable (its GPU stack — torch/lightglue —
+        # is not installed on this deployment): degrade to the SIFT
+        # matcher, mirroring the app fallback, instead of failing the
+        # run. The returned name reports the fallback honestly.
+        fallback = SIFTMatcher()
+        pts_a, pts_b = fallback.match(img_a, img_b)
+        primary_name = "sift_fallback"
     escalated = False
     raw_matches = pts_a.shape[0]
     # Escalation decision based on raw match count (not fake inlier ratio)
@@ -297,7 +310,7 @@ def run_cascade(img_a, img_b, cfg_matcher: dict, uniformity_score=None):
             except RuntimeError:
                 # Tier-2 unavailable (torch/lightglue not installed) — continue with Tier-1
                 pass
-    return pts_a, pts_b, (t2.name if escalated else t1.name), escalated
+    return pts_a, pts_b, (t2.name if escalated else primary_name), escalated
 
 
 def _raw_ratio(n_matches: int) -> float:
