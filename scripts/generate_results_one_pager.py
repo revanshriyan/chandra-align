@@ -182,13 +182,13 @@ def build_one_pager() -> str:
         if row["benchmark"] in ("crop_benchmark_12pair", "iirs_first_contact"):
             lines.append(_canonical_line(row))
     lines.append("")
-    lines.append("External baselines (39 canonical rows, per-pair windows):")
+    external_rows = [row for row in real_canon if row["benchmark"] == "external_baselines"]
+    lines.append(f"External baselines ({len(external_rows)} canonical rows, per-pair windows):")
     lines.append("")
     verdict_counts: dict[str, int] = {}
-    for row in real_canon:
-        if row["benchmark"] == "external_baselines":
-            key = row["verdict"].split(":")[0].strip()
-            verdict_counts[key] = verdict_counts.get(key, 0) + 1
+    for row in external_rows:
+        key = row["verdict"].split(":")[0].strip()
+        verdict_counts[key] = verdict_counts.get(key, 0) + 1
     for key in sorted(verdict_counts):
         lines.append(f"- {key}: {verdict_counts[key]} rows; "
                      "source: results/table_canonical_v1.csv (external_baselines)")
@@ -208,6 +208,9 @@ def build_one_pager() -> str:
             lines.append(_canonical_line(row))
     for row in synth_canon:
         if row["benchmark"] == "ground_truth":
+            lines.append(_canonical_line(row))
+    for row in synth_canon:
+        if row["benchmark"] == "external_baselines":
             lines.append(_canonical_line(row))
     lines.append("")
 

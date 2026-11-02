@@ -53,7 +53,7 @@ Canonical table (issue #1 validation harness):
 - iirs2_fore_tmc2 / LightGlue/ALIKED: inlier (fit) RMSE 1.1748296022415161 px; verdict "DEGENERATE_FAILURE"; source: results/table_canonical_v1.csv (iirs_first_contact); hardware: not recorded
 - iirs2_fore_tmc2 / SIFT + Brute-Force (RANSAC fallback): inlier (fit) RMSE 0.0 px; held-out RMSE 0.0 px; verdict "DEGENERATE_FAILURE"; source: results/table_canonical_v1.csv (iirs_first_contact); hardware: not recorded
 
-External baselines (39 canonical rows, per-pair windows):
+External baselines (36 canonical rows, per-pair windows):
 
 - COARSE_ADVISORY: 24 rows; source: results/table_canonical_v1.csv (external_baselines)
 - DEGENERATE_FAILURE: 9 rows; source: results/table_canonical_v1.csv (external_baselines)
@@ -70,6 +70,9 @@ External baselines (39 canonical rows, per-pair windows):
 - synthetic_gentle / RIFT2: no RMSE on this row (verdict-only); verdict_agrees: UNMEASURED_NO_FIT; source: results/table_canonical_v1.csv (ground_truth); hardware: not recorded
 - synthetic_gentle / LightGlue_ALIKED: held-out RMSE 0.4231709230 px; independent landmark RMSE 0.119166 px; verdict_agrees: YES; source: results/table_canonical_v1.csv (ground_truth); hardware: not recorded
 - synthetic_gentle / SIFT_RANSAC: held-out RMSE 0.4735171094 px; independent landmark RMSE 0.053374 px; verdict_agrees: YES; source: results/table_canonical_v1.csv (ground_truth); hardware: not recorded
+- synthetic_gentle / LightGlue_ALIKED: inlier (fit) RMSE 0.4826549159605383 px; held-out RMSE 0.4826549159605383 px; verdict "SUCCESS_SUBPIXEL"; source: results/table_canonical_v1.csv (external_baselines); hardware: not recorded
+- synthetic_gentle / SIFT_RANSAC: inlier (fit) RMSE 0.35568556313554167 px; held-out RMSE 0.35568556313554167 px; verdict "SUCCESS_SUBPIXEL"; source: results/table_canonical_v1.csv (external_baselines); hardware: not recorded
+- synthetic_gentle / RoMa: inlier (fit) RMSE 0.16432245453915947 px; held-out RMSE 0.16432245453915947 px; verdict "SUCCESS_SUBPIXEL"; source: results/table_canonical_v1.csv (external_baselines); hardware: not recorded
 
 ## ChandraBench v0.1 (frozen landmark sets)
 
