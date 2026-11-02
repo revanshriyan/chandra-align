@@ -153,9 +153,11 @@ def test_evaluate_table_scores_and_extends():
 
 def test_evaluate_default_shape_unchanged_and_extended_abstains(tmp_path, monkeypatch):
     # Register a synthetic 20-landmark pair with its true sha, so evaluate()
-    # runs through the real registry path. (The v0.1 pins in PAIRS do not
-    # match the on-disk v0.1 CSVs on this base — a pre-existing condition,
-    # verified against HEAD — so the frozen pairs cannot be loaded here.)
+    # runs through the real registry path, independent of the frozen pairs.
+    # (The v0.1 pins in PAIRS originally did not match the on-disk v0.1 CSVs
+    # — they had been computed over CRLF bytes. The pins are now the
+    # LF-normalized digests, and eval.sha256_of normalizes line endings
+    # before hashing, so the frozen pairs load on any checkout.)
     ids, ref = _grid(5, 4)
     src = ref + np.array([3.0, 4.0])
     lines = ["id,x_ref,y_ref,x_src,y_src"]

@@ -55,12 +55,12 @@ HERE = Path(__file__).resolve().parent
 PAIRS = {
     "ohrc_pair": {
         "csv": "landmarks_ohrc_pair_v0.1.csv",
-        "sha256": "8de1613a70181dcfc286bea9d0168dc718de8579323483ef5c30f615cb8f2fa5",
+        "sha256": "23f1aaf67ca8ed544fd3c21adf54355b31db3ac627d7dbee36cbb53c1a6b3752",
         "n_points": 20,
     },
     "tmc2_fore_nadir": {
         "csv": "landmarks_tmc2_fore_nadir_v0.1.csv",
-        "sha256": "254d9d2c24b43d947dc15f3e9c1745ea238ac8b80f9d4774d8b0abf70a9a79c0",
+        "sha256": "84500aaa42d2ee529f302b5320eb7b2123c5a1d19602b14385fb1c3002def1cc",
         "n_points": 20,
     },
 }
@@ -69,10 +69,28 @@ VERSION = "0.1"
 
 
 def sha256_of(path):
+    """SHA-256 of the file's content with line endings normalized to LF.
+
+    The v0.1 pins were originally computed over a CRLF working tree, so
+    a raw byte hash depends on the checkout's line-ending convention
+    and the guard below failed on every LF checkout. Normalizing
+    CRLF -> LF before hashing makes the digest a property of the
+    content, not of the checkout: the same file verifies on Windows
+    and Linux checkouts alike, while any real content change still
+    changes the digest and trips the guard.
+    """
     h = hashlib.sha256()
+    carry = b""
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
+            data = carry + chunk
+            if data.endswith(b"\r"):
+                carry, data = b"\r", data[:-1]
+            else:
+                carry = b""
+            h.update(data.replace(b"\r\n", b"\n"))
+    if carry:
+        h.update(carry)
     return h.hexdigest()
 
 

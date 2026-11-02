@@ -7,9 +7,11 @@ below, then do the upload in one sitting at https://zenodo.org/deposit.
 ## 0. Pre-flight (in this repo, already done)
 
 - [x] `chandrabench/landmarks_ohrc_pair_v0.1.csv` — 20 rows, sha256
-      `8de1613a70181dcfc286bea9d0168dc718de8579323483ef5c30f615cb8f2fa5`
+      (LF-normalized, as computed by `eval.py`'s `sha256_of`)
+      `23f1aaf67ca8ed544fd3c21adf54355b31db3ac627d7dbee36cbb53c1a6b3752`
 - [x] `chandrabench/landmarks_tmc2_fore_nadir_v0.1.csv` — 20 rows, sha256
-      `254d9d2c24b43d947dc15f3e9c1745ea238ac8b80f9d4774d8b0abf70a9a79c0`
+      (LF-normalized, as computed by `eval.py`'s `sha256_of`)
+      `84500aaa42d2ee529f302b5320eb7b2123c5a1d19602b14385fb1c3002def1cc`
 - [x] `chandrabench/eval.py` — evaluator, self-test passes
 - [x] `chandrabench/README.md` — task, metric, format, limitations
 - [x] `chandrabench/LICENSE` — CC-BY-4.0 deed summary
