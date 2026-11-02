@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, Response
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -99,15 +99,43 @@ def _list_runs() -> list[dict]:
 
 app = FastAPI(title="Chandra-Align Demo API", version="0.1.0")
 
+# CORS: explicit origins only. A wildcard origin combined with
+# credentials lets any website call this API from a visitor's browser.
+# Override with CHANDRA_CORS_ORIGINS (comma-separated) when the viewer
+# is served from another origin.
+_CORS_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "CHANDRA_CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:7860,http://127.0.0.1:7860",
+    ).split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
 RUNS_DIR = Path("outputs")
+
+
+def _run_dir_or_none(run_id: str) -> Optional[Path]:
+    """Resolve a run directory, or None if run_id escapes RUNS_DIR.
+
+    run_id arrives from the URL, so it is caller-controlled: a value
+    like ".." or "a/b" must never resolve outside the runs directory.
+    Callers treat None exactly like a run that does not exist.
+    """
+    base = RUNS_DIR.resolve()
+    candidate = (base / run_id).resolve()
+    if candidate.parent != base:
+        return None
+    return candidate
 
 
 @app.get("/api/runs")
@@ -115,8 +143,23 @@ async def list_runs() -> list[dict]:
     return _list_runs()
 
 
+def _safe_upload_name(filename: Optional[str]) -> str:
+    """Reduce an upload filename to a bare file name.
+
+    UploadFile.filename is client-controlled and may carry path
+    components ("../../x", Windows-style "..\\..\\x", browser
+    fakepaths). Only the final component is ever used, so the write
+    can never escape the destination directory. A filename with no
+    usable component is rejected rather than silently renamed.
+    """
+    name = Path((filename or "").replace("\\", "/")).name.strip()
+    if not name or name in {".", ".."}:
+        raise HTTPException(400, "upload has no usable filename")
+    return name
+
+
 def _write_upload(upload: UploadFile, tmp_dir: Path) -> str:
-    dest = tmp_dir / upload.filename
+    dest = tmp_dir / _safe_upload_name(upload.filename)
     with open(dest, "wb") as f:
         f.write(upload.file.read())
     return str(dest)
@@ -124,6 +167,7 @@ def _write_upload(upload: UploadFile, tmp_dir: Path) -> str:
 
 @app.post("/register")
 async def register(
+    request: Request,
     ref_file: UploadFile = File(..., description="Reference map image (GeoTIFF)"),
     mov_file: UploadFile = File(..., description="CH-2 product image (GeoTIFF)"),
     config_file: UploadFile = File(..., description="Modality profile YAML (ohrc/tmc/iirs)"),
@@ -132,6 +176,13 @@ async def register(
 
     Returns: {run_id, trust_flag, metrics, cog_note, paths...}
     """
+    # Uploads trigger compute and disk writes. When CHANDRA_API_KEY is
+    # set, require it as an X-API-Key header; when unset (the private
+    # demo posture) the endpoint stays open. Full user authentication
+    # remains a pre-public-deployment requirement.
+    api_key = os.environ.get("CHANDRA_API_KEY")
+    if api_key and request.headers.get("x-api-key") != api_key:
+        raise HTTPException(401, "missing or invalid API key")
     run_id = uuid.uuid4().hex[:8]
     run_dir = RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -293,8 +344,9 @@ def _parse_transformation_mode(mode: Optional[str]):
 
 @app.get("/runs/{run_id}/registered.tif")
 async def download_cog(run_id: str):
-    path = RUNS_DIR / run_id / "registered.tif"
-    if not path.exists():
+    run_dir = _run_dir_or_none(run_id)
+    path = run_dir / "registered.tif" if run_dir is not None else None
+    if path is None or not path.exists():
         # Graceful: logged but un-run → explicit UNMEASURED payload, not a 500
         return JSONResponse({
             "run_id": run_id,
@@ -308,8 +360,9 @@ async def download_cog(run_id: str):
 
 @app.get("/runs/{run_id}/match_points.geojson")
 async def download_geojson(run_id: str):
-    path = RUNS_DIR / run_id / "match_points.geojson"
-    if not path.exists():
+    run_dir = _run_dir_or_none(run_id)
+    path = run_dir / "match_points.geojson" if run_dir is not None else None
+    if path is None or not path.exists():
         return JSONResponse({
             "run_id": run_id,
             "status": "logged-not-run",
@@ -322,8 +375,9 @@ async def download_geojson(run_id: str):
 
 @app.get("/runs/{run_id}/metrics.json", response_model=MetricsBundle)
 async def download_metrics(run_id: str) -> MetricsBundle:
-    path = RUNS_DIR / run_id / "metrics.json"
-    if not path.exists():
+    run_dir = _run_dir_or_none(run_id)
+    path = run_dir / "metrics.json" if run_dir is not None else None
+    if path is None or not path.exists():
         # Return a minimal valid model with UNMEASURED fields
         return MetricsBundle(
             run_id=run_id,
@@ -371,8 +425,8 @@ async def health():
 @app.get("/api/v1/export-dossier/{run_id}", response_model=RegistrationDossier)
 async def export_dossier_endpoint(run_id: str) -> RegistrationDossier:
     """Export registration dossier for a run."""
-    run_dir = RUNS_DIR / run_id
-    if not run_dir.exists():
+    run_dir = _run_dir_or_none(run_id)
+    if run_dir is None or not run_dir.exists():
         raise HTTPException(404, f"Run {run_id} not found")
 
     metrics_path = run_dir / "metrics.json"
@@ -411,8 +465,9 @@ async def stream_cog_tile(run_id: str, z: int, x: int, y: int):
     import numpy as np
     from io import BytesIO
     
-    cog_path = RUNS_DIR / run_id / "registered.tif"
-    if not cog_path.exists():
+    run_dir = _run_dir_or_none(run_id)
+    cog_path = run_dir / "registered.tif" if run_dir is not None else None
+    if cog_path is None or not cog_path.exists():
         raise HTTPException(404, f"COG not found for run {run_id}")
     
     try:
