@@ -55,8 +55,22 @@ Environment variables:
 | Variable | Default | Purpose |
 |---|---|---|
 | `CHANDRA_ALIGN_WEB_DIST` | `<repo>/web/dist` | where the built viewer lives (set to `/app/web/dist` in the container) |
+| `CHANDRA_MAX_CONCURRENT_RUNS` | `2` | concurrent `POST /register` executions; further requests get HTTP 503 instead of queueing |
+| `CHANDRA_MAX_TILES` | `1024` | per-run implied-tile-count ceiling for uploaded configs (HTTP 422 above it) |
+| `CHANDRA_MAX_IMAGE_PIXELS` | `100000000` | per-image pixel cap for uploads (HTTP 413 above it) |
+| `CHANDRA_MAX_UPLOAD_MB` | `1024` | per-file upload size cap (HTTP 413 above it) |
 
 All paths are relative and resolved from the repo root; no absolute paths are required.
+
+## API capacity and memory
+
+`POST /register` runs its blocking pipeline in a threadpool (the event loop
+stays responsive during a run) and admits at most `CHANDRA_MAX_CONCURRENT_RUNS`
+executions at once. Size the knobs to host RAM: the pipeline's working set is
+roughly 150 bytes per pixel, so a single near-cap image (100 M px at the
+default pixel cap) can peak around 15 GB RSS. Keep
+`CHANDRA_MAX_CONCURRENT_RUNS` × per-run peak within available memory, and lower
+`CHANDRA_MAX_IMAGE_PIXELS` on smaller hosts.
 
 ## Pipeline run
 

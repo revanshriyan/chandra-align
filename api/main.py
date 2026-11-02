@@ -10,12 +10,14 @@ Tile streaming: GET /tiles/{run_id}/{z}/{x}/{y}.png for COG tile access.
 import json
 import os
 import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -175,6 +177,52 @@ def _max_image_pixels() -> int:
         return 100_000_000
 
 
+def _max_tiles() -> int:
+    """Implied-tile-count cap per run (env CHANDRA_MAX_TILES, default 1024).
+
+    Measured tile scaling is ~0.59 s/tile on a large canvas and a
+    1024-tile run already costs ~10 minutes while producing metrics
+    identical to a 1-tile run, so the default ceiling sits at the
+    measured point of zero benefit rather than the previous 10000.
+    """
+    try:
+        return int(os.environ.get("CHANDRA_MAX_TILES", "1024"))
+    except ValueError:
+        return 1024
+
+
+def _max_concurrent_runs() -> int:
+    """Concurrent /register executions (env CHANDRA_MAX_CONCURRENT_RUNS, default 2)."""
+    try:
+        return max(0, int(os.environ.get("CHANDRA_MAX_CONCURRENT_RUNS", "2")))
+    except ValueError:
+        return 2
+
+
+_register_slots: Optional[threading.BoundedSemaphore] = None
+_register_slots_limit: Optional[int] = None
+_register_slots_lock = threading.Lock()
+
+
+def _register_slot_semaphore() -> threading.BoundedSemaphore:
+    """Semaphore bounding concurrent register executions.
+
+    A single registration can hold gigabytes of RAM for minutes, so the
+    threadpool offload alone is not enough: without a bound, a burst of
+    heavy requests would saturate worker threads and host memory. The
+    semaphore is recreated when the configured limit changes so the env
+    knob takes effect without bookkeeping; holders of an older
+    semaphore still release against it correctly.
+    """
+    global _register_slots, _register_slots_limit
+    limit = _max_concurrent_runs()
+    with _register_slots_lock:
+        if _register_slots is None or _register_slots_limit != limit:
+            _register_slots = threading.BoundedSemaphore(limit)
+            _register_slots_limit = limit
+        return _register_slots
+
+
 def _write_upload(upload: UploadFile, tmp_dir: Path) -> str:
     """Stream an upload to disk in chunks under a per-file size cap.
 
@@ -241,8 +289,9 @@ def _validate_run_config(cfg: dict, shape) -> None:
         return 1 + -(-(dim - tile) // step)
 
     n_tiles = _tile_count(img_h, tile_h) * _tile_count(img_w, tile_w)
-    if n_tiles > 10_000:
-        _fail(f"tile_size implies {n_tiles} tiles (limit 10000)")
+    tile_limit = _max_tiles()
+    if n_tiles > tile_limit:
+        _fail(f"tile_size implies {n_tiles} tiles (limit {tile_limit})")
 
     try:
         grid_h, grid_w = (int(v) for v in cfg["matcher"]["grid"])
@@ -281,13 +330,39 @@ async def register(
     run_dir = RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    # save uploads
+    # Save uploads in the handler (streaming, capped). Everything past
+    # this point — ingest, matching, refinement, warp, export — is
+    # blocking CPU/IO work, so it runs in the threadpool: executed
+    # inline, a single heavy request froze the event loop (and every
+    # other endpoint, health checks included) for its full duration.
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         ref_path = _write_upload(ref_file, tmp_path)
         mov_path = _write_upload(mov_file, tmp_path)
         cfg_path = _write_upload(config_file, tmp_path)
 
+        return await run_in_threadpool(
+            _run_registration, run_id, run_dir, ref_path, mov_path, cfg_path)
+
+
+def _run_registration(run_id: str, run_dir: Path, ref_path: str,
+                      mov_path: str, cfg_path: str) -> JSONResponse:
+    """Blocking body of POST /register, executed via run_in_threadpool.
+
+    Admission is bounded by a semaphore (CHANDRA_MAX_CONCURRENT_RUNS):
+    when all slots are busy the run is rejected with 503 instead of
+    queueing unbounded heavy work. HTTPExceptions raised here propagate
+    through run_in_threadpool unchanged, so every guard keeps its
+    status code (401 is checked earlier, in the handler).
+    """
+    slots = _register_slot_semaphore()
+    if not slots.acquire(blocking=False):
+        raise HTTPException(
+            503,
+            "registration capacity saturated: too many concurrent runs, "
+            "retry later",
+        )
+    try:
         cfg = load_config(cfg_path)
 
         # Stage 1: ingest + CRS guard
@@ -359,61 +434,63 @@ async def register(
         metrics_path = str(run_dir / "metrics.json")
         write_metrics_json(metrics_path, bundle)
 
-    # Return the validated metrics bundle via model
-    # Read back the saved metrics to ensure consistency
-    with open(metrics_path, "r") as f:
-        saved_metrics = json.load(f)
+        # Return the validated metrics bundle via model
+        # Read back the saved metrics to ensure consistency
+        with open(metrics_path, "r") as f:
+            saved_metrics = json.load(f)
 
-    # Create a validated MetricsBundle from the saved data
-    try:
-        validated_bundle = MetricsBundle(
-            run_id=run_id,
-            trust_flag=TrustFlag(flag),
-            calibration_status=CalibrationStatus(bundle.get("calibration_status", "UNCALIBRATED")),
-            status=PipelineStatus.COMPLETED,
-            inliers={
-                "raw_matches": bundle.get("inliers", {}).get("raw_matches", n_raw),
-                "verified_inliers": bundle.get("inliers", {}).get("inliers", 0),
-                "inlier_ratio": inlier_ratio,
-                "uniformity_score": uni,
-                "quadtree_entropy": bundle.get("uniformity_score", 0.0),  # placeholder
-                "spatial_coverage_pct": 0.0,  # placeholder
-            },
-            rmse={
-                "held_out": rm.get("held_out", False),
-                "n_check_points": rm.get("n_check_points", 0),
-                "rmse_x_px": rm.get("rmse_x_px", UNMEASURED),
-                "rmse_y_px": rm.get("rmse_y_px", UNMEASURED),
-                "rmse_px": rm.get("rmse_px", UNMEASURED),
-                "rmse_m": rm.get("rmse_m", UNMEASURED),
-            },
-            condition_number_kappa=UNMEASURED,
-            footprint_iou=UNMEASURED,
-            quality_flags=[],
-            matcher_tier_used=_parse_matcher_tier(matcher_name),
-            escalated_to_tier2=escalated,
-            transformation_mode=_parse_transformation_mode("piecewise_affine"),
-            approximation_flag=True,
-            runtime_s=runtime_s,
-            registered_cog_path=warped_path,
-            match_points_geojson_path=mp_json,
-        )
-        bundle_dict = validated_bundle.model_dump(mode="json")
-    except Exception:
-        # Fallback to raw bundle if validation fails
-        bundle_dict = saved_metrics
+        # Create a validated MetricsBundle from the saved data
+        try:
+            validated_bundle = MetricsBundle(
+                run_id=run_id,
+                trust_flag=TrustFlag(flag),
+                calibration_status=CalibrationStatus(bundle.get("calibration_status", "UNCALIBRATED")),
+                status=PipelineStatus.COMPLETED,
+                inliers={
+                    "raw_matches": bundle.get("inliers", {}).get("raw_matches", n_raw),
+                    "verified_inliers": bundle.get("inliers", {}).get("inliers", 0),
+                    "inlier_ratio": inlier_ratio,
+                    "uniformity_score": uni,
+                    "quadtree_entropy": bundle.get("uniformity_score", 0.0),  # placeholder
+                    "spatial_coverage_pct": 0.0,  # placeholder
+                },
+                rmse={
+                    "held_out": rm.get("held_out", False),
+                    "n_check_points": rm.get("n_check_points", 0),
+                    "rmse_x_px": rm.get("rmse_x_px", UNMEASURED),
+                    "rmse_y_px": rm.get("rmse_y_px", UNMEASURED),
+                    "rmse_px": rm.get("rmse_px", UNMEASURED),
+                    "rmse_m": rm.get("rmse_m", UNMEASURED),
+                },
+                condition_number_kappa=UNMEASURED,
+                footprint_iou=UNMEASURED,
+                quality_flags=[],
+                matcher_tier_used=_parse_matcher_tier(matcher_name),
+                escalated_to_tier2=escalated,
+                transformation_mode=_parse_transformation_mode("piecewise_affine"),
+                approximation_flag=True,
+                runtime_s=runtime_s,
+                registered_cog_path=warped_path,
+                match_points_geojson_path=mp_json,
+            )
+            bundle_dict = validated_bundle.model_dump(mode="json")
+        except Exception:
+            # Fallback to raw bundle if validation fails
+            bundle_dict = saved_metrics
 
-    return JSONResponse({
-        "run_id": run_id,
-        "trust_flag": flag,
-        "metrics": bundle_dict,
-        "cog_note": export_note,
-        "paths": {
-            "registered": warped_path,
-            "match_points": mp_json,
-            "metrics": metrics_path,
-        }
-    })
+        return JSONResponse({
+            "run_id": run_id,
+            "trust_flag": flag,
+            "metrics": bundle_dict,
+            "cog_note": export_note,
+            "paths": {
+                "registered": warped_path,
+                "match_points": mp_json,
+                "metrics": metrics_path,
+            }
+        })
+    finally:
+        slots.release()
 
 
 def _parse_matcher_tier(matcher: Optional[str]):
