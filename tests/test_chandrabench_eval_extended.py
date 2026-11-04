@@ -205,3 +205,27 @@ def test_load_landmark_csv_with_and_without_repeat_of(tmp_path):
         "id,x_ref,y_ref,x_src,y_src\na,0,0,1,1\n", encoding="utf-8")
     _, _, _, repeat_of2 = ev.load_landmark_csv(without_rep)
     assert repeat_of2 is None
+
+
+def test_load_landmark_csv_filters_to_verified(tmp_path):
+    f = tmp_path / "mixed.csv"
+    f.write_text(
+        "id,x_ref,y_ref,x_src,y_src,review_status\n"
+        "a,0,0,1,1,VERIFIED\n"
+        "b,2,0,3,1,CANDIDATE\n"
+        "c,4,0,5,1,VERIFIED\n"
+        "d,6,0,7,1,\n",
+        encoding="utf-8")
+    ids, ref, src, _ = ev.load_landmark_csv(f)
+    assert ids == ["a", "c"]
+    assert ref.shape == (2, 2)
+
+
+def test_load_landmark_csv_no_verified_rows_fails_closed(tmp_path):
+    f = tmp_path / "all_candidate.csv"
+    f.write_text(
+        "id,x_ref,y_ref,x_src,y_src,review_status\n"
+        "a,0,0,1,1,CANDIDATE\n",
+        encoding="utf-8")
+    with pytest.raises(SystemExit):
+        ev.load_landmark_csv(f)

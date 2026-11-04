@@ -368,6 +368,13 @@ def load_landmark_csv(path):
     and accepts an optional repeat_of column. Same fail-closed validation as
     load_landmarks, minus the sha pin: the file is not frozen yet.
     Returns (ids, ref, src, repeat_of) with repeat_of None when absent.
+
+    When the file carries a review_status column (clicker exports do),
+    only rows marked VERIFIED are loaded: the Phase 2 split counts only
+    VERIFIED rows toward the per-pair bar, so CANDIDATE rows must never
+    be scored. The excluded count is reported on stderr, and a file with
+    no VERIFIED rows at all fails closed. Files without the column are
+    loaded in full, as before.
     """
     path = Path(path)
     if not path.exists():
@@ -376,6 +383,17 @@ def load_landmark_csv(path):
         rows = list(csv.DictReader(fh))
     if not rows:
         sys.exit(f"error: landmark file has no rows: {path}")
+    if "review_status" in rows[0]:
+        kept = [r for r in rows
+                if (r.get("review_status") or "").strip() == "VERIFIED"]
+        excluded = len(rows) - len(kept)
+        if excluded:
+            print(f"note: excluded {excluded} non-VERIFIED landmark "
+                  f"row(s) from {path} (only VERIFIED rows count)",
+                  file=sys.stderr)
+        if not kept:
+            sys.exit(f"error: landmark file has no VERIFIED rows: {path}")
+        rows = kept
     required = {"id", "x_ref", "y_ref", "x_src", "y_src"}
     missing = required - set(rows[0].keys())
     if missing:
